@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Outfit, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
+import { SpeedInsights } from "@vercel/speed-insights/next"
 
 const outfit = Outfit({
   subsets: ['latin'],
