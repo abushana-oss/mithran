@@ -20,7 +20,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useProjects, useVendors } from '@/lib/api/hooks';
 import dynamic from 'next/dynamic';
-import { Suspense } from 'react';
 
 // Lazy load heavy chart components
 const CostChart = dynamic(() => import('@/components/features/dashboard/charts').then(mod => ({ default: mod.CostChart })), {

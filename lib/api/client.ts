@@ -52,7 +52,7 @@ class ApiClient {
 
   constructor() {
     this.baseUrl =
-      process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:4000/api/v1';
+      process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
     this.loadTokens();
   }
 
