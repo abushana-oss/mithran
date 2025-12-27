@@ -8,7 +8,6 @@ export { apiClient, ApiError } from './client';
 export { authApi } from './auth';
 export { projectsApi } from './projects';
 export { vendorsApi } from './vendors';
-export { materialsApi } from './materials';
 export { bomApi } from './bom';
 
 export type {
@@ -34,15 +33,6 @@ export type {
   VendorsResponse,
   VendorPerformance,
 } from './vendors';
-
-export type {
-  Material,
-  CreateMaterialData,
-  UpdateMaterialData,
-  MaterialQuery,
-  MaterialsResponse,
-  MaterialSupplier,
-} from './materials';
 
 export type {
   BOM,

@@ -8,8 +8,7 @@ interface BOMCostSummaryProps {
 }
 
 export function BOMCostSummary({ bomId: _bomId }: BOMCostSummaryProps) {
-  // TODO: Fetch cost data from API when BOM items have cost information
-
+  // Cost calculation will be implemented when cost API endpoints are available
   return (
     <div className="grid gap-4">
       <Card>

@@ -256,9 +256,11 @@ class ApiClient {
             attemptNumber < 3
           ) {
             const backoffMs = Math.min(1000 * Math.pow(2, attemptNumber - 1), 10000);
-            console.warn(
-              `[API] Request failed with ${error.statusCode}, retrying in ${backoffMs}ms... (attempt ${attemptNumber}/3)`,
-            );
+            if (process.env.NODE_ENV === 'development') {
+              console.warn(
+                `[API] Request failed with ${error.statusCode}, retrying in ${backoffMs}ms... (attempt ${attemptNumber}/3)`,
+              );
+            }
             await this.sleep(backoffMs);
             return executeRequest(attemptNumber + 1);
           }

@@ -99,46 +99,5 @@ export const authApi = {
     return response;
   },
 
-  /**
-   * Request password reset
-   */
-  requestPasswordReset: async (email: string): Promise<{ message: string }> => {
-    return apiClient.post('/auth/password-reset/request', { email });
-  },
-
-  /**
-   * Reset password with token
-   */
-  resetPassword: async (
-    token: string,
-    newPassword: string,
-  ): Promise<{ message: string }> => {
-    return apiClient.post('/auth/password-reset/confirm', {
-      token,
-      newPassword,
-    });
-  },
-
-  /**
-   * Change password
-   */
-  changePassword: async (
-    currentPassword: string,
-    newPassword: string,
-  ): Promise<{ message: string }> => {
-    return apiClient.post('/auth/password/change', {
-      currentPassword,
-      newPassword,
-    });
-  },
-
-  /**
-   * Update user profile
-   */
-  updateProfile: async (data: {
-    fullName?: string;
-    email?: string;
-  }): Promise<AuthUser> => {
-    return apiClient.put<AuthUser>('/auth/profile', data);
-  },
+  // Password reset and profile management endpoints will be added in future release
 };

@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   FolderKanban,
   Users,
-  Package,
   LogOut,
   Cog,
   FileSpreadsheet,
@@ -32,11 +31,10 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 
 const databaseItems = [
-  { title: 'Raw Materials', url: '/database/materials', icon: Package },
   { title: 'Vendors', url: '/database/vendors', icon: Users },
 ];
 
-// Costing items removed - features will be added later
+// Materials module not yet implemented in backend - will be added in future release
 
 export function AppSidebar() {
   const { state } = useSidebar();

@@ -4,6 +4,5 @@
 
 export * from './useProjects';
 export * from './useVendors';
-export * from './useMaterials';
 export * from './useBOM';
 export * from './useBOMItems';

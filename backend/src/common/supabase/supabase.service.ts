@@ -6,18 +6,28 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 export class SupabaseService {
   private supabaseUrl: string;
   private supabaseAnonKey: string;
+  private supabaseServiceKey: string;
   private adminClient: SupabaseClient;
 
   constructor(private configService: ConfigService) {
-    this.supabaseUrl = this.configService.get<string>('SUPABASE_URL') || '';
-    this.supabaseAnonKey = this.configService.get<string>('SUPABASE_ANON_KEY') || '';
+    this.supabaseUrl = this.configService.get<string>('NEXT_PUBLIC_SUPABASE_URL') || '';
+    this.supabaseAnonKey = this.configService.get<string>('NEXT_PUBLIC_SUPABASE_ANON_KEY') || '';
+    this.supabaseServiceKey = this.configService.get<string>('SUPABASE_SERVICE_KEY') || '';
 
-    if (!this.supabaseUrl || !this.supabaseAnonKey) {
-      throw new Error('SUPABASE_URL and SUPABASE_ANON_KEY must be set in environment variables');
+    if (!this.supabaseUrl || !this.supabaseAnonKey || !this.supabaseServiceKey) {
+      throw new Error(
+        'NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and SUPABASE_SERVICE_KEY must be set in environment variables'
+      );
     }
 
-    // Admin client for auth verification only
-    this.adminClient = createClient(this.supabaseUrl, this.supabaseAnonKey);
+    // Admin client with SERVICE ROLE key for operations that bypass RLS
+    // This client should ONLY be used for admin operations like token verification
+    this.adminClient = createClient(this.supabaseUrl, this.supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
   }
 
   /**

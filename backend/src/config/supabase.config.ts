@@ -1,6 +1,19 @@
 import { registerAs } from '@nestjs/config';
 
-export default registerAs('supabase', () => ({
-  url: process.env.SUPABASE_URL || 'https://iuvtsvjpmovfymvnmqys.supabase.co',
-  anonKey: process.env.SUPABASE_ANON_KEY || 'sb_publishable_9Lijw5z0vmAL6vNJaxcWuA_Z3V4O_F5',
-}));
+export default registerAs('supabase', () => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+
+  if (!url || !anonKey || !serviceKey) {
+    throw new Error(
+      'Missing required Supabase environment variables: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and SUPABASE_SERVICE_KEY must be set'
+    );
+  }
+
+  return {
+    url,
+    anonKey,
+    serviceKey,
+  };
+});
