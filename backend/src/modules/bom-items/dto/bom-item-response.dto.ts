@@ -42,6 +42,12 @@ export class BOMItemResponseDto {
   @ApiPropertyOptional({ example: 'EN-GJL-250' })
   materialGrade?: string;
 
+  @ApiPropertyOptional({ example: 'make' })
+  makeBuy?: string;
+
+  @ApiPropertyOptional({ example: 1250.50 })
+  unitCost?: number;
+
   @ApiProperty({ example: 0 })
   sortOrder: number;
 
@@ -79,6 +85,8 @@ export class BOMItemResponseDto {
     dto.unit = row.unit || undefined;
     dto.material = row.material || undefined;
     dto.materialGrade = row.material_grade || undefined;
+    dto.makeBuy = row.make_buy || undefined;
+    dto.unitCost = row.unit_cost !== undefined && row.unit_cost !== null ? Number(row.unit_cost) : undefined;
     dto.sortOrder = row.sort_order !== undefined ? Number(row.sort_order) : 0;
     dto.file3dPath = row.file_3d_path || undefined;
     dto.file2dPath = row.file_2d_path || undefined;

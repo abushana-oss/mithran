@@ -1,37 +1,29 @@
 'use client';
 
-import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { StatusBadge } from '@/components/common/status-badge';
-import { Badge } from '@/components/ui/badge';
 import {
-  Plus,
   ArrowLeft,
   ClipboardList,
   DollarSign,
   FileSpreadsheet,
   TrendingUp,
-  Package,
-  Layers,
-  ArrowRight
 } from 'lucide-react';
-import { format } from 'date-fns';
 import { useProject, useBOMs } from '@/lib/api/hooks';
-import { ModuleDetails } from '@/components/features/projects/ModuleDetails';
-import { BOMCreateDialog } from '@/components/features/bom';
+import { ProjectModules } from '@/components/features/projects/ProjectModules';
 
 export default function ProjectDetail() {
   const params = useParams<{ id: string }>();
   const id = params?.id || '';
   const router = useRouter();
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   const { data: project, isLoading: projectLoading } = useProject(id);
-  const { data: sourcingListsData, isLoading: listsLoading } = useBOMs({ projectId: id });
+  const { data: sourcingListsData } = useBOMs({ projectId: id });
   const sourcingLists = sourcingListsData?.boms || [];
+  const firstBomId = sourcingLists.length > 0 && sourcingLists[0] ? sourcingLists[0].id : undefined;
 
   if (projectLoading) {
     return (
@@ -59,12 +51,10 @@ export default function ProjectDetail() {
         <Button variant="ghost" size="icon" onClick={() => router.push('/projects')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <PageHeader title={project.name} description={project.description || 'Project overview and cost management'}>
-          <Button onClick={() => setCreateDialogOpen(true)} size="lg" className="gap-2">
-            <Plus className="h-5 w-5" />
-            Create BOM
-          </Button>
-        </PageHeader>
+        <PageHeader
+          title={project.name}
+          description={project.description || 'Project overview and cost management'}
+        />
       </div>
 
       {/* Cost Overview Cards */}
@@ -130,124 +120,8 @@ export default function ProjectDetail() {
         </Card>
       </div>
 
-      {/* BOM Management Section */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Create BOM Card */}
-        <Card
-          className="border-2 border-dashed border-primary/50 hover:border-primary transition-all cursor-pointer hover:shadow-lg lg:col-span-1 bg-primary/5"
-          onClick={() => setCreateDialogOpen(true)}
-        >
-          <CardHeader className="text-center pb-4">
-            <div className="mx-auto h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
-              <Plus className="h-8 w-8 text-primary" />
-            </div>
-            <CardTitle className="text-lg">Create New BOM</CardTitle>
-            <CardDescription className="text-sm">
-              Start a new Bill of Materials for casting components and assemblies
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="text-center pb-6">
-            <Button className="w-full gap-2" size="lg">
-              <FileSpreadsheet className="h-4 w-4" />
-              Create BOM
-              <ArrowRight className="h-4 w-4 ml-auto" />
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* BOM List */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Layers className="h-5 w-5 text-primary" />
-                  Bills of Materials
-                </CardTitle>
-                <CardDescription>Manage your project BOMs and cost breakdowns</CardDescription>
-              </div>
-              {sourcingLists.length > 0 && (
-                <Badge variant="secondary" className="text-sm">
-                  {sourcingLists.length} {sourcingLists.length === 1 ? 'BOM' : 'BOMs'}
-                </Badge>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            {listsLoading ? (
-              <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
-                <p className="text-sm text-muted-foreground mt-4">Loading BOMs...</p>
-              </div>
-            ) : sourcingLists.length === 0 ? (
-              <div className="text-center py-12 border-2 border-dashed rounded-lg">
-                <Package className="h-16 w-16 mx-auto text-muted-foreground/50 mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No BOMs Yet</h3>
-                <p className="text-muted-foreground text-sm mb-6 max-w-sm mx-auto">
-                  Create your first Bill of Materials to start managing parts, materials, and costs for this project
-                </p>
-                <Button onClick={() => setCreateDialogOpen(true)} size="lg" className="gap-2">
-                  <Plus className="h-5 w-5" />
-                  Create First BOM
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {sourcingLists.map((list) => (
-                  <Card
-                    key={list.id}
-                    className="cursor-pointer hover:shadow-md transition-all border-l-4 border-l-primary/50 hover:border-l-primary"
-                    onClick={() => router.push(`/projects/${id}/bom/${list.id}`)}
-                  >
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-start gap-4 flex-1">
-                          <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                            <FileSpreadsheet className="h-6 w-6 text-primary" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <h4 className="font-semibold text-foreground">{list.name}</h4>
-                              <Badge variant="outline" className="text-xs">
-                                v{list.version || '1.0'}
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-muted-foreground">
-                              Created {format(new Date(list.createdAt), 'MMM d, yyyy')}
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="gap-2 shrink-0"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(`/projects/${id}/bom/${list.id}`);
-                          }}
-                        >
-                          Open
-                          <ArrowRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Module Details */}
-      <ModuleDetails projectId={id} />
-
-      {/* BOM Create Dialog */}
-      <BOMCreateDialog
-        projectId={id}
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-      />
+      {/* Project Modules */}
+      <ProjectModules projectId={id} bomCount={sourcingLists.length} firstBomId={firstBomId} />
     </div>
   );
 }

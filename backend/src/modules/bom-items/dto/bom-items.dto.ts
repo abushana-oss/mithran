@@ -5,7 +5,6 @@ export enum BOMItemType {
   ASSEMBLY = 'assembly',
   SUB_ASSEMBLY = 'sub_assembly',
   CHILD_PART = 'child_part',
-  BOP = 'bop',
 }
 
 export class CreateBOMItemDto {
@@ -60,6 +59,17 @@ export class CreateBOMItemDto {
   @IsOptional()
   @IsString()
   materialGrade?: string;
+
+  @ApiPropertyOptional({ example: 'make', description: 'Make or buy decision: make (manufacturing) or buy (purchasing)' })
+  @IsOptional()
+  @IsString()
+  makeBuy?: string;
+
+  @ApiPropertyOptional({ example: 1250.50, description: 'Unit cost in INR for purchased parts (when makeBuy is buy)' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  unitCost?: number;
 
   @ApiPropertyOptional({ example: 0 })
   @IsOptional()

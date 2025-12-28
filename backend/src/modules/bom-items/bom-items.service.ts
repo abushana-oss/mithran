@@ -20,7 +20,8 @@ export class BOMItemsService {
       .getClient(accessToken)
       .from('bom_items')
       .select('*')
-      .order('sort_order', { ascending: true });
+      .order('sort_order', { ascending: true })
+      .limit(1000); // Safety limit: max 1000 items per BOM
 
     if (query.bomId) {
       queryBuilder = queryBuilder.eq('bom_id', query.bomId);
@@ -77,6 +78,8 @@ export class BOMItemsService {
         description: createBOMItemDto.description,
         item_type: createBOMItemDto.itemType,
         parent_item_id: createBOMItemDto.parentItemId,
+        make_buy: createBOMItemDto.makeBuy,
+        unit_cost: createBOMItemDto.unitCost,
         quantity: createBOMItemDto.quantity,
         annual_volume: createBOMItemDto.annualVolume,
         unit: createBOMItemDto.unit || 'pcs',
@@ -109,6 +112,8 @@ export class BOMItemsService {
     if (updateBOMItemDto.description !== undefined) updateData.description = updateBOMItemDto.description;
     if (updateBOMItemDto.itemType !== undefined) updateData.item_type = updateBOMItemDto.itemType;
     if (updateBOMItemDto.parentItemId !== undefined) updateData.parent_item_id = updateBOMItemDto.parentItemId;
+    if (updateBOMItemDto.makeBuy !== undefined) updateData.make_buy = updateBOMItemDto.makeBuy;
+    if (updateBOMItemDto.unitCost !== undefined) updateData.unit_cost = updateBOMItemDto.unitCost;
     if (updateBOMItemDto.quantity !== undefined) updateData.quantity = updateBOMItemDto.quantity;
     if (updateBOMItemDto.annualVolume !== undefined) updateData.annual_volume = updateBOMItemDto.annualVolume;
     if (updateBOMItemDto.unit !== undefined) updateData.unit = updateBOMItemDto.unit;
@@ -198,5 +203,128 @@ export class BOMItemsService {
     }
 
     return { message: 'Sort order updated successfully' };
+  }
+
+  async getProjectIdFromBomItem(bomId: string, accessToken: string): Promise<string> {
+    this.logger.log(`Fetching project ID for BOM: ${bomId}`, 'BOMItemsService');
+
+    const { data, error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('boms')
+      .select('project_id')
+      .eq('id', bomId)
+      .single();
+
+    if (error || !data) {
+      this.logger.error(`BOM not found: ${bomId}`, 'BOMItemsService');
+      throw new NotFoundException(`BOM with ID ${bomId} not found`);
+    }
+
+    return data.project_id;
+  }
+
+  async fixBOMHierarchy(bomId: string, userId: string, accessToken: string) {
+    this.logger.log(`Fixing BOM hierarchy for BOM: ${bomId}`, 'BOMItemsService');
+
+    // Fetch all items for this BOM
+    const { data: items, error: fetchError } = await this.supabaseService
+      .getClient(accessToken)
+      .from('bom_items')
+      .select('*')
+      .eq('bom_id', bomId)
+      .order('created_at', { ascending: true });
+
+    if (fetchError) {
+      this.logger.error(`Error fetching BOM items: ${fetchError.message}`, 'BOMItemsService');
+      throw new InternalServerErrorException(`Failed to fetch BOM items: ${fetchError.message}`);
+    }
+
+    if (!items || items.length === 0) {
+      return { message: 'No items to fix', itemsUpdated: 0 };
+    }
+
+    // Organize items by type
+    const assemblies = items.filter(item => item.item_type === 'assembly');
+    const subAssemblies = items.filter(item => item.item_type === 'sub_assembly');
+    const childParts = items.filter(item => item.item_type === 'child_part');
+
+    let updatedCount = 0;
+    const updates: Array<{ id: string; parentItemId: string | null }> = [];
+
+    // Step 1: Ensure all assemblies are root-level (no parent)
+    for (const assembly of assemblies) {
+      if (assembly.parent_item_id !== null) {
+        updates.push({ id: assembly.id, parentItemId: null });
+        updatedCount++;
+      }
+    }
+
+    // Step 2: Assign sub-assemblies to assemblies
+    // Each sub-assembly goes under the most recent assembly before it
+    for (const subAssembly of subAssemblies) {
+      // Find the most recent assembly created before this sub-assembly
+      const parentAssembly = assemblies
+        .filter(a => new Date(a.created_at) <= new Date(subAssembly.created_at))
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+      const newParentId = parentAssembly?.id || null;
+
+      if (subAssembly.parent_item_id !== newParentId) {
+        updates.push({ id: subAssembly.id, parentItemId: newParentId });
+        updatedCount++;
+      }
+    }
+
+    // Step 3: Assign child parts to sub-assemblies or assemblies
+    for (const childPart of childParts) {
+      // Try to find the most recent sub-assembly created before this child part
+      const parentSubAssembly = subAssemblies
+        .filter(sa => new Date(sa.created_at) <= new Date(childPart.created_at))
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+      let newParentId: string | null;
+
+      if (parentSubAssembly) {
+        newParentId = parentSubAssembly.id;
+      } else {
+        // If no sub-assembly, go under most recent assembly
+        const parentAssembly = assemblies
+          .filter(a => new Date(a.created_at) <= new Date(childPart.created_at))
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+        newParentId = parentAssembly?.id || null;
+      }
+
+      if (childPart.parent_item_id !== newParentId) {
+        updates.push({ id: childPart.id, parentItemId: newParentId });
+        updatedCount++;
+      }
+    }
+
+    // Apply all updates
+    if (updates.length > 0) {
+      for (const update of updates) {
+        const { error: updateError } = await this.supabaseService
+          .getClient(accessToken)
+          .from('bom_items')
+          .update({ parent_item_id: update.parentItemId })
+          .eq('id', update.id);
+
+        if (updateError) {
+          this.logger.error(`Error updating item ${update.id}: ${updateError.message}`, 'BOMItemsService');
+        }
+      }
+    }
+
+    this.logger.log(`Fixed ${updatedCount} items in BOM hierarchy`, 'BOMItemsService');
+
+    return {
+      message: 'BOM hierarchy fixed successfully',
+      itemsUpdated: updatedCount,
+      details: {
+        assemblies: assemblies.length,
+        subAssemblies: subAssemblies.length,
+        childParts: childParts.length,
+      },
+    };
   }
 }

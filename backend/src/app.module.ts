@@ -13,7 +13,6 @@ import { HealthModule } from './modules/health/health.module';
 import { LoggerModule } from './common/logger/logger.module';
 import { SupabaseService } from './common/supabase/supabase.service';
 import { SupabaseAuthGuard } from './common/guards/supabase-auth.guard';
-import supabaseConfig from './config/supabase.config';
 import { validate } from './config/env.validation';
 
 @Module({
@@ -21,7 +20,6 @@ import { validate } from './config/env.validation';
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
-      load: [supabaseConfig],
       validate,
     }),
 

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
@@ -56,7 +56,7 @@ export class SupabaseService {
     const { data, error } = await this.adminClient.auth.getUser(token);
 
     if (error) {
-      throw new Error(`Invalid token: ${error.message}`);
+      throw new UnauthorizedException(`Invalid token: ${error.message}`);
     }
 
     return data.user;

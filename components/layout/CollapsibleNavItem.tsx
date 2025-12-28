@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, LucideIcon } from 'lucide-react';
 import { NavLink } from '@/components/common/nav-link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -21,12 +21,12 @@ interface SubItem {
 interface AdditionalItem {
   title: string;
   url: string;
-  icon?: React.ElementType;
+  icon?: LucideIcon;
 }
 
 interface CollapsibleNavItemProps {
   title: string;
-  icon: React.ElementType;
+  icon: LucideIcon;
   baseUrl: string;
   items: SubItem[];
   collapsed: boolean;

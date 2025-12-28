@@ -1,18 +1,14 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
   FolderKanban,
   Users,
   LogOut,
-  Cog,
-  FileSpreadsheet,
 } from 'lucide-react';
 import { NavLink } from '@/components/common/nav-link';
 import { useAuth } from '@/lib/providers/auth';
-import { CollapsibleNavItem } from '@/components/layout/CollapsibleNavItem';
-import { useProjects } from '@/lib/api/hooks/useProjects';
 import {
   Sidebar,
   SidebarContent,
@@ -40,18 +36,13 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
   const pathname = usePathname();
-  const router = useRouter();
-  const { user, signOut, loading } = useAuth();
+  const { user, signOut } = useAuth();
 
   const isActive = (path: string) => {
     if (!pathname) return false;
     if (path === '/') return pathname === '/';
     return pathname.startsWith(path);
   };
-
-  // Fetch projects (top 5 recent) - only when authenticated
-  const { data: projectsData } = useProjects({ limit: 5 }, { enabled: !!user && !loading });
-  const projects = projectsData?.projects || [];
 
   const userInitials = (user as any)?.fullName
     ?.split(' ')
@@ -63,11 +54,6 @@ export function AppSidebar() {
     <Sidebar className="border-r border-sidebar-border bg-sidebar">
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center border border-primary/30">
-              <Cog className="h-5 w-5 text-primary animate-pulse-subtle" />
-            </div>
-          </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <h2 className="font-bold text-lg text-sidebar-foreground tracking-tight">Mithran</h2>
@@ -101,28 +87,18 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              {/* Projects - Collapsible */}
+              {/* Projects - Simple Link */}
               <SidebarMenuItem>
-                <CollapsibleNavItem
-                  title="Projects"
-                  icon={FolderKanban}
-                  baseUrl="/projects"
-                  collapsed={collapsed}
-                  items={projects.map((p) => ({
-                    id: p.id,
-                    title: p.name,
-                    url: `/projects/${p.id}`,
-                  }))}
-                  additionalItems={[
-                    {
-                      title: 'BOM Management',
-                      url: '/bom',
-                      icon: FileSpreadsheet,
-                    },
-                  ]}
-                  onAddClick={() => router.push('/projects?new=true')}
-                  addLabel="New Project"
-                />
+                <SidebarMenuButton asChild isActive={isActive('/projects')}>
+                  <NavLink
+                    to="/projects"
+                    className={`sidebar-item group ${isActive('/projects') ? 'sidebar-item-active' : ''}`}
+                    activeClassName="sidebar-item-active"
+                  >
+                    <FolderKanban className={`h-4 w-4 shrink-0 transition-colors ${isActive('/projects') ? 'text-primary' : 'text-sidebar-foreground/60 group-hover:text-sidebar-foreground'}`} />
+                    {!collapsed && <span className="text-sm">Projects</span>}
+                  </NavLink>
+                </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>

@@ -73,7 +73,7 @@ export class ProjectsService {
   }
 
   async create(createProjectDto: CreateProjectDto, userId: string, accessToken: string): Promise<ProjectResponseDto> {
-    this.logger.log('Creating project', 'ProjectsService');
+    this.logger.log(`Creating project for user: ${userId}`, 'ProjectsService');
 
     const { data, error } = await this.supabaseService
       .getClient(accessToken)
@@ -91,6 +91,11 @@ export class ProjectsService {
     if (error) {
       this.logger.error(`Error creating project: ${error.message}`, 'ProjectsService');
       throw new InternalServerErrorException(`Failed to create project: ${error.message}`);
+    }
+
+    if (!data) {
+      this.logger.error('Project creation returned no data', 'ProjectsService');
+      throw new InternalServerErrorException('Failed to create project: No data returned');
     }
 
     return ProjectResponseDto.fromDatabase(data);

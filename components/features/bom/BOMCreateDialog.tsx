@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Dialog,
@@ -23,28 +23,23 @@ import {
 } from '@/components/ui/select';
 import { bomApi } from '@/lib/api/bom';
 import { createBOMItem } from '@/lib/api/hooks/useBOMItems';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
-import { Upload, X, ChevronDown, File, Image as ImageIcon } from 'lucide-react';
+import { Plus, Trash2, Package } from 'lucide-react';
+import { BOMItemType, ITEM_TYPE_LABELS } from '@/lib/types/bom.types';
 
-export enum BOMItemType {
-  ASSEMBLY = 'assembly',
-  SUB_ASSEMBLY = 'sub_assembly',
-  CHILD_PART = 'child_part',
-  BOP = 'bop',
+interface ItemForm {
+  id: string;
+  name: string;
+  partNumber: string;
+  description: string;
+  materialGrade: string;
+  quantity: number;
+  annualVolume: number;
+  unit: string;
+  itemType: BOMItemType;
+  parentId?: string;
 }
-
-const ITEM_TYPE_LABELS = {
-  [BOMItemType.ASSEMBLY]: 'Assembly',
-  [BOMItemType.SUB_ASSEMBLY]: 'Sub-Assembly',
-  [BOMItemType.CHILD_PART]: 'Child Part',
-  [BOMItemType.BOP]: 'BOP (Bill of Process)',
-};
 
 interface BOMCreateDialogProps {
   projectId: string;
@@ -56,73 +51,113 @@ interface BOMCreateDialogProps {
 export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BOMCreateDialogProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [file3d, setFile3d] = useState<File | null>(null);
-  const [file2d, setFile2d] = useState<File | null>(null);
-  const [file3dDetailsOpen, setFile3dDetailsOpen] = useState(false);
-  const [file2dDetailsOpen, setFile2dDetailsOpen] = useState(false);
-  const [imagePreview2d, setImagePreview2d] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    bomName: '',
-    bomVersion: '1.0',
-    bomDescription: '',
-    itemName: '',
-    partNumber: '',
+  const [_currentStep, setCurrentStep] = useState<'bom' | 'items'>('bom');
+  const [bomData, setBomData] = useState({
+    name: '',
+    version: '1.0',
     description: '',
-    materialGrade: '',
-    quantity: 1,
-    annualVolume: 1000,
-    unit: 'pcs',
-    itemType: BOMItemType.ASSEMBLY,
   });
 
+  // Items array - starts with an assembly
+  const [items, setItems] = useState<ItemForm[]>([
+    {
+      id: 'item-1',
+      name: '',
+      partNumber: '',
+      description: '',
+      materialGrade: '',
+      quantity: 1,
+      annualVolume: 1000,
+      unit: 'pcs',
+      itemType: BOMItemType.ASSEMBLY,
+    }
+  ]);
+
+  // Reset form when dialog opens/closes
   useEffect(() => {
-    if (file2d && file2d.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview2d(reader.result as string);
-      };
-      reader.readAsDataURL(file2d);
-    } else {
-      setImagePreview2d(null);
+    if (open) {
+      setBomData({ name: '', version: '1.0', description: '' });
+      setItems([
+        {
+          id: 'item-1',
+          name: '',
+          partNumber: '',
+          description: '',
+          materialGrade: '',
+          quantity: 1,
+          annualVolume: 1000,
+          unit: 'pcs',
+          itemType: BOMItemType.ASSEMBLY,
+        }
+      ]);
+      setCurrentStep('bom');
     }
-  }, [file2d]);
+  }, [open]);
 
-  const handleFile3dDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile) {
-      setFile3d(droppedFile);
-      setFile3dDetailsOpen(true);
+  const addItem = (type: BOMItemType) => {
+    const newItem: ItemForm = {
+      id: `item-${Date.now()}`,
+      name: '',
+      partNumber: '',
+      description: '',
+      materialGrade: '',
+      quantity: 1,
+      annualVolume: 1000,
+      unit: 'pcs',
+      itemType: type,
+    };
+
+    // Auto-assign parent based on type
+    if (type === BOMItemType.SUB_ASSEMBLY) {
+      // Find the last assembly
+      const lastAssembly = [...items].reverse().find(i => i.itemType === BOMItemType.ASSEMBLY);
+      if (lastAssembly) newItem.parentId = lastAssembly.id;
+    } else if (type === BOMItemType.CHILD_PART) {
+      // Find the last sub-assembly
+      const lastSubAssembly = [...items].reverse().find(i => i.itemType === BOMItemType.SUB_ASSEMBLY);
+      if (lastSubAssembly) newItem.parentId = lastSubAssembly.id;
     }
-  }, []);
 
-  const handleFile2dDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile) {
-      setFile2d(droppedFile);
-      setFile2dDetailsOpen(true);
+    setItems([...items, newItem]);
+  };
+
+  const removeItem = (id: string) => {
+    // Can't remove if it's the only assembly
+    const assemblies = items.filter(i => i.itemType === BOMItemType.ASSEMBLY);
+    const itemToRemove = items.find(i => i.id === id);
+
+    if (assemblies.length === 1 && itemToRemove?.itemType === BOMItemType.ASSEMBLY) {
+      toast.error('Cannot remove the only assembly');
+      return;
     }
-  }, []);
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    // Remove item and any children
+    const childIds = items.filter(i => i.parentId === id).map(i => i.id);
+    setItems(items.filter(i => i.id !== id && !childIds.includes(i.id)));
+  };
+
+  const updateItem = (id: string, updates: Partial<ItemForm>) => {
+    setItems(items.map(item => item.id === id ? { ...item, ...updates } : item));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate at least one item with a name
+    if (items.every(item => !item.name.trim())) {
+      toast.error('Please add at least one item with a name');
+      return;
+    }
+
     setLoading(true);
 
     try {
+      // Step 1: Create the BOM
       const bomPayload = {
         projectId,
-        name: formData.bomName,
-        version: formData.bomVersion,
-        description: formData.bomDescription,
+        name: bomData.name,
+        version: bomData.version,
+        description: bomData.description,
       };
 
       const createdBOM = await bomApi.create(bomPayload);
@@ -131,21 +166,39 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
         throw new Error('Invalid BOM response from server');
       }
 
-      const itemPayload = {
-        bomId: createdBOM.id,
-        name: formData.itemName,
-        partNumber: formData.partNumber,
-        description: formData.description,
-        materialGrade: formData.materialGrade,
-        quantity: formData.quantity,
-        annualVolume: formData.annualVolume,
-        unit: formData.unit || 'pcs',
-        itemType: formData.itemType,
-      };
+      // Step 2: Create items in order (assemblies, then sub-assemblies, then child parts)
+      // Keep track of temp ID -> real ID mapping
+      const idMap = new Map<string, string>();
 
-      await createBOMItem(itemPayload);
+      // Filter out empty items
+      const validItems = items.filter(item => item.name.trim());
 
-      toast.success('BOM created successfully with first item');
+      // Sort items by hierarchy level
+      const assemblies = validItems.filter(i => i.itemType === BOMItemType.ASSEMBLY);
+      const subAssemblies = validItems.filter(i => i.itemType === BOMItemType.SUB_ASSEMBLY);
+      const childParts = validItems.filter(i => i.itemType === BOMItemType.CHILD_PART);
+
+      const orderedItems = [...assemblies, ...subAssemblies, ...childParts];
+
+      for (const item of orderedItems) {
+        const itemPayload = {
+          bomId: createdBOM.id,
+          name: item.name,
+          partNumber: item.partNumber || undefined,
+          description: item.description || undefined,
+          materialGrade: item.materialGrade || undefined,
+          quantity: item.quantity,
+          annualVolume: item.annualVolume,
+          unit: item.unit,
+          itemType: item.itemType,
+          parentItemId: item.parentId ? idMap.get(item.parentId) : undefined,
+        };
+
+        const createdItem = await createBOMItem(itemPayload);
+        idMap.set(item.id, createdItem.id);
+      }
+
+      toast.success(`BOM created successfully with ${orderedItems.length} item(s)`);
       onOpenChange(false);
       onSuccess?.();
 
@@ -157,17 +210,31 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
     }
   };
 
+  const getItemTypeColor = (type: BOMItemType) => {
+    switch (type) {
+      case BOMItemType.ASSEMBLY:
+        return 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20';
+      case BOMItemType.SUB_ASSEMBLY:
+        return 'bg-blue-500/10 text-blue-700 border-blue-500/20';
+      case BOMItemType.CHILD_PART:
+        return 'bg-purple-500/10 text-purple-700 border-purple-500/20';
+      default:
+        return 'bg-gray-500/10 text-gray-700 border-gray-500/20';
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create BOM</DialogTitle>
+          <DialogTitle>Create BOM with Items</DialogTitle>
           <DialogDescription>
-            Create a new Bill of Materials and add your first item
+            Create a new Bill of Materials and add assembly, sub-assemblies, and child parts
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* BOM Details */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
@@ -182,8 +249,8 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
                 <Input
                   id="bomName"
                   placeholder="e.g., Main Assembly BOM"
-                  value={formData.bomName}
-                  onChange={(e) => setFormData({ ...formData, bomName: e.target.value })}
+                  value={bomData.name}
+                  onChange={(e) => setBomData({ ...bomData, name: e.target.value })}
                   required
                 />
               </div>
@@ -194,8 +261,8 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
                   <Input
                     id="bomVersion"
                     placeholder="e.g., 1.0"
-                    value={formData.bomVersion}
-                    onChange={(e) => setFormData({ ...formData, bomVersion: e.target.value })}
+                    value={bomData.version}
+                    onChange={(e) => setBomData({ ...bomData, version: e.target.value })}
                   />
                 </div>
 
@@ -204,8 +271,8 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
                   <Input
                     id="bomDescription"
                     placeholder="Brief description"
-                    value={formData.bomDescription}
-                    onChange={(e) => setFormData({ ...formData, bomDescription: e.target.value })}
+                    value={bomData.description}
+                    onChange={(e) => setBomData({ ...bomData, description: e.target.value })}
                   />
                 </div>
               </div>
@@ -214,292 +281,130 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
 
           <Separator />
 
+          {/* Items Section */}
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
-                2
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
+                  2
+                </div>
+                <h3 className="font-semibold">BOM Items ({items.length})</h3>
               </div>
-              <h3 className="font-semibold">Add First Item</h3>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => addItem(BOMItemType.SUB_ASSEMBLY)}
+                  disabled={!items.some(i => i.itemType === BOMItemType.ASSEMBLY)}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Sub-Assembly
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => addItem(BOMItemType.CHILD_PART)}
+                  disabled={!items.some(i => i.itemType === BOMItemType.SUB_ASSEMBLY)}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Child Part
+                </Button>
+              </div>
             </div>
 
-            <div className="grid gap-4 pl-10">
-              <div className="grid gap-2">
-                <Label htmlFor="itemName">Name *</Label>
-                <Input
-                  id="itemName"
-                  placeholder="e.g., Cylinder Head Assembly"
-                  value={formData.itemName}
-                  onChange={(e) => setFormData({ ...formData, itemName: e.target.value })}
-                  required
-                />
-              </div>
+            <div className="space-y-3 pl-10">
+              {items.map((item, _index) => (
+                <div key={item.id} className={`border rounded-lg p-4 ${item.itemType === BOMItemType.SUB_ASSEMBLY ? 'ml-6' : item.itemType === BOMItemType.CHILD_PART ? 'ml-12' : ''}`}>
+                  <div className="flex items-start gap-3 mb-3">
+                    <Package className="h-5 w-5 mt-1 text-muted-foreground flex-shrink-0" />
+                    <div className="flex-1 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          placeholder={`${ITEM_TYPE_LABELS[item.itemType]} name *`}
+                          value={item.name}
+                          onChange={(e) => updateItem(item.id, { name: e.target.value })}
+                          className="font-medium"
+                        />
+                        <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${getItemTypeColor(item.itemType)}`}>
+                          {ITEM_TYPE_LABELS[item.itemType]}
+                        </div>
+                        {items.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeItem(item.id)}
+                            className="flex-shrink-0"
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
 
-              <div className="grid gap-2">
-                <Label htmlFor="partNumber">Part Number</Label>
-                <Input
-                  id="partNumber"
-                  placeholder="e.g., CH-2024-001"
-                  value={formData.partNumber}
-                  onChange={(e) => setFormData({ ...formData, partNumber: e.target.value })}
-                />
-              </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Input
+                          placeholder="Part Number"
+                          value={item.partNumber}
+                          onChange={(e) => updateItem(item.id, { partNumber: e.target.value })}
+                        />
+                        <Input
+                          placeholder="Material Grade"
+                          value={item.materialGrade}
+                          onChange={(e) => updateItem(item.id, { materialGrade: e.target.value })}
+                        />
+                      </div>
 
-              <div className="grid gap-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  placeholder="Detailed description..."
-                  rows={2}
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                />
-              </div>
+                      <Textarea
+                        placeholder="Description"
+                        value={item.description}
+                        onChange={(e) => updateItem(item.id, { description: e.target.value })}
+                        rows={2}
+                      />
 
-              <div className="grid gap-2">
-                <Label htmlFor="materialGrade">Material Grade</Label>
-                <Input
-                  id="materialGrade"
-                  placeholder="e.g., EN-GJL-250, AlSi10Mg"
-                  value={formData.materialGrade}
-                  onChange={(e) => setFormData({ ...formData, materialGrade: e.target.value })}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="quantity">Quantity *</Label>
-                  <Input
-                    id="quantity"
-                    type="number"
-                    min="1"
-                    value={formData.quantity}
-                    onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
-                    required
-                  />
-                </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="annualVolume">Annual Volume *</Label>
-                  <Input
-                    id="annualVolume"
-                    type="number"
-                    min="1"
-                    value={formData.annualVolume}
-                    onChange={(e) => setFormData({ ...formData, annualVolume: parseInt(e.target.value) || 1 })}
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="unit">UOM</Label>
-                  <Select
-                    value={formData.unit}
-                    onValueChange={(value) => setFormData({ ...formData, unit: value })}
-                  >
-                    <SelectTrigger id="unit">
-                      <SelectValue placeholder="Select..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pcs">Pieces</SelectItem>
-                      <SelectItem value="kg">Kilograms</SelectItem>
-                      <SelectItem value="lbs">Pounds</SelectItem>
-                      <SelectItem value="m">Meters</SelectItem>
-                      <SelectItem value="ft">Feet</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="itemType">Type *</Label>
-                  <Select
-                    value={formData.itemType}
-                    onValueChange={(value) => setFormData({ ...formData, itemType: value as BOMItemType })}
-                  >
-                    <SelectTrigger id="itemType">
-                      <SelectValue placeholder="Select..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(ITEM_TYPE_LABELS).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* 3D File Upload */}
-              <div className="grid gap-2">
-                <Label>Upload 3D File</Label>
-                {!file3d ? (
-                  <div
-                    className="border-2 border-dashed rounded-lg p-4 text-center hover:border-primary/50 transition-colors cursor-pointer"
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={handleFile3dDrop}
-                    onClick={() => document.getElementById('file3d')?.click()}
-                  >
-                    <input
-                      id="file3d"
-                      type="file"
-                      className="hidden"
-                      accept=".stp,.step,.stl,.obj,.iges,.igs"
-                      onChange={(e) => {
-                        const selectedFile = e.target.files?.[0] || null;
-                        setFile3d(selectedFile);
-                        if (selectedFile) setFile3dDetailsOpen(true);
-                      }}
-                    />
-                    <div className="space-y-1">
-                      <Upload className="h-6 w-6 mx-auto text-muted-foreground" />
-                      <p className="text-xs text-muted-foreground">
-                        Drag 'n' drop file here, or click to select
-                      </p>
-                      <p className="text-xs text-muted-foreground">STEP, STL, OBJ, IGES</p>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <Label className="text-xs mb-1">Quantity</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={item.quantity}
+                            onChange={(e) => updateItem(item.id, { quantity: parseInt(e.target.value) || 1 })}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs mb-1">Annual Volume</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            value={item.annualVolume}
+                            onChange={(e) => updateItem(item.id, { annualVolume: parseInt(e.target.value) || 1 })}
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs mb-1">UOM</Label>
+                          <Select
+                            value={item.unit}
+                            onValueChange={(value) => updateItem(item.id, { unit: value })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pcs">Pieces</SelectItem>
+                              <SelectItem value="kg">Kilograms</SelectItem>
+                              <SelectItem value="lbs">Pounds</SelectItem>
+                              <SelectItem value="m">Meters</SelectItem>
+                              <SelectItem value="ft">Feet</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                ) : (
-                  <Collapsible open={file3dDetailsOpen} onOpenChange={setFile3dDetailsOpen}>
-                    <div className="border rounded-lg">
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center justify-between p-3 hover:bg-muted/50 cursor-pointer">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 bg-primary/10 rounded flex items-center justify-center">
-                              <File className="h-5 w-5 text-primary" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium">{file3d.name}</p>
-                              <p className="text-xs text-muted-foreground">{formatFileSize(file3d.size)}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <ChevronDown className={`h-4 w-4 transition-transform ${file3dDetailsOpen ? 'rotate-180' : ''}`} />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setFile3d(null);
-                                setFile3dDetailsOpen(false);
-                              }}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <div className="px-3 pb-3 space-y-2 text-xs">
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <span className="text-muted-foreground">Type:</span> {file3d.type || 'Unknown'}
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Modified:</span> {new Date(file3d.lastModified).toLocaleDateString()}
-                            </div>
-                          </div>
-                        </div>
-                      </CollapsibleContent>
-                    </div>
-                  </Collapsible>
-                )}
-              </div>
-
-              {/* 2D File Upload */}
-              <div className="grid gap-2">
-                <Label>Upload 2D File</Label>
-                {!file2d ? (
-                  <div
-                    className="border-2 border-dashed rounded-lg p-4 text-center hover:border-primary/50 transition-colors cursor-pointer"
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={handleFile2dDrop}
-                    onClick={() => document.getElementById('file2d')?.click()}
-                  >
-                    <input
-                      id="file2d"
-                      type="file"
-                      className="hidden"
-                      accept=".pdf,.dwg,.dxf,.png,.jpg,.jpeg"
-                      onChange={(e) => {
-                        const selectedFile = e.target.files?.[0] || null;
-                        setFile2d(selectedFile);
-                        if (selectedFile) setFile2dDetailsOpen(true);
-                      }}
-                    />
-                    <div className="space-y-1">
-                      <Upload className="h-6 w-6 mx-auto text-muted-foreground" />
-                      <p className="text-xs text-muted-foreground">
-                        Drag 'n' drop file here, or click to select
-                      </p>
-                      <p className="text-xs text-muted-foreground">PDF, DWG, DXF, PNG, JPG</p>
-                    </div>
-                  </div>
-                ) : (
-                  <Collapsible open={file2dDetailsOpen} onOpenChange={setFile2dDetailsOpen}>
-                    <div className="border rounded-lg">
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center justify-between p-3 hover:bg-muted/50 cursor-pointer">
-                          <div className="flex items-center gap-3">
-                            {imagePreview2d ? (
-                              <div className="h-10 w-10 rounded border overflow-hidden">
-                                <img src={imagePreview2d} alt={file2d.name} className="h-full w-full object-cover" />
-                              </div>
-                            ) : (
-                              <div className="h-10 w-10 bg-primary/10 rounded flex items-center justify-center">
-                                {file2d.type.includes('pdf') ? (
-                                  <File className="h-5 w-5 text-red-600" />
-                                ) : (
-                                  <ImageIcon className="h-5 w-5 text-primary" />
-                                )}
-                              </div>
-                            )}
-                            <div>
-                              <p className="text-sm font-medium">{file2d.name}</p>
-                              <p className="text-xs text-muted-foreground">{formatFileSize(file2d.size)}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <ChevronDown className={`h-4 w-4 transition-transform ${file2dDetailsOpen ? 'rotate-180' : ''}`} />
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setFile2d(null);
-                                setFile2dDetailsOpen(false);
-                                setImagePreview2d(null);
-                              }}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <div className="px-3 pb-3 space-y-2">
-                          {imagePreview2d && (
-                            <div className="rounded border overflow-hidden">
-                              <img src={imagePreview2d} alt={file2d.name} className="w-full h-auto" />
-                            </div>
-                          )}
-                          <div className="grid grid-cols-2 gap-2 text-xs">
-                            <div>
-                              <span className="text-muted-foreground">Type:</span> {file2d.type || 'Unknown'}
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground">Modified:</span> {new Date(file2d.lastModified).toLocaleDateString()}
-                            </div>
-                          </div>
-                        </div>
-                      </CollapsibleContent>
-                    </div>
-                  </Collapsible>
-                )}
-              </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -512,14 +417,14 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={loading}>
+            <Button type="submit" disabled={loading || !bomData.name.trim()}>
               {loading ? (
                 <>
                   <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent" />
-                  Creating...
+                  Creating BOM...
                 </>
               ) : (
-                'Create BOM'
+                `Create BOM with ${items.filter(i => i.name.trim()).length} item(s)`
               )}
             </Button>
           </DialogFooter>

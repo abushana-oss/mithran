@@ -325,10 +325,16 @@ export default function Projects() {
               <Input
                 id="quotedCost"
                 type="number"
+                min="0"
+                max="99999999.99"
+                step="0.01"
                 value={quotedCost}
                 onChange={(e) => setQuotedCost(e.target.value)}
                 placeholder="0.00"
               />
+              <p className="text-xs text-muted-foreground">
+                Maximum: $99,999,999.99
+              </p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="status">Status</Label>

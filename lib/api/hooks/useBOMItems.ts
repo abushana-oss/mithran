@@ -7,13 +7,15 @@ export interface BOMItem {
   name: string;
   partNumber?: string;
   description?: string;
-  itemType: 'assembly' | 'sub_assembly' | 'child_part' | 'bop';
+  itemType: 'assembly' | 'sub_assembly' | 'child_part';
   quantity: number;
   annualVolume: number;
   unit: string;
   material?: string;
   materialGrade?: string;
-  parentId?: string;
+  makeBuy?: 'make' | 'buy';
+  unitCost?: number;
+  parentItemId?: string;
   sortOrder: number;
   file3dPath?: string;
   file2dPath?: string;
@@ -26,12 +28,14 @@ export interface CreateBOMItemDto {
   name: string;
   partNumber?: string;
   description?: string;
-  itemType: 'assembly' | 'sub_assembly' | 'child_part' | 'bop';
+  itemType: 'assembly' | 'sub_assembly' | 'child_part';
   quantity: number;
   annualVolume: number;
   unit?: string;
   material?: string;
   materialGrade?: string;
+  makeBuy?: 'make' | 'buy';
+  unitCost?: number;
   parentItemId?: string;
   sortOrder?: number;
 }
@@ -40,12 +44,14 @@ export interface UpdateBOMItemDto {
   name?: string;
   partNumber?: string;
   description?: string;
-  itemType?: 'assembly' | 'sub_assembly' | 'child_part' | 'bop';
+  itemType?: 'assembly' | 'sub_assembly' | 'child_part';
   quantity?: number;
   annualVolume?: number;
   unit?: string;
   material?: string;
   materialGrade?: string;
+  makeBuy?: 'make' | 'buy';
+  unitCost?: number;
   parentItemId?: string;
   sortOrder?: number;
 }

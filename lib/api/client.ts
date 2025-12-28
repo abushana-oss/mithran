@@ -9,6 +9,8 @@
  * - Proper error handling
  */
 
+import { config } from '../config';
+
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: any;
@@ -51,8 +53,7 @@ class ApiClient {
   private pendingRequests = new Map<string, Promise<any>>();
 
   constructor() {
-    this.baseUrl =
-      process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
+    this.baseUrl = config.api.baseUrl;
     this.loadTokens();
   }
 
@@ -311,6 +312,70 @@ class ApiClient {
 
   delete<T>(endpoint: string, options?: Omit<RequestOptions, 'method' | 'body'>) {
     return this.request<T>(endpoint, { ...options, method: 'DELETE' });
+  }
+
+  /**
+   * Upload files using FormData
+   * This bypasses the JSON serialization and handles multipart/form-data
+   */
+  async uploadFiles<T>(endpoint: string, formData: FormData, options: { timeout?: number } = {}): Promise<T> {
+    const { timeout = 30000 } = options;
+    const url = `${this.baseUrl}${endpoint}`;
+    const token = this.getAccessToken();
+
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: formData,
+        signal: AbortSignal.timeout(timeout),
+      });
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[API] POST ${endpoint} (FormData)`, {
+          status: response.status,
+        });
+      }
+
+      const contentType = response.headers.get('content-type');
+      let data: any;
+
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        data = await response.text();
+      }
+
+      if (!response.ok) {
+        throw new ApiError(
+          data?.error?.message || data?.message || 'Upload failed',
+          response.status,
+          data?.error?.code,
+          data?.error?.details,
+        );
+      }
+
+      return data as T;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+
+      if (error instanceof TypeError) {
+        throw new ApiError('Network error - please check your connection', 0);
+      }
+
+      if (error instanceof DOMException && error.name === 'TimeoutError') {
+        throw new ApiError('Upload timeout', 408);
+      }
+
+      throw new ApiError('An unexpected error occurred during upload', 500);
+    }
   }
 }
 

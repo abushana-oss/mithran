@@ -1,0 +1,44 @@
+# Python CAD Engine - Production Dockerfile with Conda
+# Uses OpenCascade Technology (OCCT) for STEP file processing
+
+FROM continuumio/miniconda3:latest
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Create conda environment with pythonocc-core
+RUN conda create -n cad-env python=3.11 -y && \
+    conda install -n cad-env -c conda-forge pythonocc-core=7.7.2 -y && \
+    conda clean -afy
+
+# Activate conda environment and install additional packages
+SHELL ["conda", "run", "-n", "cad-env", "/bin/bash", "-c"]
+RUN pip install --no-cache-dir \
+    fastapi==0.109.0 \
+    uvicorn[standard]==0.27.0 \
+    pydantic==2.5.3 \
+    python-multipart==0.0.6 \
+    aiofiles==23.2.1 \
+    httpx==0.26.0 \
+    python-json-logger==2.0.7
+
+# Copy application code
+COPY main.py .
+
+# Create temp directory
+RUN mkdir -p /tmp/cad-conversions
+
+# Expose port
+EXPOSE 5000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
+
+# Run with conda environment
+CMD ["conda", "run", "--no-capture-output", "-n", "cad-env", "python", "main.py"]

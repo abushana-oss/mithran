@@ -49,11 +49,13 @@ export class FileStorageService {
   private readonly ALLOWED_2D_EXTENSIONS = ['.pdf', '.dwg', '.dxf', '.png', '.jpg', '.jpeg'];
 
   constructor(private configService: ConfigService) {
-    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
+    const supabaseUrl = this.configService.get<string>('NEXT_PUBLIC_SUPABASE_URL');
     const supabaseKey = this.configService.get<string>('SUPABASE_SERVICE_KEY');
 
     if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Supabase configuration is missing');
+      throw new InternalServerErrorException(
+        'Missing required Supabase environment variables: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_KEY must be set'
+      );
     }
 
     this.supabase = createClient(supabaseUrl, supabaseKey);

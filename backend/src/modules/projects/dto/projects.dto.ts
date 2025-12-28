@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsString, IsOptional, IsNumber, IsEnum, IsUUID } from 'class-validator';
+import { IsString, IsOptional, IsNumber, IsEnum, IsUUID, Max, Min } from 'class-validator';
 
 export enum ProjectStatus {
   DRAFT = 'draft',
@@ -24,9 +24,16 @@ export class CreateProjectDto {
   @IsEnum(ProjectStatus)
   status?: ProjectStatus;
 
-  @ApiPropertyOptional({ example: 50000 })
+  @ApiPropertyOptional({
+    example: 50000,
+    description: 'Quoted cost in dollars (max: 99,999,999.99)',
+    minimum: 0,
+    maximum: 99999999.99
+  })
   @IsOptional()
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0, { message: 'Quoted cost must be a positive number' })
+  @Max(99999999.99, { message: 'Quoted cost cannot exceed $99,999,999.99' })
   quotedCost?: number;
 }
 

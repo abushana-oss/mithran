@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { SupabaseClient } from '@supabase/supabase-js';
 import { BomItemFile } from '../entities/bom-item-file.entity';
 import { FileStorageService } from './file-storage.service';
@@ -94,7 +94,7 @@ export class BomItemFileService {
     if (error) {
       // Cleanup: Delete uploaded file if database insert fails
       await this.fileStorageService.deleteFile(uploadResult.storagePath);
-      throw new Error(`Failed to save file metadata: ${error.message}`);
+      throw new InternalServerErrorException(`Failed to save file metadata: ${error.message}`);
     }
 
     return this.mapToEntity(data);
@@ -112,7 +112,7 @@ export class BomItemFileService {
       .order('file_type', { ascending: true });
 
     if (error) {
-      throw new Error(`Failed to fetch files: ${error.message}`);
+      throw new InternalServerErrorException(`Failed to fetch files: ${error.message}`);
     }
 
     return (data || []).map(this.mapToEntity);
@@ -173,7 +173,7 @@ export class BomItemFileService {
       .eq('id', fileId);
 
     if (deleteError) {
-      throw new Error(`Failed to delete file metadata: ${deleteError.message}`);
+      throw new InternalServerErrorException(`Failed to delete file metadata: ${deleteError.message}`);
     }
   }
 

@@ -1,14 +1,9 @@
-import { useState } from 'react';
-import { ChevronDown, ChevronRight, Package, Layers, Box, FileText, Plus, Edit2, Trash2 } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Plus, Edit2, Trash2, ZoomIn, ZoomOut, Maximize2, RotateCcw } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
-
-export type BOMItemType = 'assembly' | 'sub_assembly' | 'child_part' | 'bop';
+import { BOMItemType } from '@/lib/types/bom.types';
 
 export interface BOMItem {
   id: string;
@@ -23,169 +18,526 @@ export interface BOMItem {
 
 interface BOMTreeViewProps {
   items: BOMItem[];
+  projectName?: string;
+  projectId?: string;
   onAddItem: (parentId: string | null, type: BOMItemType) => void;
   onEditItem: (item: BOMItem) => void;
   onDeleteItem: (id: string) => void;
 }
 
-function BOMTreeItem({
-  item,
-  onAddItem,
-  onEditItem,
-  onDeleteItem,
-  level = 0,
-}: {
-  item: BOMItem;
-  onAddItem: BOMTreeViewProps['onAddItem'];
-  onEditItem: BOMTreeViewProps['onEditItem'];
-  onDeleteItem: BOMTreeViewProps['onDeleteItem'];
-  level?: number;
-}) {
-  const [isOpen, setIsOpen] = useState(true);
-  const hasChildren = item.children && item.children.length > 0;
+interface NodePosition {
+  x: number;
+  y: number;
+  level: number;
+}
 
-  const getIcon = () => {
-    switch (item.itemType) {
-      case 'assembly':
-        return <Package className="h-4 w-4 text-primary" />;
-      case 'sub_assembly':
-        return <Layers className="h-4 w-4 text-blue-600" />;
-      case 'child_part':
-        return <Box className="h-4 w-4 text-orange-600" />;
-      case 'bop':
-        return <FileText className="h-4 w-4 text-green-600" />;
+interface TreeNode extends BOMItem {
+  position: NodePosition;
+  isExpanded: boolean;
+  parentPos?: NodePosition;
+}
+
+// Generate curved path between two points (horizontal mind-map style)
+function generateCurvedPath(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number
+): string {
+  // Create a smooth horizontal curve
+  const midX = (x1 + x2) / 2;
+  return `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
+}
+
+// Count total descendants for spacing calculation
+function countDescendants(item: BOMItem, expandedNodes: Set<string>): number {
+  if (!item.children || !expandedNodes.has(item.id)) return 1;
+
+  return item.children.reduce((sum, child) => {
+    return sum + countDescendants(child, expandedNodes);
+  }, 0);
+}
+
+// Calculate vertical position for hierarchical layout
+function calculateHierarchicalPositions(
+  items: BOMItem[],
+  expandedNodes: Set<string>,
+  startY: number = 0,
+  level: number = 1,
+  parentPos?: NodePosition
+): { nodes: TreeNode[]; totalHeight: number } {
+  const nodes: TreeNode[] = [];
+  const levelSpacing = 280; // Horizontal spacing between levels
+  const verticalSpacing = 120; // Minimum vertical spacing between nodes
+
+  let currentY = startY;
+
+  items.forEach((item, index) => {
+    const isExpanded = expandedNodes.has(item.id);
+
+    // Calculate how much vertical space this node and its children need
+    const descendantCount = countDescendants(item, expandedNodes);
+    const nodeHeight = descendantCount * verticalSpacing;
+
+    // Position this node in the middle of its allocated space
+    const nodeY = currentY + nodeHeight / 2;
+    const nodeX = level * levelSpacing;
+
+    const position: NodePosition = {
+      x: nodeX,
+      y: nodeY,
+      level
+    };
+
+    nodes.push({
+      ...item,
+      position,
+      isExpanded,
+      parentPos
+    });
+
+    // Process children if expanded
+    if (isExpanded && item.children && item.children.length > 0) {
+      const childResult = calculateHierarchicalPositions(
+        item.children,
+        expandedNodes,
+        currentY,
+        level + 1,
+        position
+      );
+      nodes.push(...childResult.nodes);
     }
+
+    // Move to next position
+    currentY += nodeHeight;
+  });
+
+  return {
+    nodes,
+    totalHeight: currentY - startY
   };
+}
+
+function HierarchicalNode({
+  node,
+  onToggle,
+  onEdit,
+  onDelete,
+  onAdd,
+}: {
+  node: TreeNode;
+  onToggle: (id: string) => void;
+  onEdit: (item: BOMItem) => void;
+  onDelete: (id: string) => void;
+  onAdd: (parentId: string, type: BOMItemType) => void;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const hasChildren = node.children && node.children.length > 0;
+
+  const finalPosition = node.position;
 
   const getChildType = (): BOMItemType | null => {
-    if (item.itemType === 'assembly') return 'sub_assembly';
-    if (item.itemType === 'sub_assembly') return 'child_part';
+    if (node.itemType === BOMItemType.ASSEMBLY) return BOMItemType.SUB_ASSEMBLY;
+    if (node.itemType === BOMItemType.SUB_ASSEMBLY) return BOMItemType.CHILD_PART;
     return null;
   };
 
+  const getTypeLabel = () => {
+    switch (node.itemType) {
+      case BOMItemType.ASSEMBLY:
+        return 'Assembly';
+      case BOMItemType.SUB_ASSEMBLY:
+        return 'Sub-assembly';
+      case BOMItemType.CHILD_PART:
+        return 'Part';
+      default:
+        return '';
+    }
+  };
+
+  const getTypeColors = () => {
+    switch (node.itemType) {
+      case BOMItemType.ASSEMBLY:
+        return {
+          bg: 'bg-emerald-500/10',
+          border: 'border-emerald-500/30',
+          hoverBorder: 'hover:border-emerald-500/50',
+          text: 'text-emerald-700',
+          hoverBg: 'bg-emerald-500/15',
+          hoverBorderStrong: 'border-emerald-500/60'
+        };
+      case BOMItemType.SUB_ASSEMBLY:
+        return {
+          bg: 'bg-blue-500/10',
+          border: 'border-blue-500/30',
+          hoverBorder: 'hover:border-blue-500/50',
+          text: 'text-blue-700',
+          hoverBg: 'bg-blue-500/15',
+          hoverBorderStrong: 'border-blue-500/60'
+        };
+      case BOMItemType.CHILD_PART:
+        return {
+          bg: 'bg-orange-500/10',
+          border: 'border-orange-500/30',
+          hoverBorder: 'hover:border-orange-500/50',
+          text: 'text-orange-700',
+          hoverBg: 'bg-orange-500/15',
+          hoverBorderStrong: 'border-orange-500/60'
+        };
+      default:
+        return {
+          bg: 'bg-card',
+          border: 'border-border',
+          hoverBorder: 'hover:border-foreground/30',
+          text: 'text-muted-foreground',
+          hoverBg: 'bg-card',
+          hoverBorderStrong: 'border-primary/50'
+        };
+    }
+  };
+
   const childType = getChildType();
+  const typeColors = getTypeColors();
 
   return (
-    <div className={cn('relative', level > 0 && 'ml-6 border-l border-border/50 pl-4')}>
-      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <div className="group flex items-center gap-2 py-2 px-3 rounded-lg hover:bg-muted/50 transition-colors">
-          {hasChildren || childType ? (
-            <CollapsibleTrigger asChild>
-              <button className="p-0.5 hover:bg-muted rounded">
-                {isOpen ? (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                )}
-              </button>
-            </CollapsibleTrigger>
-          ) : (
-            <div className="w-5" />
+    <>
+      {/* Curved connection line */}
+      {node.parentPos && (
+        <motion.path
+          d={generateCurvedPath(
+            node.parentPos.x,
+            node.parentPos.y,
+            finalPosition.x,
+            finalPosition.y
           )}
+          stroke="hsl(var(--border))"
+          strokeWidth="2"
+          fill="none"
+          initial={{ pathLength: 0, opacity: 0 }}
+          animate={{ pathLength: 1, opacity: 0.3 }}
+          exit={{ pathLength: 0, opacity: 0 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+        />
+      )}
 
-          {getIcon()}
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-sm text-foreground truncate">{item.name}</span>
-              {item.partNumber && (
-                <span className="text-xs text-muted-foreground">({item.partNumber})</span>
+      {/* Node Card */}
+      <motion.g
+        initial={{ opacity: 0, x: finalPosition.x - 50 }}
+        animate={{
+          opacity: 1,
+          x: finalPosition.x,
+          y: finalPosition.y
+        }}
+        exit={{ opacity: 0, x: finalPosition.x - 50 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+      >
+        <foreignObject
+          x={-80}
+          y={-40}
+          width="160"
+          height="80"
+        >
+          <div
+            className="flex flex-col items-center justify-center h-full"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+          >
+            <div
+              className={cn(
+                "relative rounded-md p-2.5 w-full",
+                "border transition-all duration-200 cursor-pointer",
+                typeColors.bg,
+                isHovered
+                  ? cn("shadow-lg scale-105", typeColors.hoverBg, typeColors.hoverBorderStrong)
+                  : cn("shadow-sm", typeColors.border, typeColors.hoverBorder)
               )}
-            </div>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <span>{item.quantity} {item.unit || 'pcs'}</span>
-              {item.material && <span>{item.material}</span>}
+              onClick={() => hasChildren && onToggle(node.id)}
+            >
+              <div className="space-y-1">
+                {/* Header with type and expand */}
+                <div className="flex items-center justify-between gap-1">
+                  <div className={cn("text-[9px] uppercase tracking-wider font-semibold", typeColors.text)}>
+                    {getTypeLabel()}
+                  </div>
+                  {hasChildren && (
+                    <motion.div
+                      animate={{ rotate: node.isExpanded ? 90 : 0 }}
+                      transition={{ duration: 0.2 }}
+                      className={typeColors.text}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                        <path d="M4 2 L8 6 L4 10" stroke="currentColor" strokeWidth="2" fill="none" />
+                      </svg>
+                    </motion.div>
+                  )}
+                </div>
+
+                {/* Name */}
+                <h4 className="font-semibold text-foreground text-xs leading-tight line-clamp-1">
+                  {node.name}
+                </h4>
+
+                {/* Part number & Quantity */}
+                <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                  {node.partNumber && (
+                    <span className="font-medium">{node.partNumber}</span>
+                  )}
+                  <span>•</span>
+                  <span>{node.quantity} {node.unit || 'pcs'}</span>
+                </div>
+              </div>
+
+              {/* Action buttons on hover */}
+              <AnimatePresence>
+                {isHovered && (
+                  <motion.div
+                    className="absolute -bottom-9 left-1/2 -translate-x-1/2 flex gap-0.5 bg-background rounded border border-border shadow-lg p-0.5 z-50"
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    transition={{ duration: 0.15 }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {childType && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAdd(node.id, childType);
+                        }}
+                      >
+                        <Plus className="h-3 w-3" />
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEdit(node);
+                      }}
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 hover:text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete(node.id);
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
-
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {childType && (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-primary hover:text-primary hover:bg-primary/10"
-                onClick={() => onAddItem(item.id, childType)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              onClick={() => onEditItem(item)}
-            >
-              <Edit2 className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-              onClick={() => onDeleteItem(item.id)}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
-
-        {(hasChildren || childType) && (
-          <CollapsibleContent>
-            {item.children?.map((child) => (
-              <BOMTreeItem
-                key={child.id}
-                item={child}
-                onAddItem={onAddItem}
-                onEditItem={onEditItem}
-                onDeleteItem={onDeleteItem}
-                level={level + 1}
-              />
-            ))}
-          </CollapsibleContent>
-        )}
-      </Collapsible>
-    </div>
+        </foreignObject>
+      </motion.g>
+    </>
   );
 }
 
-export function BOMTreeView({ items, onAddItem, onEditItem, onDeleteItem }: BOMTreeViewProps) {
+export function BOMTreeView({ items, projectName, projectId, onAddItem, onEditItem, onDeleteItem }: BOMTreeViewProps) {
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
+    const expanded = new Set(items.map(i => i.id));
+    expanded.add('project-root'); // Always expand project root by default
+    return expanded;
+  });
+  const [zoom, setZoom] = useState(0.8);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isRootHovered, setIsRootHovered] = useState(false);
+
+  const toggleNode = (id: string) => {
+    setExpandedNodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // Build tree structure with hierarchical positions
+  const { treeNodes, svgDimensions } = useMemo(() => {
+    if (items.length === 0) return { treeNodes: [], svgDimensions: { width: 800, height: 500 } };
+
+    const rootPos: NodePosition = { x: 150, y: 50, level: 0 };
+
+    // If project root is not expanded, don't show any children
+    if (!expandedNodes.has('project-root')) {
+      return { treeNodes: [], svgDimensions: { width: 800, height: 500 } };
+    }
+
+    const result = calculateHierarchicalPositions(
+      items,
+      expandedNodes,
+      50,
+      1,
+      rootPos
+    );
+
+    // Calculate SVG dimensions based on content
+    const maxX = Math.max(...result.nodes.map(n => n.position.x), rootPos.x) + 200;
+    const maxY = Math.max(result.totalHeight + 100, 500);
+
+    return {
+      treeNodes: result.nodes,
+      svgDimensions: { width: maxX, height: maxY }
+    };
+  }, [items, expandedNodes]);
+
+  const hasItems = items.length > 0;
+
   return (
-    <div className="space-y-1">
-      {items.length === 0 ? (
-        <div className="text-center py-8">
-          <Package className="h-12 w-12 mx-auto text-muted-foreground/50 mb-3" />
-          <p className="text-muted-foreground text-sm mb-3">No BOM items yet</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onAddItem(null, 'assembly')}
-            className="border-primary/30 text-primary hover:bg-primary/10"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Assembly
-          </Button>
-        </div>
-      ) : (
-        <>
-          {items.map((item) => (
-            <BOMTreeItem
-              key={item.id}
-              item={item}
-              onAddItem={onAddItem}
-              onEditItem={onEditItem}
-              onDeleteItem={onDeleteItem}
-            />
-          ))}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onAddItem(null, 'assembly')}
-            className="w-full justify-start text-primary hover:text-primary hover:bg-primary/10 mt-2"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Assembly
-          </Button>
-        </>
-      )}
+    <div className="relative w-full h-[500px] md:h-[600px] lg:h-[700px] bg-background rounded-lg overflow-hidden border border-border">
+      {/* Controls */}
+      <div className="absolute top-3 right-3 z-10 flex gap-1">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setZoom((z) => Math.min(z + 0.1, 1.5))}
+          className="h-7 w-7"
+          title="Zoom in"
+        >
+          <ZoomIn className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => setZoom((z) => Math.max(z - 0.1, 0.4))}
+          className="h-7 w-7"
+          title="Zoom out"
+        >
+          <ZoomOut className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => {
+            setZoom(0.8);
+            setPan({ x: 0, y: 0 });
+          }}
+          className="h-7 w-7"
+          title="Reset view"
+        >
+          <Maximize2 className="h-3 w-3" />
+        </Button>
+      </div>
+
+      {/* SVG Canvas */}
+      <div className="w-full h-full overflow-auto">
+        <svg
+          className="min-w-full min-h-full"
+          width={svgDimensions.width * zoom}
+          height={svgDimensions.height * zoom}
+          viewBox={`0 0 ${svgDimensions.width} ${svgDimensions.height}`}
+          preserveAspectRatio="xMinYMin meet"
+        >
+          {/* Root node - Project */}
+          <g transform="translate(150, 50)">
+            <foreignObject x="-90" y="-45" width="180" height="90">
+              <div
+                className="flex items-center justify-center h-full"
+                onMouseEnter={() => setIsRootHovered(true)}
+                onMouseLeave={() => setIsRootHovered(false)}
+              >
+                <div
+                  className={cn(
+                    "relative rounded-lg p-3 w-full cursor-pointer",
+                    "border-2 shadow-md transition-all duration-200",
+                    isRootHovered
+                      ? "bg-primary/15 border-primary/60 shadow-lg scale-105"
+                      : "bg-primary/10 border-primary/30 hover:border-primary/50"
+                  )}
+                  onClick={() => toggleNode('project-root')}
+                >
+                  <div className="space-y-1.5">
+                    {/* Header */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[10px] text-primary font-bold uppercase tracking-wider">
+                        Project Root
+                      </div>
+                      {hasItems && (
+                        <motion.div
+                          animate={{ rotate: expandedNodes.has('project-root') ? 90 : 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="text-primary"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 12 12" fill="currentColor">
+                            <path d="M4 2 L8 6 L4 10" stroke="currentColor" strokeWidth="2" fill="none" />
+                          </svg>
+                        </motion.div>
+                      )}
+                    </div>
+
+                    {/* Project Name */}
+                    <h4 className="font-bold text-foreground text-sm leading-tight">
+                      {projectName || 'Project'}
+                    </h4>
+
+                    {/* Project ID */}
+                    {projectId && (
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                        <span className="font-medium">ID: {projectId}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Action button for project root */}
+                  <AnimatePresence>
+                    {isRootHovered && (
+                      <motion.div
+                        className="absolute -bottom-9 left-1/2 -translate-x-1/2 flex gap-0.5 bg-background rounded border border-border shadow-lg p-0.5 z-50"
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -5 }}
+                        transition={{ duration: 0.15 }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAddItem(null, BOMItemType.ASSEMBLY);
+                          }}
+                          title="Add BOM Assembly"
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </foreignObject>
+          </g>
+
+          {/* Render all child nodes and connections */}
+          <AnimatePresence>
+            {treeNodes.map((node) => (
+              <HierarchicalNode
+                key={node.id}
+                node={node}
+                onToggle={toggleNode}
+                onEdit={onEditItem}
+                onDelete={onDeleteItem}
+                onAdd={onAddItem}
+              />
+            ))}
+          </AnimatePresence>
+        </svg>
+      </div>
     </div>
   );
 }

@@ -11,6 +11,7 @@ interface NavLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
   className?: string;
   activeClassName?: string;
   end?: boolean;
+  children?: React.ReactNode;
 }
 
 const NavLink = forwardRef<HTMLAnchorElement, NavLinkProps>(

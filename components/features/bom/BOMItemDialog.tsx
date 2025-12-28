@@ -22,20 +22,8 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { createBOMItem, updateBOMItem } from '@/lib/api/hooks/useBOMItems';
-
-export enum BOMItemType {
-  ASSEMBLY = 'assembly',
-  SUB_ASSEMBLY = 'sub_assembly',
-  CHILD_PART = 'child_part',
-  BOP = 'bop',
-}
-
-const ITEM_TYPE_LABELS = {
-  [BOMItemType.ASSEMBLY]: 'Assembly',
-  [BOMItemType.SUB_ASSEMBLY]: 'Sub-Assembly',
-  [BOMItemType.CHILD_PART]: 'Child Part',
-  [BOMItemType.BOP]: 'BOP (Bill of Process)',
-};
+import { BOMItemType, ITEM_TYPE_LABELS } from '@/lib/types/bom.types';
+import { apiClient } from '@/lib/api/client';
 
 interface BOMItemDialogProps {
   bomId: string;
@@ -43,21 +31,37 @@ interface BOMItemDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
+  parentItemId?: string | null;
+  defaultItemType?: BOMItemType;
+  getAutoParent?: (type: BOMItemType) => string | null;
 }
 
-export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess }: BOMItemDialogProps) {
+export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess, parentItemId, defaultItemType, getAutoParent }: BOMItemDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [autoParentId, setAutoParentId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     partNumber: '',
     description: '',
-    itemType: BOMItemType.ASSEMBLY,
+    itemType: defaultItemType || BOMItemType.ASSEMBLY,
     quantity: 1,
     annualVolume: 1000,
     unit: 'pcs',
     material: '',
     materialGrade: '',
+    makeBuy: 'make' as 'make' | 'buy',
+    unitCost: 0,
+    file2d: null as File | null,
+    file3d: null as File | null,
   });
+
+  // Auto-assign parent when item type changes
+  useEffect(() => {
+    if (!item && getAutoParent) {
+      const autoParent = getAutoParent(formData.itemType);
+      setAutoParentId(autoParent);
+    }
+  }, [formData.itemType, getAutoParent, item]);
 
   useEffect(() => {
     if (item) {
@@ -71,46 +75,83 @@ export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess }: BO
         unit: item.unit || 'pcs',
         material: item.material || '',
         materialGrade: item.materialGrade || '',
+        makeBuy: item.makeBuy || 'make',
+        unitCost: item.unitCost || 0,
+        file2d: null,
+        file3d: null,
       });
     } else {
       setFormData({
         name: '',
         partNumber: '',
         description: '',
-        itemType: BOMItemType.ASSEMBLY,
+        itemType: defaultItemType || BOMItemType.ASSEMBLY,
         quantity: 1,
         annualVolume: 1000,
         unit: 'pcs',
         material: '',
         materialGrade: '',
+        makeBuy: 'make',
+        unitCost: 0,
+        file2d: null,
+        file3d: null,
       });
     }
-  }, [item, open]);
+  }, [item, open, defaultItemType]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
+      // Use explicit parentItemId if provided, otherwise use auto-assigned parent
+      const finalParentId = parentItemId !== undefined ? parentItemId : autoParentId;
+
       const payload = {
         bomId,
         name: formData.name,
         partNumber: formData.partNumber || undefined,
         description: formData.description || undefined,
         itemType: formData.itemType,
+        parentItemId: finalParentId || undefined,
         quantity: formData.quantity,
         annualVolume: formData.annualVolume,
         unit: formData.unit,
         material: formData.material || undefined,
         materialGrade: formData.materialGrade || undefined,
+        makeBuy: formData.makeBuy,
+        unitCost: formData.makeBuy === 'buy' ? formData.unitCost : undefined,
       };
+
+      let itemId: string;
 
       if (item) {
         await updateBOMItem(item.id, payload);
+        itemId = item.id;
         toast.success('Item updated successfully');
       } else {
-        await createBOMItem(payload);
+        const newItem = await createBOMItem(payload);
+        itemId = newItem.id;
         toast.success('Item added successfully');
+      }
+
+      // Upload files if provided
+      if (formData.file2d || formData.file3d) {
+        const formDataUpload = new FormData();
+        if (formData.file2d) {
+          formDataUpload.append('file2d', formData.file2d);
+        }
+        if (formData.file3d) {
+          formDataUpload.append('file3d', formData.file3d);
+        }
+
+        try {
+          await apiClient.uploadFiles(`/bom-items/${itemId}/upload-files`, formDataUpload);
+          toast.success('Files uploaded successfully');
+        } catch (uploadError) {
+          console.error('File upload error:', uploadError);
+          toast.error('Item saved but file upload failed');
+        }
       }
 
       onOpenChange(false);
@@ -179,6 +220,94 @@ export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess }: BO
               />
             </div>
 
+            {/* Make or Buy Decision */}
+            <div className="grid gap-3 border-t pt-4">
+              <Label>Make or Buy Decision</Label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="makeBuy"
+                    value="make"
+                    checked={formData.makeBuy === 'make'}
+                    onChange={(e) => setFormData({ ...formData, makeBuy: e.target.value as 'make' | 'buy' })}
+                    className="h-4 w-4 text-primary"
+                  />
+                  <span className="text-sm">Manufacturing (Make)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="makeBuy"
+                    value="buy"
+                    checked={formData.makeBuy === 'buy'}
+                    onChange={(e) => setFormData({ ...formData, makeBuy: e.target.value as 'make' | 'buy' })}
+                    className="h-4 w-4 text-primary"
+                  />
+                  <span className="text-sm">Purchasing (Buy)</span>
+                </label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {formData.makeBuy === 'make'
+                  ? 'Part will be manufactured in-house'
+                  : 'Part will be purchased from supplier'}
+              </p>
+
+              {/* Cost field - only shown for Buy option */}
+              {formData.makeBuy === 'buy' && (
+                <div className="grid gap-2 mt-2 p-4 border rounded-lg bg-muted/30">
+                  <Label htmlFor="unitCost" className="flex items-center gap-2">
+                    Unit Cost (Purchasing)
+                    <span className="text-xs text-muted-foreground font-normal">(₹)</span>
+                  </Label>
+                  <Input
+                    id="unitCost"
+                    type="text"
+                    placeholder="Enter supplier quoted price"
+                    value={formData.unitCost || ''}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const numValue = parseFloat(value);
+                      if (value === '' || !isNaN(numValue)) {
+                        setFormData({ ...formData, unitCost: value === '' ? 0 : numValue });
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Supplier quoted price per unit in Indian Rupees (INR)
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="file2d">2D Drawing (PDF, PNG, JPG)</Label>
+                <Input
+                  id="file2d"
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf"
+                  onChange={(e) => setFormData({ ...formData, file2d: e.target.files?.[0] || null })}
+                />
+                {formData.file2d && (
+                  <p className="text-xs text-muted-foreground">Selected: {formData.file2d.name}</p>
+                )}
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="file3d">3D Model (STEP, STL, OBJ)</Label>
+                <Input
+                  id="file3d"
+                  type="file"
+                  accept=".stp,.step,.stl,.obj,.iges,.igs"
+                  onChange={(e) => setFormData({ ...formData, file3d: e.target.files?.[0] || null })}
+                />
+                {formData.file3d && (
+                  <p className="text-xs text-muted-foreground">Selected: {formData.file3d.name}</p>
+                )}
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="quantity">Quantity *</Label>
@@ -242,6 +371,14 @@ export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess }: BO
                     ))}
                   </SelectContent>
                 </Select>
+                {!item && autoParentId && formData.itemType !== BOMItemType.ASSEMBLY && (
+                  <p className="text-xs text-muted-foreground">
+                    Will be added under: {
+                      formData.itemType === BOMItemType.SUB_ASSEMBLY ? 'Latest Assembly' :
+                      formData.itemType === BOMItemType.CHILD_PART ? 'Latest Sub-Assembly' : ''
+                    }
+                  </p>
+                )}
               </div>
             </div>
 

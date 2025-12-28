@@ -1,0 +1,20 @@
+# CAD Engine Dependencies
+# Production-grade STEP file processing
+
+# OpenCascade Python bindings (Industry standard CAD kernel)
+pythonocc-core==7.7.2
+
+# FastAPI for REST API
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+
+# File handling
+python-multipart==0.0.6
+aiofiles==23.2.1
+
+# HTTP client for callbacks
+httpx==0.26.0
+
+# Logging and monitoring
+python-json-logger==2.0.7
