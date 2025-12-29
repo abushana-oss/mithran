@@ -10,13 +10,14 @@ export class SupabaseService {
   private adminClient: SupabaseClient;
 
   constructor(private configService: ConfigService) {
-    this.supabaseUrl = this.configService.get<string>('NEXT_PUBLIC_SUPABASE_URL') || '';
-    this.supabaseAnonKey = this.configService.get<string>('NEXT_PUBLIC_SUPABASE_ANON_KEY') || '';
+    // Backend uses server-side environment variables (not NEXT_PUBLIC_ prefix)
+    this.supabaseUrl = this.configService.get<string>('SUPABASE_URL') || '';
+    this.supabaseAnonKey = this.configService.get<string>('SUPABASE_ANON_KEY') || '';
     this.supabaseServiceKey = this.configService.get<string>('SUPABASE_SERVICE_KEY') || '';
 
     if (!this.supabaseUrl || !this.supabaseAnonKey || !this.supabaseServiceKey) {
       throw new Error(
-        'NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, and SUPABASE_SERVICE_KEY must be set in environment variables'
+        'SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_KEY must be set in environment variables'
       );
     }
 

@@ -1,5 +1,5 @@
 import { plainToClass } from 'class-transformer';
-import { IsString, IsNumber, IsOptional, validateSync, IsUrl, IsEnum, MinLength } from 'class-validator';
+import { IsString, IsNumber, IsOptional, validateSync, IsUrl, IsEnum, MinLength, IsIn } from 'class-validator';
 
 enum Environment {
   Development = 'development',
@@ -16,12 +16,13 @@ class EnvironmentVariables {
   @IsOptional()
   PORT: number = 4000;
 
+  // Backend uses server-side environment variables (not NEXT_PUBLIC_ prefix)
   @IsUrl()
-  NEXT_PUBLIC_SUPABASE_URL: string;
+  SUPABASE_URL: string;
 
   @IsString()
   @MinLength(20)
-  NEXT_PUBLIC_SUPABASE_ANON_KEY: string;
+  SUPABASE_ANON_KEY: string;
 
   @IsString()
   @MinLength(20)
@@ -41,7 +42,7 @@ class EnvironmentVariables {
 
   @IsString()
   @IsOptional()
-  @IsEnum(['error', 'warn', 'info', 'debug', 'verbose'])
+  @IsIn(['error', 'warn', 'info', 'debug', 'verbose'])
   LOG_LEVEL: string = 'info';
 
   @IsString()

@@ -119,6 +119,7 @@ export class BOMItemsService {
     if (updateBOMItemDto.unit !== undefined) updateData.unit = updateBOMItemDto.unit;
     if (updateBOMItemDto.material !== undefined) updateData.material = updateBOMItemDto.material;
     if (updateBOMItemDto.materialGrade !== undefined) updateData.material_grade = updateBOMItemDto.materialGrade;
+    if (updateBOMItemDto.materialId !== undefined) updateData.material_id = updateBOMItemDto.materialId;
     if (updateBOMItemDto.sortOrder !== undefined) updateData.sort_order = updateBOMItemDto.sortOrder;
     if (updateBOMItemDto.file3dPath !== undefined) updateData.file_3d_path = updateBOMItemDto.file3dPath;
     if (updateBOMItemDto.file2dPath !== undefined) updateData.file_2d_path = updateBOMItemDto.file2dPath;
@@ -301,6 +302,7 @@ export class BOMItemsService {
     }
 
     // Apply all updates
+    const failedUpdates: Array<{ id: string; error: string }> = [];
     if (updates.length > 0) {
       for (const update of updates) {
         const { error: updateError } = await this.supabaseService
@@ -311,15 +313,18 @@ export class BOMItemsService {
 
         if (updateError) {
           this.logger.error(`Error updating item ${update.id}: ${updateError.message}`, 'BOMItemsService');
+          failedUpdates.push({ id: update.id, error: updateError.message });
         }
       }
     }
 
-    this.logger.log(`Fixed ${updatedCount} items in BOM hierarchy`, 'BOMItemsService');
+    const successCount = updatedCount - failedUpdates.length;
+    this.logger.log(`Fixed ${successCount}/${updatedCount} items in BOM hierarchy`, 'BOMItemsService');
 
     return {
-      message: 'BOM hierarchy fixed successfully',
-      itemsUpdated: updatedCount,
+      message: failedUpdates.length > 0 ? 'BOM hierarchy partially fixed' : 'BOM hierarchy fixed successfully',
+      itemsUpdated: successCount,
+      failedUpdates: failedUpdates.length > 0 ? failedUpdates : undefined,
       details: {
         assemblies: assemblies.length,
         subAssemblies: subAssemblies.length,

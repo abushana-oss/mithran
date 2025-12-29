@@ -285,7 +285,7 @@ export default function DatabaseViewerPage() {
                       <div className="flex items-start justify-between">
                         <div>
                           <h4 className="font-semibold">{vendor.name}</h4>
-                          <p className="text-sm text-muted-foreground">{vendor.description}</p>
+                          <p className="text-sm text-muted-foreground">{vendor.supplierCode || vendor.city || 'N/A'}</p>
                         </div>
                         <Badge>{vendor.status}</Badge>
                       </div>

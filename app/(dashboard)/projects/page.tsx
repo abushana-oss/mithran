@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useProjects, useCreateProject, useDeleteProject } from '@/lib/api/hooks/useProjects';
+import { useProjects, useCreateProject, useUpdateProject, useDeleteProject } from '@/lib/api/hooks/useProjects';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { StatusBadge } from '@/components/common/status-badge';
 import { Button } from '@/components/ui/button';
@@ -23,7 +23,8 @@ import {
   Calendar,
   ArrowRight,
   Pause,
-  XCircle
+  XCircle,
+  Pencil
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -39,8 +40,10 @@ export default function Projects() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<any>(null);
+  const [projectToEdit, setProjectToEdit] = useState<any>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [quotedCost, setQuotedCost] = useState('');
@@ -56,6 +59,7 @@ export default function Projects() {
 
   const { data: projectsData, isLoading } = useProjects();
   const createMutation = useCreateProject();
+  const updateMutation = useUpdateProject();
   const deleteMutation = useDeleteProject();
 
   const projects = projectsData?.projects || [];
@@ -89,6 +93,41 @@ export default function Projects() {
         setProjectToDelete(null);
       },
     });
+  };
+
+  const handleEditOpen = (project: any) => {
+    setProjectToEdit(project);
+    setName(project.name);
+    setDescription(project.description || '');
+    setQuotedCost(project.quotedCost ? project.quotedCost.toString() : '');
+    setStatus(project.status);
+    setEditOpen(true);
+  };
+
+  const handleUpdate = () => {
+    if (!projectToEdit) return;
+
+    updateMutation.mutate(
+      {
+        id: projectToEdit.id,
+        data: {
+          name,
+          description: description || undefined,
+          status,
+          quotedCost: quotedCost ? parseFloat(quotedCost) : undefined,
+        },
+      },
+      {
+        onSuccess: () => {
+          setEditOpen(false);
+          setProjectToEdit(null);
+          setName('');
+          setDescription('');
+          setQuotedCost('');
+          setStatus('draft');
+        },
+      }
+    );
   };
 
   const stats = {
@@ -228,18 +267,31 @@ export default function Projects() {
                           {project.name}
                         </CardTitle>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setProjectToDelete(project);
-                          setDeleteOpen(true);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditOpen(project);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setProjectToDelete(project);
+                            setDeleteOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                     <StatusBadge status={project.status} />
                   </CardHeader>
@@ -365,6 +417,92 @@ export default function Projects() {
               disabled={!name || createMutation.isPending}
             >
               {createMutation.isPending ? 'Creating...' : 'Create Project'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Project Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Edit Project</DialogTitle>
+            <DialogDescription>
+              Update project information and settings
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="edit-name">Project Name *</Label>
+              <Input
+                id="edit-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g., Engine Block Manufacturing"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Describe the project scope and objectives..."
+                rows={3}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-quotedCost">Quoted Cost ($)</Label>
+              <Input
+                id="edit-quotedCost"
+                type="number"
+                min="0"
+                max="99999999.99"
+                step="0.01"
+                value={quotedCost}
+                onChange={(e) => setQuotedCost(e.target.value)}
+                placeholder="0.00"
+              />
+              <p className="text-xs text-muted-foreground">
+                Maximum: $99,999,999.99
+              </p>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-status">Status</Label>
+              <Select value={status} onValueChange={(value: any) => setStatus(value)}>
+                <SelectTrigger id="edit-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PROJECT_STATUSES.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEditOpen(false);
+                setProjectToEdit(null);
+                setName('');
+                setDescription('');
+                setQuotedCost('');
+                setStatus('draft');
+              }}
+              disabled={updateMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdate}
+              disabled={!name || updateMutation.isPending}
+            >
+              {updateMutation.isPending ? 'Updating...' : 'Update Project'}
             </Button>
           </DialogFooter>
         </DialogContent>

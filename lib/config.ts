@@ -7,7 +7,10 @@
 export const config = {
   // API Configuration
   api: {
-    baseUrl: process.env.NEXT_PUBLIC_API_GATEWAY_URL || 'http://localhost:4000/api/v1',
+    // Use server-side URL when running on server (Docker network), client-side URL in browser
+    baseUrl: (typeof window === 'undefined'
+      ? process.env.API_URL
+      : process.env.NEXT_PUBLIC_API_URL) || 'http://localhost:4000/api/v1',
     timeout: 30000, // 30 seconds
     retryAttempts: 3,
     retryDelay: 1000, // 1 second

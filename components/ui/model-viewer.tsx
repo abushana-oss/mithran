@@ -40,15 +40,14 @@ interface ModelViewerProps {
   fileName: string;
   fileType: string;
   bomItemId?: string; // For triggering conversion
-  onDownload?: () => void;
 }
 
 export function ModelViewer({ fileUrl, fileName, fileType, bomItemId }: ModelViewerProps) {
   const [error, setError] = useState<string | null>(null);
-  const [isFullscreen] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
+  const [viewerKey, setViewerKey] = useState(0);
 
-  const fileExt = fileType.toLowerCase().replace('.', '');
+  const fileExt = fileType.toLowerCase().replace(/^\.+/, '');
 
   // Check actual file URL extension (backend may have converted STEP to STL)
   // Remove query string first, then extract extension
@@ -76,18 +75,24 @@ export function ModelViewer({ fileUrl, fileName, fileType, bomItemId }: ModelVie
       setTimeout(() => {
         window.location.reload();
       }, 1000);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Conversion error:', error);
-      toast.error(error.message || 'Failed to convert STEP file. Make sure CAD engine is running.');
+      const message = error instanceof Error ? error.message : 'Failed to convert STEP file. Make sure CAD engine is running.';
+      toast.error(message);
     } finally {
       setIsConverting(false);
     }
   };
 
+  const handleRetry = () => {
+    setError(null);
+    setViewerKey(prev => prev + 1);
+  };
+
   // STEP File that was converted to STL - show in 3D viewer
   if (isConvertedToSTL) {
     return (
-      <div className={`${isFullscreen ? 'fixed inset-0 z-50' : 'h-[85vh] min-h-[700px]'} overflow-hidden`}>
+      <div className="h-[85vh] min-h-[700px] overflow-hidden">
         <Suspense fallback={
           <div className="absolute inset-0 flex items-center justify-center bg-[#4a4a4a]">
             <div className="text-center text-white">
@@ -97,6 +102,7 @@ export function ModelViewer({ fileUrl, fileName, fileType, bomItemId }: ModelVie
           </div>
         }>
           <EDrawingsViewer
+            key={viewerKey}
             fileUrl={fileUrl}
             fileName={fileName}
           />
@@ -112,7 +118,7 @@ export function ModelViewer({ fileUrl, fileName, fileType, bomItemId }: ModelVie
               <h3 className="text-lg font-semibold mb-2">Failed to load 3D model</h3>
               <p className="text-sm text-muted-foreground mb-4">{error}</p>
               <div className="flex gap-2 justify-center">
-                <Button variant="outline" onClick={() => setError(null)}>
+                <Button variant="outline" onClick={handleRetry}>
                   <RotateCcw className="h-4 w-4 mr-2" />
                   Retry
                 </Button>
@@ -174,7 +180,7 @@ export function ModelViewer({ fileUrl, fileName, fileType, bomItemId }: ModelVie
               className="gap-2"
               asChild
             >
-              <a href={fileUrl} download target="_blank" rel="noopener noreferrer">
+              <a href={fileUrl} download>
                 <Download className="h-4 w-4" />
                 Download {fileExt.toUpperCase()}
               </a>
@@ -194,7 +200,7 @@ export function ModelViewer({ fileUrl, fileName, fileType, bomItemId }: ModelVie
   // Interactive 3D Viewer (STL/OBJ)
   if (isInteractiveSupported) {
     return (
-      <div className={`${isFullscreen ? 'fixed inset-0 z-50' : 'h-[85vh] min-h-[700px]'} overflow-hidden`}>
+      <div className="h-[85vh] min-h-[700px] overflow-hidden">
         <Suspense fallback={
           <div className="absolute inset-0 flex items-center justify-center bg-[#4a4a4a]">
             <div className="text-center text-white">
@@ -204,6 +210,7 @@ export function ModelViewer({ fileUrl, fileName, fileType, bomItemId }: ModelVie
           </div>
         }>
           <EDrawingsViewer
+            key={viewerKey}
             fileUrl={fileUrl}
             fileName={fileName}
           />
@@ -219,7 +226,7 @@ export function ModelViewer({ fileUrl, fileName, fileType, bomItemId }: ModelVie
               <h3 className="text-lg font-semibold mb-2">Failed to load 3D model</h3>
               <p className="text-sm text-muted-foreground mb-4">{error}</p>
               <div className="flex gap-2 justify-center">
-                <Button variant="outline" onClick={() => setError(null)}>
+                <Button variant="outline" onClick={handleRetry}>
                   <RotateCcw className="h-4 w-4 mr-2" />
                   Retry
                 </Button>

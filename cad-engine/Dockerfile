@@ -1,7 +1,7 @@
 # Python CAD Engine - Production Dockerfile with Conda
 # Uses OpenCascade Technology (OCCT) for STEP file processing
 
-FROM continuumio/miniconda3:latest
+FROM continuumio/miniconda3:24.9.2-0
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -30,8 +30,8 @@ RUN pip install --no-cache-dir \
 # Copy application code
 COPY main.py .
 
-# Create temp directory
-RUN mkdir -p /tmp/cad-conversions
+# Create temp directory for CAD conversions
+RUN mkdir -p /tmp/cad-files
 
 # Expose port
 EXPOSE 5000

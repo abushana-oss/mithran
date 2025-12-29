@@ -19,16 +19,12 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-# OpenCascade imports
+# OpenCascade imports - Only import what we use
 from OCC.Core.STEPControl import STEPControl_Reader
 from OCC.Core.IFSelect import IFSelect_RetDone
 from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
 from OCC.Core.StlAPI import StlAPI_Writer
 from OCC.Core.TopoDS import TopoDS_Shape
-from OCC.Core.BRep import BRep_Builder
-from OCC.Core.TopExp import TopExp_Explorer
-from OCC.Core.TopAbs import TopAbs_SOLID
-from OCC.Extend.TopologyUtils import TopologyExplorer
 
 # Configure logging
 logging.basicConfig(
@@ -296,7 +292,7 @@ async def convert_step_to_stl(
         temp_step.flush()
 
     # Create output STL path
-    stl_path = step_path.replace(file_ext, '.stl')
+    stl_path = str(Path(step_path).with_suffix('.stl'))
 
     try:
         # Convert STEP to STL
@@ -334,9 +330,8 @@ async def convert_step_to_stl(
         logger.error(f"Conversion error: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Internal conversion error: {str(e)}"
+            detail="Internal conversion error"
         )
-
 
 @app.post("/convert/step-to-stl-base64")
 async def convert_step_to_stl_base64(file: UploadFile = File(...)):
@@ -364,7 +359,7 @@ async def convert_step_to_stl_base64(file: UploadFile = File(...)):
         temp_step.write(content)
         temp_step.flush()
 
-    stl_path = step_path.replace(file_ext, '.stl')
+    stl_path = str(Path(step_path).with_suffix('.stl'))
 
     try:
         # Convert
@@ -394,8 +389,8 @@ async def convert_step_to_stl_base64(file: UploadFile = File(...)):
                 os.unlink(step_path)
             if os.path.exists(stl_path):
                 os.unlink(stl_path)
-        except:
-            pass
+        except OSError as e:
+            logger.warning(f"Cleanup error: {e}")
 
 
 if __name__ == "__main__":

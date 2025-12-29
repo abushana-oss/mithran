@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useRef, useEffect } from 'react';
+import { Suspense, useState, useRef, useEffect, useCallback } from 'react';
 import { Canvas, useLoader, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Environment, Grid, Center } from '@react-three/drei';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
@@ -60,9 +60,14 @@ const getCADViews = (distance: number) => ({
 });
 
 // Auto-fit camera to model
-function CameraFitter({ onFit }: { onFit: (distance: number) => void }) {
+function CameraFitter({ onFit, resetKey }: { onFit: (distance: number) => void; resetKey?: string }) {
   const { scene, camera } = useThree();
   const fitted = useRef(false);
+
+  // Reset fitted flag when model changes
+  useEffect(() => {
+    fitted.current = false;
+  }, [resetKey]);
 
   useEffect(() => {
     if (!fitted.current) {
@@ -109,9 +114,14 @@ function AutoRotate({ isAnimating }: { isAnimating: boolean }) {
 // Dynamic Axes Helper - Updates orientation based on camera
 function AxesOrientation({ onOrientationChange }: { onOrientationChange: (matrix: THREE.Matrix4) => void }) {
   const { camera } = useThree();
+  const lastUpdate = useRef(0);
 
-  useFrame(() => {
-    onOrientationChange(camera.matrixWorldInverse.clone());
+  useFrame(({ clock }) => {
+    // Throttle to ~15fps for UI indicator to reduce re-renders
+    if (clock.elapsedTime - lastUpdate.current > 0.066) {
+      onOrientationChange(camera.matrixWorldInverse.clone());
+      lastUpdate.current = clock.elapsedTime;
+    }
   });
 
   return null;
@@ -192,7 +202,11 @@ function STLModel({
 
       // Calculate surface area
       const position = geometry.attributes.position;
-      if (!position) return;
+      if (!position) {
+        onMeasurements?.({ volume, dimensions, surfaceArea: 0 });
+        onLoad?.();
+        return;
+      }
 
       let surfaceArea = 0;
       for (let i = 0; i < position.count; i += 3) {
@@ -314,7 +328,7 @@ function Scene({
     <>
       <PerspectiveCamera makeDefault position={viewPosition} fov={50} />
       <CameraController viewPosition={viewPosition} autoFit={autoFit} />
-      {autoFit && <CameraFitter onFit={onFit} />}
+      {autoFit && <CameraFitter onFit={onFit} resetKey={fileUrl} />}
       <AutoRotate isAnimating={isAnimating} />
       <AxesOrientation onOrientationChange={onOrientationChange} />
 
@@ -397,21 +411,33 @@ export function EDrawingsViewer({ fileUrl, fileName }: EDrawingsViewerProps) {
     surfaceArea: number;
   } | null>(null);
 
+  // Reusable Vector3 instances to avoid GC pressure from frame callbacks
+  const tempVectors = useRef({
+    x: new THREE.Vector3(),
+    y: new THREE.Vector3(),
+    z: new THREE.Vector3(),
+  });
+
   const CAD_VIEWS = getCADViews(cameraDistance);
 
-  const handleMeasurements = (data: {
+  const handleMeasurements = useCallback((data: {
     volume: number;
     dimensions: { x: number; y: number; z: number };
     surfaceArea: number;
   }) => {
     setMeasurements(data);
-  };
+  }, []);
 
-  const handleOrientationChange = (matrix: THREE.Matrix4) => {
-    // Extract axis directions from camera view matrix
-    const xAxis = new THREE.Vector3(1, 0, 0).applyMatrix4(matrix).normalize();
-    const yAxis = new THREE.Vector3(0, 1, 0).applyMatrix4(matrix).normalize();
-    const zAxis = new THREE.Vector3(0, 0, 1).applyMatrix4(matrix).normalize();
+  const handleModelLoad = useCallback(() => {
+    setLoading(false);
+  }, []);
+
+  const handleOrientationChange = useCallback((matrix: THREE.Matrix4) => {
+    // Extract axis directions from camera view matrix using reusable vectors
+    const { x: xAxis, y: yAxis, z: zAxis } = tempVectors.current;
+    xAxis.set(1, 0, 0).applyMatrix4(matrix).normalize();
+    yAxis.set(0, 1, 0).applyMatrix4(matrix).normalize();
+    zAxis.set(0, 0, 1).applyMatrix4(matrix).normalize();
 
     // Project to 2D screen space (simplified orthographic projection)
     setAxesRotation({
@@ -419,7 +445,7 @@ export function EDrawingsViewer({ fileUrl, fileName }: EDrawingsViewerProps) {
       y: Math.atan2(yAxis.y, yAxis.x),
       z: Math.atan2(zAxis.y, zAxis.x),
     });
-  };
+  }, []);
 
   const handleFit = (distance: number) => {
     setCameraDistance(distance);
@@ -637,7 +663,7 @@ export function EDrawingsViewer({ fileUrl, fileName }: EDrawingsViewerProps) {
               viewPosition={viewPosition}
               autoFit={autoFit}
               onFit={handleFit}
-              onModelLoad={() => setLoading(false)}
+              onModelLoad={handleModelLoad}
               isAnimating={isAnimating}
               sectionPlane={sectionPlane}
               isTransparent={isTransparent}

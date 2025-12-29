@@ -131,9 +131,14 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
       return;
     }
 
-    // Remove item and any children
-    const childIds = items.filter(i => i.parentId === id).map(i => i.id);
-    setItems(items.filter(i => i.id !== id && !childIds.includes(i.id)));
+    // Remove item and all descendants recursively
+    const getDescendantIds = (parentId: string): string[] => {
+      const directChildren = items.filter(i => i.parentId === parentId);
+      return directChildren.flatMap(child => [child.id, ...getDescendantIds(child.id)]);
+    };
+
+    const idsToRemove = new Set([id, ...getDescendantIds(id)]);
+    setItems(items.filter(i => !idsToRemove.has(i.id)));
   };
 
   const updateItem = (id: string, updates: Partial<ItemForm>) => {
@@ -169,6 +174,8 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
       // Step 2: Create items in order (assemblies, then sub-assemblies, then child parts)
       // Keep track of temp ID -> real ID mapping
       const idMap = new Map<string, string>();
+      const errors: Array<{ itemName: string; error: string }> = [];
+      let successCount = 0;
 
       // Filter out empty items
       const validItems = items.filter(item => item.name.trim());
@@ -181,24 +188,51 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
       const orderedItems = [...assemblies, ...subAssemblies, ...childParts];
 
       for (const item of orderedItems) {
-        const itemPayload = {
-          bomId: createdBOM.id,
-          name: item.name,
-          partNumber: item.partNumber || undefined,
-          description: item.description || undefined,
-          materialGrade: item.materialGrade || undefined,
-          quantity: item.quantity,
-          annualVolume: item.annualVolume,
-          unit: item.unit,
-          itemType: item.itemType,
-          parentItemId: item.parentId ? idMap.get(item.parentId) : undefined,
-        };
+        try {
+          // Check if parent exists in idMap (if item has a parent)
+          if (item.parentId && !idMap.has(item.parentId)) {
+            errors.push({
+              itemName: item.name,
+              error: 'Parent item failed to create - skipping',
+            });
+            continue;
+          }
 
-        const createdItem = await createBOMItem(itemPayload);
-        idMap.set(item.id, createdItem.id);
+          const itemPayload = {
+            bomId: createdBOM.id,
+            name: item.name,
+            partNumber: item.partNumber || undefined,
+            description: item.description || undefined,
+            materialGrade: item.materialGrade || undefined,
+            quantity: item.quantity,
+            annualVolume: item.annualVolume,
+            unit: item.unit,
+            itemType: item.itemType,
+            parentItemId: item.parentId ? idMap.get(item.parentId) : undefined,
+          };
+
+          const createdItem = await createBOMItem(itemPayload);
+          idMap.set(item.id, createdItem.id);
+          successCount++;
+        } catch (error: any) {
+          errors.push({
+            itemName: item.name,
+            error: error?.message || 'Unknown error',
+          });
+        }
       }
 
-      toast.success(`BOM created successfully with ${orderedItems.length} item(s)`);
+      // Report results
+      if (errors.length === 0) {
+        toast.success(`BOM created successfully with ${successCount} item(s)`);
+      } else if (successCount > 0) {
+        toast.warning(
+          `BOM created with ${successCount} item(s). ${errors.length} item(s) failed: ${errors.map(e => e.itemName).join(', ')}`
+        );
+      } else {
+        throw new Error('Failed to create any items');
+      }
+
       onOpenChange(false);
       onSuccess?.();
 

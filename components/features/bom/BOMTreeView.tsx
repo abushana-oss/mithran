@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, Edit2, Trash2, ZoomIn, ZoomOut, Maximize2, RotateCcw } from 'lucide-react';
+import { Plus, Edit2, Trash2, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -72,7 +72,7 @@ function calculateHierarchicalPositions(
 
   let currentY = startY;
 
-  items.forEach((item, index) => {
+  items.forEach((item) => {
     const isExpanded = expandedNodes.has(item.id);
 
     // Calculate how much vertical space this node and its children need
@@ -351,7 +351,6 @@ export function BOMTreeView({ items, projectName, projectId, onAddItem, onEditIt
     return expanded;
   });
   const [zoom, setZoom] = useState(0.8);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isRootHovered, setIsRootHovered] = useState(false);
 
   const toggleNode = (id: string) => {
@@ -422,12 +421,9 @@ export function BOMTreeView({ items, projectName, projectId, onAddItem, onEditIt
         <Button
           variant="outline"
           size="icon"
-          onClick={() => {
-            setZoom(0.8);
-            setPan({ x: 0, y: 0 });
-          }}
+          onClick={() => setZoom(0.8)}
           className="h-7 w-7"
-          title="Reset view"
+          title="Reset zoom"
         >
           <Maximize2 className="h-3 w-3" />
         </Button>

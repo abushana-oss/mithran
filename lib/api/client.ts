@@ -14,6 +14,7 @@ import { config } from '../config';
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: any;
+  params?: Record<string, any>;
   headers?: Record<string, string>;
   cache?: RequestCache;
   retry?: boolean;
@@ -133,7 +134,7 @@ class ApiClient {
   }
 
   private getCacheKey(endpoint: string, options: RequestOptions): string {
-    return `${options.method || 'GET'}:${endpoint}:${JSON.stringify(options.body || {})}`;
+    return `${options.method || 'GET'}:${endpoint}:${JSON.stringify(options.body || {})}:${JSON.stringify(options.params || {})}`;
   }
 
   private async request<T>(
@@ -143,13 +144,27 @@ class ApiClient {
     const {
       method = 'GET',
       body,
+      params,
       headers = {},
       cache,
       retry = true,
       timeout = 30000,
     } = options;
 
-    const url = `${this.baseUrl}${endpoint}`;
+    // Build URL with query parameters
+    let url = `${this.baseUrl}${endpoint}`;
+    if (params) {
+      const queryParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          queryParams.append(key, String(value));
+        }
+      });
+      const queryString = queryParams.toString();
+      if (queryString) {
+        url += `?${queryString}`;
+      }
+    }
 
     // Request deduplication for GET requests
     if (method === 'GET') {
@@ -358,6 +373,11 @@ class ApiClient {
           data?.error?.code,
           data?.error?.details,
         );
+      }
+
+      // Handle wrapped response format from backend
+      if (data.success && data.data !== undefined) {
+        return data.data as T;
       }
 
       return data as T;

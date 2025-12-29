@@ -6,6 +6,7 @@ import {
   FolderKanban,
   Users,
   LogOut,
+  Database,
 } from 'lucide-react';
 import { NavLink } from '@/components/common/nav-link';
 import { useAuth } from '@/lib/providers/auth';
@@ -28,6 +29,7 @@ import { Separator } from '@/components/ui/separator';
 
 const databaseItems = [
   { title: 'Vendors', url: '/database/vendors', icon: Users },
+  { title: 'Raw Materials', url: '/database/raw-materials', icon: Database },
 ];
 
 // Materials module not yet implemented in backend - will be added in future release

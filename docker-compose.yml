@@ -15,16 +15,14 @@ services:
     environment:
       - PORT=5000
       - PYTHONUNBUFFERED=1
+      - TMPDIR=/tmp/cad-files
     volumes:
       # Mount for development hot-reload (optional)
       - ./cad-engine:/app
+      # Temporary CAD file storage for STEP/STL conversions
+      - cad-temp:/tmp/cad-files
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+    # Healthcheck is defined in Dockerfile (curl is installed)
     networks:
       - mithran-network
 
@@ -58,6 +56,9 @@ services:
       - "3000:3000"
     environment:
       - NODE_ENV=production
+      # Server-side API calls (within Docker network)
+      - API_URL=http://backend:4000
+      # Client-side API calls (from browser)
       - NEXT_PUBLIC_API_URL=http://localhost:4000
     depends_on:
       - backend

@@ -49,13 +49,63 @@ FROM bom_items
 GROUP BY item_type
 ORDER BY item_type;
 
--- Verify hierarchy (check parent-child relationships)
+-- Verify hierarchy (check parent-child relationships using recursive CTE)
+-- This validates the actual tree structure by traversing parent_item_id relationships
+-- Replace 'YOUR_BOM_ID_HERE' with the actual BOM ID you want to verify
+WITH RECURSIVE hierarchy_tree AS (
+  -- Base case: root items (no parent)
+  SELECT
+    id,
+    name,
+    item_type,
+    parent_item_id,
+    bom_id,
+    0 as level,
+    CAST(name AS TEXT) as path
+  FROM bom_items
+  WHERE bom_id = 'YOUR_BOM_ID_HERE'
+    AND parent_item_id IS NULL
+
+  UNION ALL
+
+  -- Recursive case: children
+  SELECT
+    bi.id,
+    bi.name,
+    bi.item_type,
+    bi.parent_item_id,
+    bi.bom_id,
+    ht.level + 1,
+    ht.path || ' -> ' || bi.name
+  FROM bom_items bi
+  INNER JOIN hierarchy_tree ht ON bi.parent_item_id = ht.id
+  WHERE bi.bom_id = 'YOUR_BOM_ID_HERE'
+)
 SELECT
-    parent.name as parent_name,
-    parent.item_type as parent_type,
-    child.name as child_name,
-    child.item_type as child_type
-FROM bom_items parent
-LEFT JOIN bom_items child ON child.parent_item_id = parent.id
-WHERE parent.item_type = 'assembly'
+  REPEAT('  ', level) || name as hierarchy,
+  level,
+  item_type,
+  parent_item_id,
+  bom_id,
+  path
+FROM hierarchy_tree
+ORDER BY path
+LIMIT 50;
+
+-- Detect orphaned items (items with parent_item_id that doesn't exist)
+-- Replace 'YOUR_BOM_ID_HERE' with the actual BOM ID you want to verify
+SELECT
+  bi.id,
+  bi.name,
+  bi.item_type,
+  bi.parent_item_id,
+  bi.bom_id,
+  'Orphaned: parent does not exist' as issue
+FROM bom_items bi
+WHERE bi.bom_id = 'YOUR_BOM_ID_HERE'
+  AND bi.parent_item_id IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM bom_items parent
+    WHERE parent.id = bi.parent_item_id
+  )
 LIMIT 10;

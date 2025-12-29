@@ -4,13 +4,16 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { X, Download, FileText, Maximize2, Upload, Loader2, Box } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { X, Download, FileText, Maximize2, Upload, Loader2, Box, Settings } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { BOMItem } from '@/lib/api/hooks/useBOMItems';
 import { apiClient } from '@/lib/api/client';
 import { toast } from 'sonner';
 import { ModelViewer } from '@/components/ui/model-viewer';
+import { useProcessRoutes } from '@/lib/api/hooks/useProcessRoutes';
+import { ProcessRoutingPanel } from '@/components/features/process-planning';
 
 interface BOMItemDetailPanelProps {
   item: BOMItem | null;
@@ -20,6 +23,7 @@ interface BOMItemDetailPanelProps {
 }
 
 export function BOMItemDetailPanel({ item, onClose, onUpdate, preferredView = '3d' }: BOMItemDetailPanelProps) {
+  const [activeTab, setActiveTab] = useState<'files' | 'process-planning'>('files');
   const [file2dUrl, setFile2dUrl] = useState<string | null>(null);
   const [file3dUrl, setFile3dUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,6 +33,9 @@ export function BOMItemDetailPanel({ item, onClose, onUpdate, preferredView = '3
   const [selectedFile3d, setSelectedFile3d] = useState<File | null>(null);
   const file2dInputRef = useRef<HTMLInputElement>(null);
   const file3dInputRef = useRef<HTMLInputElement>(null);
+
+  // Load process routes for this BOM item
+  const { data: processRoutesData } = useProcessRoutes({ bomItemId: item?.id });
 
   useEffect(() => {
     if (!item) {
@@ -79,6 +86,11 @@ export function BOMItemDetailPanel({ item, onClose, onUpdate, preferredView = '3
       const updatedItem = await apiClient.uploadFiles<BOMItem>(`/bom-items/${item.id}/upload-files`, formData);
 
       toast.success('Files uploaded successfully');
+
+      // Capture which files were uploaded before clearing state
+      const uploaded2d = selectedFile2d;
+      const uploaded3d = selectedFile3d;
+
       setSelectedFile2d(null);
       setSelectedFile3d(null);
 
@@ -92,11 +104,11 @@ export function BOMItemDetailPanel({ item, onClose, onUpdate, preferredView = '3
       // Reload file URLs for newly uploaded files
       setTimeout(async () => {
         try {
-          if (selectedFile2d && updatedItem.file2dPath) {
+          if (uploaded2d && updatedItem.file2dPath) {
             const response2d = await apiClient.get<{ url: string }>(`/bom-items/${item.id}/file-url/2d`);
             setFile2dUrl(response2d.url);
           }
-          if (selectedFile3d && updatedItem.file3dPath) {
+          if (uploaded3d && updatedItem.file3dPath) {
             const response3d = await apiClient.get<{ url: string }>(`/bom-items/${item.id}/file-url/3d`);
             setFile3dUrl(response3d.url);
           }
@@ -114,13 +126,14 @@ export function BOMItemDetailPanel({ item, onClose, onUpdate, preferredView = '3
 
   if (!item) return null;
 
-  const isImage2d = item.file2dPath && (
-    item.file2dPath.endsWith('.png') ||
-    item.file2dPath.endsWith('.jpg') ||
-    item.file2dPath.endsWith('.jpeg')
+  const lowerPath = item.file2dPath?.toLowerCase();
+  const isImage2d = lowerPath && (
+    lowerPath.endsWith('.png') ||
+    lowerPath.endsWith('.jpg') ||
+    lowerPath.endsWith('.jpeg')
   );
 
-  const isPdf2d = item.file2dPath && item.file2dPath.endsWith('.pdf');
+  const isPdf2d = lowerPath && lowerPath.endsWith('.pdf');
 
   return (
     <div className="fixed right-0 top-0 h-full w-full md:w-[90vw] lg:w-[80vw] xl:w-[75vw] bg-background border-l shadow-2xl z-50 overflow-y-auto">
@@ -164,8 +177,26 @@ export function BOMItemDetailPanel({ item, onClose, onUpdate, preferredView = '3
         </CardHeader>
 
         <CardContent>
-          {/* Files Section - Respects Preferred View */}
-          {(item.file2dPath || item.file3dPath) && (
+          <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as 'files' | 'process-planning')}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="files">
+                <FileText className="h-4 w-4 mr-2" />
+                Technical Files
+              </TabsTrigger>
+              <TabsTrigger value="process-planning">
+                <Settings className="h-4 w-4 mr-2" />
+                Process Planning
+                {processRoutesData && processRoutesData.routes && processRoutesData.routes.length > 0 && (
+                  <Badge variant="secondary" className="ml-2">
+                    {processRoutesData.routes.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="files" className="mt-6">
+              {/* Files Section - Respects Preferred View */}
+              {(item.file2dPath || item.file3dPath) && (
             <div className="border-t pt-6">
               {/* Show based on preferredView, or fallback logic */}
               {(preferredView === '3d' && item.file3dPath) || (!item.file2dPath && item.file3dPath) ? (
@@ -345,79 +376,88 @@ export function BOMItemDetailPanel({ item, onClose, onUpdate, preferredView = '3
             </div>
           )}
 
-          {!item.file2dPath && !item.file3dPath && (
-            <div className="border rounded-lg p-6">
-              <div className="text-center mb-6">
-                <Upload className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
-                <p className="text-sm text-muted-foreground mb-1">No technical files attached</p>
-                <p className="text-xs text-muted-foreground">Upload 2D drawings and 3D models</p>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="upload-2d" className="text-sm font-medium">
-                    2D Drawing (PDF, PNG, JPG)
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      ref={file2dInputRef}
-                      id="upload-2d"
-                      type="file"
-                      accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf"
-                      onChange={(e) => setSelectedFile2d(e.target.files?.[0] || null)}
-                      disabled={uploading}
-                      className="flex-1"
-                    />
+              {!item.file2dPath && !item.file3dPath && (
+                <div className="border rounded-lg p-6">
+                  <div className="text-center mb-6">
+                    <Upload className="h-12 w-12 mx-auto mb-3 text-muted-foreground/50" />
+                    <p className="text-sm text-muted-foreground mb-1">No technical files attached</p>
+                    <p className="text-xs text-muted-foreground">Upload 2D drawings and 3D models</p>
                   </div>
-                  {selectedFile2d && (
-                    <p className="text-xs text-muted-foreground">
-                      Selected: {selectedFile2d.name} ({(selectedFile2d.size / 1024).toFixed(1)} KB)
-                    </p>
-                  )}
-                </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="upload-3d" className="text-sm font-medium">
-                    3D Model (STEP, STL, OBJ)
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      ref={file3dInputRef}
-                      id="upload-3d"
-                      type="file"
-                      accept=".stp,.step,.stl,.obj,.iges,.igs"
-                      onChange={(e) => setSelectedFile3d(e.target.files?.[0] || null)}
-                      disabled={uploading}
-                      className="flex-1"
-                    />
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="upload-2d" className="text-sm font-medium">
+                        2D Drawing (PDF, PNG, JPG)
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          ref={file2dInputRef}
+                          id="upload-2d"
+                          type="file"
+                          accept=".pdf,.png,.jpg,.jpeg,.dwg,.dxf"
+                          onChange={(e) => setSelectedFile2d(e.target.files?.[0] || null)}
+                          disabled={uploading}
+                          className="flex-1"
+                        />
+                      </div>
+                      {selectedFile2d && (
+                        <p className="text-xs text-muted-foreground">
+                          Selected: {selectedFile2d.name} ({(selectedFile2d.size / 1024).toFixed(1)} KB)
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="upload-3d" className="text-sm font-medium">
+                        3D Model (STEP, STL, OBJ)
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          ref={file3dInputRef}
+                          id="upload-3d"
+                          type="file"
+                          accept=".stp,.step,.stl,.obj,.iges,.igs"
+                          onChange={(e) => setSelectedFile3d(e.target.files?.[0] || null)}
+                          disabled={uploading}
+                          className="flex-1"
+                        />
+                      </div>
+                      {selectedFile3d && (
+                        <p className="text-xs text-muted-foreground">
+                          Selected: {selectedFile3d.name} ({(selectedFile3d.size / 1024).toFixed(1)} KB)
+                        </p>
+                      )}
+                    </div>
+
+                    <Button
+                      onClick={handleFileUpload}
+                      disabled={uploading || (!selectedFile2d && !selectedFile3d)}
+                      className="w-full"
+                    >
+                      {uploading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 mr-2" />
+                          Upload Files
+                        </>
+                      )}
+                    </Button>
                   </div>
-                  {selectedFile3d && (
-                    <p className="text-xs text-muted-foreground">
-                      Selected: {selectedFile3d.name} ({(selectedFile3d.size / 1024).toFixed(1)} KB)
-                    </p>
-                  )}
                 </div>
+              )}
+            </TabsContent>
 
-                <Button
-                  onClick={handleFileUpload}
-                  disabled={uploading || (!selectedFile2d && !selectedFile3d)}
-                  className="w-full"
-                >
-                  {uploading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload Files
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          )}
+            <TabsContent value="process-planning" className="mt-6">
+              <ProcessRoutingPanel
+                bomItemId={item.id}
+                currentMaterialId={item.materialId}
+              />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
     </div>

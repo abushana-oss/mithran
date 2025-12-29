@@ -20,6 +20,8 @@ export class StepConverterService {
   private readonly logger = new Logger(StepConverterService.name);
   private readonly cadEngineUrl: string;
   private cadEngineAvailable: boolean | null = null;
+  private cadEngineLastChecked: number = 0;
+  private readonly AVAILABILITY_CACHE_TTL = 60000; // 1 minute
 
   constructor(private configService: ConfigService) {
     this.cadEngineUrl = this.configService.get<string>(
@@ -33,10 +35,13 @@ export class StepConverterService {
    * Check if CAD engine is available
    */
   private async checkCadEngineAvailability(): Promise<boolean> {
-    // Cache the availability check
-    if (this.cadEngineAvailable !== null) {
+    // Cache the availability check with TTL
+    const now = Date.now();
+    if (this.cadEngineAvailable !== null && (now - this.cadEngineLastChecked) < this.AVAILABILITY_CACHE_TTL) {
       return this.cadEngineAvailable;
     }
+
+    this.cadEngineLastChecked = now;
 
     try {
       const response = await axios.get(`${this.cadEngineUrl}/health`, {
@@ -124,11 +129,19 @@ export class StepConverterService {
       if (axios.isAxiosError(error)) {
         if (error.code === 'ECONNREFUSED') {
           this.cadEngineAvailable = false;
+          this.cadEngineLastChecked = Date.now();
           throw new Error(
             `CAD Engine connection refused at ${this.cadEngineUrl}. Make sure the service is running.`,
           );
         } else if (error.response) {
-          const errorMsg = error.response.data?.error || error.response.statusText;
+          let errorMsg = error.response.statusText;
+          try {
+            // Parse buffer to JSON for error responses
+            const errorData = JSON.parse(error.response.data.toString());
+            errorMsg = errorData.error || errorMsg;
+          } catch {
+            // If parsing fails, use statusText
+          }
           throw new Error(
             `CAD Engine conversion failed (${error.response.status}): ${errorMsg}`,
           );

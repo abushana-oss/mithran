@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useProject } from '@/lib/api/hooks/useProjects';
 import { useBOM } from '@/lib/api/hooks/useBOM';
-import { useBOMItems } from '@/lib/api/hooks/useBOMItems';
+import { useBOMItems, deleteBOMItem } from '@/lib/api/hooks/useBOMItems';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +24,7 @@ import {
 import { BOMItemsFlat, BOMItemDialog, BOMTreeView, BOMItemDetailPanel } from '@/components/features/bom';
 import { BOMItem } from '@/lib/api/hooks/useBOMItems';
 import { BOMItemType } from '@/lib/types/bom.types';
+import { toast } from 'sonner';
 
 export default function 
 BOMDetailPage() {
@@ -84,10 +85,12 @@ BOMDetailPage() {
   const bomItems = buildTree(bomItemsData?.items || []);
 
   // Calculate depth for each item
-  const getItemDepth = (itemId: string, items: any[]): number => {
+  const getItemDepth = (itemId: string, items: any[], visited = new Set<string>()): number => {
+    if (visited.has(itemId)) return 0; // Cycle detected
     const item = items.find(i => i.id === itemId);
     if (!item || !item.parentItemId) return 0;
-    return 1 + getItemDepth(item.parentItemId, items);
+    visited.add(itemId);
+    return 1 + getItemDepth(item.parentItemId, items, visited);
   };
 
   // Sort items to maintain hierarchy (parents before children)
@@ -154,8 +157,15 @@ BOMDetailPage() {
     setItemDialogOpen(true);
   };
 
-  const handleDeleteItem = (_id: string) => {
-    // Implementation pending: Delete BOM item
+  const handleDeleteItem = async (id: string) => {
+    try {
+      await deleteBOMItem(id);
+      await refetchBOMItems(); // Refresh the list
+      toast.success('Item deleted successfully');
+    } catch (error) {
+      toast.error('Failed to delete item');
+      console.error('Delete error:', error);
+    }
   };
 
   const handleAddTreeItem = (parentId: string | null, type: BOMItemType) => {

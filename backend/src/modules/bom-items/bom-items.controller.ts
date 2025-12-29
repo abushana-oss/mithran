@@ -22,6 +22,7 @@ import { CurrentUser } from '../../common/decorators/user.decorator';
 import { AccessToken } from '../../common/decorators/access-token.decorator';
 import { FileStorageService } from './services/file-storage.service';
 import { StepConverterService } from './services/step-converter.service';
+import axios from 'axios';
 
 @ApiTags('BOM Items')
 @ApiBearerAuth()
@@ -120,6 +121,11 @@ export class BOMItemsController {
     @CurrentUser() user: any,
     @AccessToken() token: string,
   ): Promise<BOMItemResponseDto> {
+    // Validate files are provided before processing
+    if (!files?.file2d?.[0] && !files?.file3d?.[0]) {
+      throw new BadRequestException('No files provided');
+    }
+
     // Get BOM item to retrieve BOM ID
     const bomItem = await this.bomItemsService.findOne(id, user.id, token);
 
@@ -207,10 +213,6 @@ export class BOMItemsController {
       }
     }
 
-    if (!files.file2d && !files.file3d) {
-      throw new BadRequestException('No files provided');
-    }
-
     // Update BOM item with file paths
     return this.bomItemsService.update(id, updateData, user.id, token);
   }
@@ -254,20 +256,31 @@ export class BOMItemsController {
 
     // Download the STEP file from Supabase
     const stepUrl = await this.fileStorageService.getSignedUrl(bomItem.file3dPath, 3600);
-    const axios = require('axios');
-    const stepResponse = await axios.get(stepUrl, { responseType: 'arraybuffer' });
-    const stepBuffer = Buffer.from(stepResponse.data);
+
+    let stepBuffer: Buffer;
+    try {
+      const stepResponse = await axios.get(stepUrl, {
+        responseType: 'arraybuffer',
+        timeout: 60000, // 60 second timeout for large CAD files
+        maxContentLength: 100 * 1024 * 1024, // 100MB max file size
+      });
+      stepBuffer = Buffer.from(stepResponse.data);
+    } catch (error) {
+      this.logger.error(`Failed to download STEP file from storage: ${error.message}`);
+      throw new BadRequestException('Failed to download STEP file from storage. Please ensure the file is accessible.');
+    }
+
+    // Extract filename with fallback to prevent undefined
+    const originalFilename = bomItem.file3dPath.split('/').pop() || 'model.step';
+    const stlFilename = originalFilename.replace(/\.(step|stp|iges|igs)$/i, '.stl');
 
     // Convert STEP to STL (throws error if fails)
     const stlBuffer = await this.stepConverterService.convertStepToStl(
       stepBuffer,
-      bomItem.file3dPath.split('/').pop(),
+      originalFilename,
     );
 
     // Upload converted STL
-    const originalFilename = bomItem.file3dPath.split('/').pop() || 'model.step';
-    const stlFilename = originalFilename.replace(/\.(step|stp|iges|igs)$/i, '.stl');
-
     const stlUploadResult = await this.fileStorageService.uploadFile(
       {
         fieldname: 'file3d_converted',
@@ -290,4 +303,22 @@ export class BOMItemsController {
 
     return this.bomItemsService.update(id, updateData, user.id, token);
   }
+
+  @Put(':id/material')
+  @ApiOperation({ summary: 'Link or unlink material from BOM item' })
+  @ApiResponse({ status: 200, description: 'Material linked successfully' })
+  @ApiResponse({ status: 404, description: 'BOM item not found' })
+  async linkMaterial(
+    @Param('id') id: string,
+    @Body() body: { materialId: string | null },
+    @CurrentUser() user: any,
+    @AccessToken() token: string,
+  ): Promise<BOMItemResponseDto> {
+    // Convert null to undefined for Supabase compatibility
+    const updateData: any = {
+      materialId: body.materialId || undefined,
+    };
+    return this.bomItemsService.update(id, updateData, user.id, token);
+  }
 }
+

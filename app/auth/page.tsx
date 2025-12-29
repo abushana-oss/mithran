@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { useToast } from '@/hooks/use-toast'
+import { toast } from 'sonner'
 import { Loader2, Cog, ArrowRight } from 'lucide-react'
 
 export default function AuthPage() {
@@ -18,7 +18,6 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false)
   const { signIn, signUp } = useAuth()
   const router = useRouter()
-  const { toast } = useToast()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,11 +27,7 @@ export default function AuthPage() {
       if (isLogin) {
         const { error } = await signIn(email, password)
         if (error) {
-          toast({
-            title: 'Login failed',
-            description: error.message,
-            variant: 'destructive',
-          })
+          toast.error(`Login failed: ${error.message}`)
         } else {
           router.push('/')
           router.refresh()
@@ -40,16 +35,9 @@ export default function AuthPage() {
       } else {
         const { error } = await signUp(email, password, fullName)
         if (error) {
-          toast({
-            title: 'Sign up failed',
-            description: error.message,
-            variant: 'destructive',
-          })
+          toast.error(`Sign up failed: ${error.message}`)
         } else {
-          toast({
-            title: 'Account created',
-            description: 'You can now access the platform.',
-          })
+          toast.success('Account created! You can now access the platform.')
           router.push('/')
           router.refresh()
         }

@@ -22,6 +22,7 @@ export default function ProjectBOMList() {
   const id = params?.id || '';
   const router = useRouter();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [hasAutoRedirected, setHasAutoRedirected] = useState(false);
 
   const { data: project, isLoading: projectLoading } = useProject(id);
   const { data: bomsData, isLoading: bomsLoading, refetch } = useBOMs({ projectId: id });
@@ -29,14 +30,16 @@ export default function ProjectBOMList() {
 
   // Auto-redirect to first BOM if exists, or auto-open create dialog if no BOMs
   useEffect(() => {
-    if (!bomsLoading && boms.length > 0 && boms[0]) {
-      // Redirect to the first BOM
+    if (!bomsLoading && boms.length > 0 && boms[0] && !hasAutoRedirected) {
+      // Redirect to the first BOM (only once)
+      setHasAutoRedirected(true);
       router.push(`/projects/${id}/bom/${boms[0].id}`);
-    } else if (!bomsLoading && boms.length === 0 && !createDialogOpen) {
-      // Auto-open create dialog when no BOMs exist
+    } else if (!bomsLoading && boms.length === 0 && !createDialogOpen && !hasAutoRedirected) {
+      // Auto-open create dialog when no BOMs exist (only once)
+      setHasAutoRedirected(true);
       setCreateDialogOpen(true);
     }
-  }, [boms, bomsLoading, id, router, createDialogOpen]);
+  }, [boms, bomsLoading, id, router, createDialogOpen, hasAutoRedirected]);
 
   if (projectLoading) {
     return (
@@ -138,8 +141,13 @@ export default function ProjectBOMList() {
         </div>
       ) : (
         <div className="text-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
-          <p className="text-sm text-muted-foreground mt-4">Loading...</p>
+          <FileSpreadsheet className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <p className="text-lg font-medium mb-2">No BOMs yet</p>
+          <p className="text-sm text-muted-foreground mb-4">Create your first BOM to get started</p>
+          <Button onClick={() => setCreateDialogOpen(true)} size="lg" className="gap-2">
+            <Plus className="h-5 w-5" />
+            Create BOM
+          </Button>
         </div>
       )}
 

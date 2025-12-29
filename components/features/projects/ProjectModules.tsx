@@ -35,9 +35,8 @@ function ModuleCard({
       className={`transition-all duration-200 ${
         isDisabled
           ? 'opacity-60 cursor-not-allowed'
-          : 'cursor-pointer hover:shadow-lg hover:-translate-y-1'
+          : 'hover:shadow-lg hover:-translate-y-1'
       } ${borderColor}`}
-      onClick={!isDisabled ? onClick : undefined}
     >
       <CardHeader className="pb-4">
         <div className="flex items-start justify-between">
@@ -68,6 +67,7 @@ function ModuleCard({
           className="w-full gap-2 group"
           variant={isDisabled ? 'outline' : 'default'}
           disabled={isDisabled}
+          onClick={!isDisabled ? onClick : undefined}
         >
           {isDisabled ? (
             'Coming Soon'
@@ -117,10 +117,12 @@ export function ProjectModules({ projectId, bomCount, firstBomId }: ProjectModul
     },
     {
       title: 'Process Planning',
-      description: 'Define manufacturing processes, routing, and operation sequences for casting production',
+      description: 'Define manufacturing processes, material selection, and cost estimation for OEM and suppliers',
       borderColor: 'border-l-4 border-l-purple-500',
-      status: 'coming-soon' as const,
-      onClick: undefined,
+      status: 'available' as const,
+      onClick: () => {
+        router.push(`/projects/${projectId}/process-planning`);
+      },
     },
   ];
 

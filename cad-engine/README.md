@@ -121,14 +121,6 @@ docker run -p 5000:5000 mithran-cad-engine
 docker-compose up cad-engine
 ```
 
-## Mesh Quality Settings
-
-The converter uses these default settings:
-- **Linear deflection**: 0.1 (smaller = higher quality, larger file)
-- **Angular deflection**: 0.5 radians
-
-These values provide a good balance between quality and file size for most CAD models.
-
 ## Conversion Pipeline
 
 1. **STEP Parsing** - Read STEP file using `STEPControl_Reader`

@@ -13,6 +13,7 @@ export interface BOMItem {
   unit: string;
   material?: string;
   materialGrade?: string;
+  materialId?: string;
   makeBuy?: 'make' | 'buy';
   unitCost?: number;
   parentItemId?: string;

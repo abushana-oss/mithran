@@ -49,12 +49,13 @@ export class FileStorageService {
   private readonly ALLOWED_2D_EXTENSIONS = ['.pdf', '.dwg', '.dxf', '.png', '.jpg', '.jpeg'];
 
   constructor(private configService: ConfigService) {
-    const supabaseUrl = this.configService.get<string>('NEXT_PUBLIC_SUPABASE_URL');
+    // Backend uses server-side environment variables (not NEXT_PUBLIC_ prefix)
+    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
     const supabaseKey = this.configService.get<string>('SUPABASE_SERVICE_KEY');
 
     if (!supabaseUrl || !supabaseKey) {
       throw new InternalServerErrorException(
-        'Missing required Supabase environment variables: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_KEY must be set'
+        'Missing required Supabase environment variables: SUPABASE_URL and SUPABASE_SERVICE_KEY must be set'
       );
     }
 
