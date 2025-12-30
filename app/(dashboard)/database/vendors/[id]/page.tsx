@@ -37,7 +37,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import type { VendorEquipment } from '@/lib/api/vendors';
-import { EQUIPMENT_TYPES, getAllCategories, getEquipmentTypesByCategory } from '@/lib/constants/equipment-types';
+import { EQUIPMENT_TYPES, getAllCategories, getEquipmentTypesByCategory, getFieldsForCategory, type FieldConfig } from '@/lib/constants/equipment-types';
 
 type TabType = 'basic' | 'services' | 'equipment' | 'facility' | 'shared-rfqs' | 'qms' | 'users' | 'cnc-machining' | 'docs';
 
@@ -674,98 +674,83 @@ export default function VendorDetailPage() {
 
             <Separator />
 
-            {/* Equipment Details Form */}
+            {/* Equipment Details Form - Dynamic based on selected category */}
             <div className="space-y-4">
               <h3 className="text-base font-semibold">Equipment Details</h3>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Manufacturer</Label>
-                  <Input
-                    value={equipmentForm.manufacturer || ''}
-                    onChange={(e) => setEquipmentForm({ ...equipmentForm, manufacturer: e.target.value })}
-                    placeholder="Enter manufacturer"
-                  />
-                </div>
-                <div>
-                  <Label>Model</Label>
-                  <Input
-                    value={equipmentForm.model || ''}
-                    onChange={(e) => setEquipmentForm({ ...equipmentForm, model: e.target.value })}
-                    placeholder="Enter model"
-                  />
-                </div>
-                <div>
-                  <Label>Equipment Subtype</Label>
-                  <Input
-                    value={equipmentForm.equipmentSubtype || ''}
-                    onChange={(e) => setEquipmentForm({ ...equipmentForm, equipmentSubtype: e.target.value })}
-                    placeholder="e.g., VMC-5-Axis"
-                  />
-                </div>
-                <div>
-                  <Label>Quantity</Label>
-                  <Input
-                    type="number"
-                    value={equipmentForm.quantity || 0}
-                    onChange={(e) => setEquipmentForm({ ...equipmentForm, quantity: parseInt(e.target.value) || 0 })}
-                    placeholder="Enter quantity"
-                  />
-                </div>
-                <div>
-                  <Label>Year of Manufacture</Label>
-                  <Input
-                    type="number"
-                    value={equipmentForm.yearOfManufacture || ''}
-                    onChange={(e) => setEquipmentForm({ ...equipmentForm, yearOfManufacture: parseInt(e.target.value) || undefined })}
-                    placeholder="e.g., 2020"
-                  />
-                </div>
-                <div>
-                  <Label>Market Price</Label>
-                  <Input
-                    type="number"
-                    value={equipmentForm.marketPrice || ''}
-                    onChange={(e) => setEquipmentForm({ ...equipmentForm, marketPrice: parseFloat(e.target.value) || undefined })}
-                    placeholder="Enter market price"
-                  />
-                </div>
-                <div>
-                  <Label>Tonnage</Label>
-                  <Input
-                    type="number"
-                    value={equipmentForm.tonnage || ''}
-                    onChange={(e) => setEquipmentForm({ ...equipmentForm, tonnage: parseFloat(e.target.value) || undefined })}
-                    placeholder="Enter tonnage"
-                  />
-                </div>
-                <div>
-                  <Label>Bed Length (mm)</Label>
-                  <Input
-                    type="number"
-                    value={equipmentForm.bedSizeLengthMm || ''}
-                    onChange={(e) => setEquipmentForm({ ...equipmentForm, bedSizeLengthMm: parseFloat(e.target.value) || undefined })}
-                    placeholder="Enter bed length"
-                  />
-                </div>
-                <div>
-                  <Label>Bed Width (mm)</Label>
-                  <Input
-                    type="number"
-                    value={equipmentForm.bedSizeWidthMm || ''}
-                    onChange={(e) => setEquipmentForm({ ...equipmentForm, bedSizeWidthMm: parseFloat(e.target.value) || undefined })}
-                    placeholder="Enter bed width"
-                  />
-                </div>
-                <div>
-                  <Label>Bed Height (mm)</Label>
-                  <Input
-                    type="number"
-                    value={equipmentForm.bedSizeHeightMm || ''}
-                    onChange={(e) => setEquipmentForm({ ...equipmentForm, bedSizeHeightMm: parseFloat(e.target.value) || undefined })}
-                    placeholder="Enter bed height"
-                  />
-                </div>
+              <div className="space-y-4">
+                {(() => {
+                  const fields = getFieldsForCategory(selectedCategory);
+                  const groupedFields: Record<string, FieldConfig[]> = {};
+                  const ungroupedFields: FieldConfig[] = [];
+
+                  // Group fields
+                  fields.forEach(field => {
+                    if (field.group) {
+                      if (!groupedFields[field.group]) {
+                        groupedFields[field.group] = [];
+                      }
+                      groupedFields[field.group].push(field);
+                    } else {
+                      ungroupedFields.push(field);
+                    }
+                  });
+
+                  return (
+                    <>
+                      {/* Ungrouped fields in 2 columns */}
+                      {ungroupedFields.length > 0 && (
+                        <div className="grid grid-cols-2 gap-4">
+                          {ungroupedFields.map((field: FieldConfig) => (
+                            <div key={field.name}>
+                              <Label>{field.label}</Label>
+                              <Input
+                                type={field.type}
+                                value={(equipmentForm as any)[field.name] || ''}
+                                onChange={(e) => {
+                                  const value = field.type === 'number'
+                                    ? (e.target.value ? parseFloat(e.target.value) : undefined)
+                                    : e.target.value;
+                                  setEquipmentForm({ ...equipmentForm, [field.name]: value });
+                                }}
+                                placeholder={field.placeholder}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Grouped fields */}
+                      {Object.entries(groupedFields).map(([groupKey, groupFields]) => {
+                        const groupLabel = groupFields[0].groupLabel || groupKey;
+                        return (
+                          <div key={groupKey} className="space-y-2">
+                            <Label className="text-sm font-semibold">{groupLabel}</Label>
+                            <div className="grid grid-cols-3 gap-3 p-3 border rounded-md bg-muted/50">
+                              {groupFields.map((field: FieldConfig) => (
+                                <div key={field.name}>
+                                  <Label className="text-xs text-muted-foreground">{field.label}</Label>
+                                  <Input
+                                    type={field.type}
+                                    value={(equipmentForm as any)[field.name] || ''}
+                                    onChange={(e) => {
+                                      const value = field.type === 'number'
+                                        ? (e.target.value ? parseFloat(e.target.value) : undefined)
+                                        : e.target.value;
+                                      setEquipmentForm({ ...equipmentForm, [field.name]: value });
+                                    }}
+                                    placeholder={field.placeholder}
+                                    className="h-8 text-sm"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </>
+                  );
+                })()}
               </div>
             </div>
 

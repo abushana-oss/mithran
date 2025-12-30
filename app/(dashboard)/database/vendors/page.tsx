@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import type { Vendor, VendorQuery } from '@/lib/api/vendors';
 import { IndiaMap } from '@/components/ui/india-map';
 import { useCounterAnimation } from '@/hooks/use-counter-animation';
+import { EQUIPMENT_TYPES, getAllCategories, EQUIPMENT_CATEGORIES } from '@/lib/constants/equipment-types';
 
 export default function VendorsPage() {
   const router = useRouter();
@@ -26,6 +27,9 @@ export default function VendorsPage() {
   const [selectedProcess, setSelectedProcess] = useState<string>('');
   const [selectedEquipmentType, setSelectedEquipmentType] = useState<string>('');
   const [minTonnage, setMinTonnage] = useState<string>('');
+  const [minBedLength, setMinBedLength] = useState<string>('');
+  const [minBedWidth, setMinBedWidth] = useState<string>('');
+  const [minBedHeight, setMinBedHeight] = useState<string>('');
 
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -558,42 +562,12 @@ export default function VendorsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex gap-4 h-64">
-              {/* India Map */}
-              <div className="flex-1">
-                <IndiaMap
-                  stateData={Object.fromEntries(stats.byLocation)}
-                  className="h-full"
-                  showLegend={false}
-                />
-              </div>
-
-              {/* Vertical Legend */}
-              <div className="flex flex-col justify-center gap-4 min-w-[120px]">
-                <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground text-center">
-                    Supplier Density
-                  </div>
-                  <div className="flex flex-col items-center gap-2">
-                    <span className="text-xs text-muted-foreground">High</span>
-                    <div className="flex flex-col gap-0.5 w-12">
-                      <div className="h-6 rounded-t" style={{ backgroundColor: 'rgb(37, 99, 235)' }} />
-                      <div className="h-6" style={{ backgroundColor: 'rgb(59, 130, 246)' }} />
-                      <div className="h-6" style={{ backgroundColor: 'rgb(96, 165, 250)' }} />
-                      <div className="h-6" style={{ backgroundColor: 'rgb(147, 197, 253)' }} />
-                      <div className="h-6 rounded-b" style={{ backgroundColor: 'rgb(219, 234, 254)' }} />
-                    </div>
-                    <span className="text-xs text-muted-foreground">Low</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col items-center gap-2 text-xs border-t pt-4">
-                  <div className="w-3 h-3 rounded-full bg-red-600" />
-                  <div className="text-muted-foreground text-center leading-tight">
-                    City<br />markers
-                  </div>
-                </div>
-              </div>
+            <div className="h-80">
+              <IndiaMap
+                stateData={Object.fromEntries(stats.byLocation)}
+                className="h-full"
+                showLegend={true}
+              />
             </div>
           </CardContent>
         </Card>
@@ -700,6 +674,9 @@ export default function VendorsPage() {
                 setSelectedEquipmentType('all');
                 setSearchTerm('');
                 setMinTonnage('');
+                setMinBedLength('');
+                setMinBedWidth('');
+                setMinBedHeight('');
               }}
             >
               Clear All Filters
@@ -731,7 +708,7 @@ export default function VendorsPage() {
               <CardDescription>Filter by equipment specifications</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Process</label>
                   <Select value={selectedProcess || 'all'} onValueChange={setSelectedProcess}>
@@ -753,27 +730,87 @@ export default function VendorsPage() {
                     <SelectTrigger>
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-[400px]">
                       <SelectItem value="all">All Types</SelectItem>
-                      {equipmentTypes && equipmentTypes.length > 0 ? (
-                        equipmentTypes.map(type => (
-                          <SelectItem key={type} value={type}>{type}</SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="no-types" disabled>No equipment types found</SelectItem>
-                      )}
+                      {getAllCategories().map((category) => {
+                        const categoryEquipment = EQUIPMENT_TYPES.filter(eq => eq.category === category);
+                        if (categoryEquipment.length === 0) return null;
+
+                        return (
+                          <div key={category}>
+                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground bg-muted/50 sticky top-0">
+                              {category}
+                            </div>
+                            {categoryEquipment
+                              .sort((a, b) => a.name.localeCompare(b.name))
+                              .map(eq => (
+                                <SelectItem key={eq.id} value={eq.name} className="pl-6">
+                                  {eq.name}
+                                </SelectItem>
+                              ))
+                            }
+                          </div>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Min Tonnage</label>
-                  <Input
-                    type="number"
-                    placeholder="e.g., 40"
-                    value={minTonnage}
-                    onChange={(e) => setMinTonnage(e.target.value)}
-                  />
+              <Separator />
+
+              {/* Selection Criteria */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Selection Criteria</label>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 p-3 border rounded-md bg-muted/30">
+                  {/* Tonnage */}
+                  <div>
+                    <label className="text-xs text-muted-foreground">Tonnage (tons)</label>
+                    <Input
+                      type="number"
+                      placeholder="40"
+                      value={minTonnage}
+                      onChange={(e) => setMinTonnage(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+
+                  {/* Bed Size - Length */}
+                  <div>
+                    <label className="text-xs text-muted-foreground">Length (mm)</label>
+                    <Input
+                      type="number"
+                      placeholder="1000"
+                      value={minBedLength}
+                      onChange={(e) => setMinBedLength(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+
+                  {/* Bed Size - Width */}
+                  <div>
+                    <label className="text-xs text-muted-foreground">Width (mm)</label>
+                    <Input
+                      type="number"
+                      placeholder="500"
+                      value={minBedWidth}
+                      onChange={(e) => setMinBedWidth(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+
+                  {/* Bed Size - Height */}
+                  <div>
+                    <label className="text-xs text-muted-foreground">Height (mm)</label>
+                    <Input
+                      type="number"
+                      placeholder="600"
+                      value={minBedHeight}
+                      onChange={(e) => setMinBedHeight(e.target.value)}
+                      className="h-8 text-sm"
+                    />
+                  </div>
                 </div>
               </div>
             </CardContent>

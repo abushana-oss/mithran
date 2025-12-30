@@ -83,6 +83,7 @@ export type VendorEquipment = {
   bedSizeWidthMm?: number;
   bedSizeHeightMm?: number;
   tonnage?: number;
+  process?: string;
   quantity?: number;
   yearOfManufacture?: number;
   marketPrice?: number;

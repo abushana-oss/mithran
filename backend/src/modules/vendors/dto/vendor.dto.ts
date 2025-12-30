@@ -363,6 +363,11 @@ export class CreateVendorEquipmentDto {
   @IsNumber()
   tonnage?: number;
 
+  @ApiPropertyOptional({ example: 'Milling' })
+  @IsOptional()
+  @IsString()
+  process?: string;
+
   @ApiPropertyOptional({ example: 2 })
   @IsOptional()
   @IsNumber()
