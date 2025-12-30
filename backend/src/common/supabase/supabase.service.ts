@@ -60,6 +60,8 @@ export class SupabaseService {
       throw new UnauthorizedException(`Invalid token: ${error.message}`);
     }
 
+    // Authorization is handled by RLS policies in Supabase
+    // No need to check authorized_users here - the database will enforce it
     return data.user;
   }
 }

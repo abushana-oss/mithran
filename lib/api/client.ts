@@ -7,9 +7,11 @@
  * - Token refresh mechanism
  * - Request deduplication
  * - Proper error handling
+ * - Supabase authentication integration
  */
 
 import { config } from '../config';
+import { supabase } from '../supabase/client';
 
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -89,6 +91,24 @@ class ApiClient {
 
   getAccessToken(): string | null {
     return this.accessToken;
+  }
+
+  /**
+   * Get Supabase session token if available
+   * @returns Promise resolving to access token or null
+   */
+  async getSupabaseToken(): Promise<string | null> {
+    if (!supabase) {
+      return null;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      return session?.access_token || null;
+    } catch (error) {
+      console.warn('[API] Failed to get Supabase session:', error);
+      return null;
+    }
   }
 
   addRequestInterceptor(interceptor: RequestInterceptor) {
@@ -176,7 +196,13 @@ class ApiClient {
     }
 
     const executeRequest = async (attemptNumber = 1): Promise<T> => {
-      const token = this.getAccessToken();
+      // Try to get token from old auth or Supabase
+      let token = this.getAccessToken();
+
+      if (!token) {
+        token = await this.getSupabaseToken();
+      }
+
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
@@ -234,12 +260,26 @@ class ApiClient {
           });
         }
 
-        // Handle 401 Unauthorized - try to refresh token
+        // Handle 401 Unauthorized - try to refresh Supabase session
         if (response.status === 401 && retry && attemptNumber === 1) {
+          if (supabase) {
+            try {
+              const { data: { session }, error } = await supabase.auth.refreshSession();
+              if (!error && session?.access_token) {
+                // Retry with new token
+                return executeRequest(attemptNumber + 1);
+              }
+            } catch (error) {
+              console.warn('[API] Session refresh failed:', error);
+            }
+          }
+
+          // Fallback to old token refresh if still using it
           const refreshed = await this.refreshAccessToken();
           if (refreshed) {
             return executeRequest(attemptNumber + 1);
           }
+
           // Token refresh failed - clear tokens and let auth provider handle redirect
           this.setAccessToken(null);
           this.setRefreshToken(null);
