@@ -37,7 +37,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import type { VendorEquipment } from '@/lib/api/vendors';
-import { EQUIPMENT_TYPES, getAllCategories, getEquipmentTypesByCategory, getFieldsForCategory, type FieldConfig, type EquipmentCategory } from '@/lib/constants/equipment-types';
+import { EQUIPMENT_TYPES, EQUIPMENT_CATEGORIES, getAllCategories, getEquipmentTypesByCategory, getFieldsForCategory, type FieldConfig, type EquipmentCategory } from '@/lib/constants/equipment-types';
 
 type TabType = 'basic' | 'services' | 'equipment' | 'facility' | 'shared-rfqs' | 'qms' | 'users' | 'cnc-machining' | 'docs';
 
@@ -51,7 +51,7 @@ export default function VendorDetailPage() {
   const [equipmentSheetOpen, setEquipmentSheetOpen] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState<VendorEquipment | null>(null);
   const [equipmentForm, setEquipmentForm] = useState<Partial<VendorEquipment>>({});
-  const [selectedCategory, setSelectedCategory] = useState<EquipmentCategory>(getAllCategories()[0]!);
+  const [selectedCategory, setSelectedCategory] = useState<EquipmentCategory>(getAllCategories()[0] ?? EQUIPMENT_CATEGORIES.RAW_MATERIAL);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
 
@@ -680,7 +680,8 @@ export default function VendorDetailPage() {
 
               <div className="space-y-4">
                 {(() => {
-                  const fields = getFieldsForCategory(selectedCategory);
+                  const category = selectedCategory ?? EQUIPMENT_CATEGORIES.RAW_MATERIAL;
+                  const fields = getFieldsForCategory(category);
                   const groupedFields: Record<string, FieldConfig[]> = {};
                   const ungroupedFields: FieldConfig[] = [];
 
