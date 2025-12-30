@@ -9,13 +9,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { useVendors, useUploadVendorsCsv, useDeleteAllVendors, useEquipmentTypes, useCreateVendor } from '@/lib/api/hooks/useVendors';
+import { useVendors, useUploadVendorsCsv, useDeleteAllVendors, useCreateVendor } from '@/lib/api/hooks/useVendors';
 import { Plus, Search, Upload, MapPin, Factory, Award, Filter, Trash2, ExternalLink, TrendingUp, X } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Vendor, VendorQuery } from '@/lib/api/vendors';
+import type { VendorQuery, CreateVendorData } from '@/lib/api/vendors';
 import { IndiaMap } from '@/components/ui/india-map';
 import { useCounterAnimation } from '@/hooks/use-counter-animation';
-import { EQUIPMENT_TYPES, getAllCategories, EQUIPMENT_CATEGORIES } from '@/lib/constants/equipment-types';
+import { EQUIPMENT_TYPES, getAllCategories } from '@/lib/constants/equipment-types';
 
 export default function VendorsPage() {
   const router = useRouter();
@@ -34,7 +34,7 @@ export default function VendorsPage() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [newVendorData, setNewVendorData] = useState({
+  const [newVendorData, setNewVendorData] = useState<CreateVendorData>({
     name: '',
     supplierCode: '',
     addresses: '',
@@ -44,8 +44,8 @@ export default function VendorsPage() {
     website: '',
     companyPhone: '',
     companyEmail: '',
-    status: 'active' as const,
-    vendorType: 'supplier' as const,
+    status: 'active',
+    vendorType: 'supplier',
     industries: [] as string[],
     process: [] as string[],
     certifications: [] as string[],
@@ -83,9 +83,6 @@ export default function VendorsPage() {
   // Get all vendors (unfiltered) for filter options
   const { data: allVendorsData } = useVendors({ limit: 1000 });
   const allVendors = allVendorsData?.vendors || [];
-
-  // Get all equipment types
-  const { data: equipmentTypes } = useEquipmentTypes();
 
   const uploadCsvMutation = useUploadVendorsCsv();
   const deleteAllMutation = useDeleteAllVendors();
@@ -192,7 +189,7 @@ export default function VendorsPage() {
   };
 
   const handleCreateVendor = () => {
-    if (!newVendorData.name.trim()) {
+    if (!(newVendorData.name ?? '').trim()) {
       toast.error('Supplier name is required');
       return;
     }
@@ -228,10 +225,10 @@ export default function VendorsPage() {
 
   const addIndustry = () => {
     const value = industryInput.trim();
-    if (value && !newVendorData.industries.includes(value)) {
+    if (value && !(newVendorData.industries ?? []).includes(value)) {
       setNewVendorData({
         ...newVendorData,
-        industries: [...newVendorData.industries, value],
+        industries: [...(newVendorData.industries ?? []), value],
       });
       setIndustryInput('');
     }
@@ -240,16 +237,16 @@ export default function VendorsPage() {
   const removeIndustry = (industry: string) => {
     setNewVendorData({
       ...newVendorData,
-      industries: newVendorData.industries.filter(i => i !== industry),
+      industries: (newVendorData.industries ?? []).filter(i => i !== industry),
     });
   };
 
   const addProcess = () => {
     const value = processInput.trim();
-    if (value && !newVendorData.process.includes(value)) {
+    if (value && !(newVendorData.process ?? []).includes(value)) {
       setNewVendorData({
         ...newVendorData,
-        process: [...newVendorData.process, value],
+        process: [...(newVendorData.process ?? []), value],
       });
       setProcessInput('');
     }
@@ -258,16 +255,16 @@ export default function VendorsPage() {
   const removeProcess = (process: string) => {
     setNewVendorData({
       ...newVendorData,
-      process: newVendorData.process.filter(p => p !== process),
+      process: (newVendorData.process ?? []).filter(p => p !== process),
     });
   };
 
   const addCertification = () => {
     const value = certificationInput.trim();
-    if (value && !newVendorData.certifications.includes(value)) {
+    if (value && !(newVendorData.certifications ?? []).includes(value)) {
       setNewVendorData({
         ...newVendorData,
-        certifications: [...newVendorData.certifications, value],
+        certifications: [...(newVendorData.certifications ?? []), value],
       });
       setCertificationInput('');
     }
@@ -276,7 +273,7 @@ export default function VendorsPage() {
   const removeCertification = (cert: string) => {
     setNewVendorData({
       ...newVendorData,
-      certifications: newVendorData.certifications.filter(c => c !== cert),
+      certifications: (newVendorData.certifications ?? []).filter(c => c !== cert),
     });
   };
 
@@ -324,10 +321,8 @@ export default function VendorsPage() {
   };
 
   const availableCities = useMemo(() => {
-    if (newVendorData.state && citiesByState[newVendorData.state]) {
-      return citiesByState[newVendorData.state];
-    }
-    return [];
+    const list = newVendorData.state ? citiesByState[newVendorData.state] : undefined;
+    return list ?? [];
   }, [newVendorData.state]);
 
   return (
@@ -1146,9 +1141,9 @@ export default function VendorsPage() {
                     Add
                   </Button>
                 </div>
-                {newVendorData.industries.length > 0 && (
+                {(newVendorData.industries ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-2">
-                    {newVendorData.industries.map((industry) => (
+                    {(newVendorData.industries ?? []).map((industry) => (
                       <Badge key={industry} variant="secondary" className="gap-1">
                         {industry}
                         <X
@@ -1184,9 +1179,9 @@ export default function VendorsPage() {
                     Add
                   </Button>
                 </div>
-                {newVendorData.process.length > 0 && (
+                {(newVendorData.process ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-2">
-                    {newVendorData.process.map((process) => (
+                    {(newVendorData.process ?? []).map((process) => (
                       <Badge key={process} variant="secondary" className="gap-1">
                         {process}
                         <X
@@ -1222,9 +1217,9 @@ export default function VendorsPage() {
                     Add
                   </Button>
                 </div>
-                {newVendorData.certifications.length > 0 && (
+                {(newVendorData.certifications ?? []).length > 0 && (
                   <div className="flex flex-wrap gap-2">
-                    {newVendorData.certifications.map((cert) => (
+                    {(newVendorData.certifications ?? []).map((cert) => (
                       <Badge key={cert} variant="secondary" className="gap-1">
                         {cert}
                         <X

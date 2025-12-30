@@ -3,12 +3,10 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Plus,
-  Settings,
   DollarSign,
   Clock,
   FileText,
@@ -16,8 +14,7 @@ import {
   Calculator,
   Layers
 } from 'lucide-react';
-import { useProcessRoutes, useDeleteProcessRoute, useCalculateRouteCost, type ProcessRoute } from '@/lib/api/hooks/useProcessRoutes';
-import { useMaterials, useLinkMaterialToBOMItem, type Material } from '@/lib/api/hooks/useMaterials';
+import { useProcessRoutes, useDeleteProcessRoute, useCalculateRouteCost } from '@/lib/api/hooks/useProcessRoutes';
 import { ProcessRouteDialog } from './ProcessRouteDialog';
 import { ProcessStepsList } from './ProcessStepsList';
 import { MaterialSelectionCard } from './MaterialSelectionCard';
@@ -29,7 +26,6 @@ interface ProcessRoutingPanelProps {
 
 export function ProcessRoutingPanel({ bomItemId, currentMaterialId }: ProcessRoutingPanelProps) {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
 
   const { data: routesData, isLoading: routesLoading } = useProcessRoutes({ bomItemId });
   const routes = routesData?.routes || [];

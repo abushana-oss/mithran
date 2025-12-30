@@ -37,7 +37,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import type { VendorEquipment } from '@/lib/api/vendors';
-import { EQUIPMENT_TYPES, getAllCategories, getEquipmentTypesByCategory, getFieldsForCategory, type FieldConfig } from '@/lib/constants/equipment-types';
+import { EQUIPMENT_TYPES, getAllCategories, getEquipmentTypesByCategory, getFieldsForCategory, type FieldConfig, type EquipmentCategory } from '@/lib/constants/equipment-types';
 
 type TabType = 'basic' | 'services' | 'equipment' | 'facility' | 'shared-rfqs' | 'qms' | 'users' | 'cnc-machining' | 'docs';
 
@@ -51,7 +51,7 @@ export default function VendorDetailPage() {
   const [equipmentSheetOpen, setEquipmentSheetOpen] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState<VendorEquipment | null>(null);
   const [equipmentForm, setEquipmentForm] = useState<Partial<VendorEquipment>>({});
-  const [selectedCategory, setSelectedCategory] = useState(getAllCategories()[0]);
+  const [selectedCategory, setSelectedCategory] = useState<EquipmentCategory>(getAllCategories()[0]!);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
 
@@ -624,7 +624,7 @@ export default function VendorDetailPage() {
             {/* Equipment Type Selector with Tabs */}
             <div>
               <Label className="text-base font-semibold">Select Equipment Type</Label>
-              <Tabs value={selectedCategory} onValueChange={(val) => setSelectedCategory(val as any)} className="mt-3">
+              <Tabs value={selectedCategory} onValueChange={(val) => setSelectedCategory(val as EquipmentCategory)} className="mt-3">
                 {/* Scrollable tabs list */}
                 <div className="relative mb-4 overflow-x-auto">
                   <TabsList className="inline-flex w-max min-w-full">
@@ -687,10 +687,8 @@ export default function VendorDetailPage() {
                   // Group fields
                   fields.forEach(field => {
                     if (field.group) {
-                      if (!groupedFields[field.group]) {
-                        groupedFields[field.group] = [];
-                      }
-                      groupedFields[field.group].push(field);
+                      const groupKey = field.group!;
+                      (groupedFields[groupKey] ??= []).push(field);
                     } else {
                       ungroupedFields.push(field);
                     }
@@ -722,7 +720,7 @@ export default function VendorDetailPage() {
 
                       {/* Grouped fields */}
                       {Object.entries(groupedFields).map(([groupKey, groupFields]) => {
-                        const groupLabel = groupFields[0].groupLabel || groupKey;
+                        const groupLabel = groupFields[0]?.groupLabel || groupKey;
                         return (
                           <div key={groupKey} className="space-y-2">
                             <Label className="text-sm font-semibold">{groupLabel}</Label>

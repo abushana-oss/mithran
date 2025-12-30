@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { authApi, type AuthUser, apiClient } from '@/lib/api'
+import { type AuthUser, apiClient } from '@/lib/api'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase/client'
 

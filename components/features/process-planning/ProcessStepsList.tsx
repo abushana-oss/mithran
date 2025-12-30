@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Trash2, Edit, DollarSign, Clock } from 'lucide-react';
+import { Plus, Trash2, Edit } from 'lucide-react';
 import { useDeleteRouteStep, type ProcessRouteStep } from '@/lib/api/hooks/useProcessRoutes';
 import { ProcessStepDialog } from './ProcessStepDialog';
 

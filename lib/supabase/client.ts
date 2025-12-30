@@ -4,7 +4,6 @@
  * Initializes and exports the Supabase client for browser usage
  */
 
-import { createClient } from '@supabase/supabase-js'
 import { createBrowserClient } from '@supabase/ssr'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''

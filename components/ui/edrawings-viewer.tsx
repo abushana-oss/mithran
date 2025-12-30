@@ -13,7 +13,6 @@ import { Slider } from '@/components/ui/slider';
 import {
   Home,
   Download,
-  Ruler,
   Eye,
   Box,
   Grid3x3,
@@ -21,9 +20,7 @@ import {
   Maximize,
   Play,
   Pause,
-  RotateCw,
   Slice,
-  Boxes,
   Square,
   PanelRightClose,
   PanelRightOpen,
@@ -393,7 +390,6 @@ export function EDrawingsViewer({ fileUrl, fileName }: EDrawingsViewerProps) {
   const [loading, setLoading] = useState(true);
   const [modelColor, setModelColor] = useState('#3b82f6');
   const [showGrid, setShowGrid] = useState(true);
-  const [showMeasurements, setShowMeasurements] = useState(true);
   const [currentView, setCurrentView] = useState<string>('home');
   const [cameraDistance, setCameraDistance] = useState(5);
   const [autoFit, setAutoFit] = useState(true);

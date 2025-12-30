@@ -157,13 +157,11 @@ export function useMaterialsGrouped(params?: QueryMaterialsParams) {
       const grouped: MaterialGroupedByType = {};
 
       response.materials.forEach((material) => {
-        if (!grouped[material.materialGroup]) {
-          grouped[material.materialGroup] = {};
-        }
-        if (!grouped[material.materialGroup][material.material]) {
-          grouped[material.materialGroup][material.material] = [];
-        }
-        grouped[material.materialGroup][material.material].push(material);
+        const groupKey = material.materialGroup;
+        const typeKey = material.material;
+        const group = (grouped[groupKey] ??= {});
+        const list = (group[typeKey] ??= []);
+        list.push(material);
       });
 
       return grouped;

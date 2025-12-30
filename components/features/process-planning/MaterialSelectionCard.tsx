@@ -3,7 +3,6 @@
 import { useState, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import {
@@ -107,13 +106,11 @@ export function MaterialSelectionCard({ bomItemId, currentMaterialId }: Material
     const grouped: Record<string, Record<string, Material[]>> = {};
 
     materials.forEach((mat) => {
-      if (!grouped[mat.materialGroup]) {
-        grouped[mat.materialGroup] = {};
-      }
-      if (!grouped[mat.materialGroup][mat.material]) {
-        grouped[mat.materialGroup][mat.material] = [];
-      }
-      grouped[mat.materialGroup][mat.material].push(mat);
+      const groupKey = mat.materialGroup;
+      const typeKey = mat.material;
+      const group = (grouped[groupKey] ??= {});
+      const list = (group[typeKey] ??= []);
+      list.push(mat);
     });
 
     return grouped;
@@ -283,8 +280,8 @@ export function MaterialSelectionCard({ bomItemId, currentMaterialId }: Material
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="">All Locations</SelectItem>
-                          {filterOptions.locations.map((loc) => (
-                            <SelectItem key={loc} value={loc}>
+                          {filterOptions.locations.filter(Boolean).map((loc) => (
+                            <SelectItem key={loc as string} value={loc as string}>
                               {loc}
                             </SelectItem>
                           ))}
