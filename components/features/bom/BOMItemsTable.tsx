@@ -218,84 +218,87 @@ export function BOMItemsTable({ bomId, onEditItem, onAddChildItem }: BOMItemsTab
     <>
       {/* Render All Items as Flat Cards */}
       <div className="space-y-4">
-          {items.map((item) => (
-            <div
-              key={item.id}
-              className={`rounded-lg border bg-card text-card-foreground shadow-sm border-l-4 ${getBorderColor(item.itemType)}`}
-            >
-              <div className="flex flex-col space-y-1.5 p-6 pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-4 flex-1">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Package className="h-5 w-5 text-emerald-600 flex-shrink-0" />
-                        <h3 className="tracking-tight text-lg font-semibold text-foreground truncate">
-                          {item.name}
-                        </h3>
-                        {getItemTypeBadge(item.itemType)}
-                      </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-                        <div className="text-sm">
-                          <p className="text-muted-foreground text-xs mb-0.5">Part Number</p>
-                          <p className="font-medium text-foreground">{item.partNumber || '—'}</p>
-                        </div>
-                        <div className="text-sm">
-                          <p className="text-muted-foreground text-xs mb-0.5">Quantity</p>
-                          <p className="font-medium text-foreground">{item.quantity} {item.unit}</p>
-                        </div>
-                        <div className="text-sm">
-                          <p className="text-muted-foreground text-xs mb-0.5">Annual Volume</p>
-                          <p className="font-medium text-foreground">{item.annualVolume.toLocaleString()}</p>
-                        </div>
-                        <div className="text-sm">
-                          <p className="text-muted-foreground text-xs mb-0.5">Material</p>
-                          <p className="font-medium text-foreground truncate" title={item.materialGrade || '—'}>
-                            {item.materialGrade || '—'}
-                          </p>
-                        </div>
-                      </div>
-                      {item.description && (
-                        <div className="text-sm mt-3">
-                          <p className="text-muted-foreground text-xs mb-0.5">Description</p>
-                          <p className="font-medium text-foreground">{item.description}</p>
-                        </div>
-                      )}
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className={`rounded-lg border bg-card text-card-foreground shadow-sm border-l-4 ${getBorderColor(item.itemType)}`}
+          >
+            <div className="flex flex-col space-y-1.5 p-6 pb-3">
+              <div className="flex flex-col md:flex-row items-start justify-between gap-4">
+                <div className="flex items-start gap-4 flex-1 w-full">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <Package className="h-5 w-5 text-emerald-600 flex-shrink-0" />
+                      <h3 className="tracking-tight text-lg font-semibold text-foreground truncate max-w-[200px] md:max-w-none">
+                        {item.name}
+                      </h3>
+                      {getItemTypeBadge(item.itemType)}
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 ml-4">
-                    {getChildType(item.itemType) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleAddChild(item)}
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add Component
-                      </Button>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+                      <div className="text-sm">
+                        <p className="text-muted-foreground text-xs mb-0.5">Part Number</p>
+                        <p className="font-medium text-foreground truncate">{item.partNumber || '—'}</p>
+                      </div>
+                      <div className="text-sm">
+                        <p className="text-muted-foreground text-xs mb-0.5">Quantity</p>
+                        <p className="font-medium text-foreground truncate">{item.quantity} {item.unit}</p>
+                      </div>
+                      <div className="text-sm">
+                        <p className="text-muted-foreground text-xs mb-0.5">Annual Volume</p>
+                        <p className="font-medium text-foreground truncate">{item.annualVolume.toLocaleString()}</p>
+                      </div>
+                      <div className="text-sm">
+                        <p className="text-muted-foreground text-xs mb-0.5">Material</p>
+                        <p className="font-medium text-foreground truncate" title={item.materialGrade || '—'}>
+                          {item.materialGrade || '—'}
+                        </p>
+                      </div>
+                    </div>
+                    {item.description && (
+                      <div className="text-sm mt-3">
+                        <p className="text-muted-foreground text-xs mb-0.5">Description</p>
+                        <p className="font-medium text-foreground line-clamp-2 md:line-clamp-none">{item.description}</p>
+                      </div>
                     )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onEditItem(item)}
-                    >
-                      <Edit2 className="h-4 w-4 mr-1" />
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => handleDeleteClick(item)}
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      Delete
-                    </Button>
                   </div>
+                </div>
+                <div className="flex items-center gap-2 w-full md:w-auto justify-end md:ml-4 pt-2 md:pt-0 border-t md:border-t-0 mt-2 md:mt-0">
+                  {getChildType(item.itemType) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleAddChild(item)}
+                      className="flex-1 md:flex-none"
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      <span className="md:hidden lg:inline">Add Part</span>
+                      <span className="hidden md:inline lg:hidden">Add</span>
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onEditItem(item)}
+                    className="flex-1 md:flex-none"
+                  >
+                    <Edit2 className="h-4 w-4 mr-1" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10 flex-1 md:flex-none"
+                    onClick={() => handleDeleteClick(item)}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    Delete
+                  </Button>
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
+      </div>
 
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>

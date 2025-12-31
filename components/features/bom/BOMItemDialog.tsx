@@ -285,7 +285,7 @@ export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess, pare
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="file2d">2D Drawing (PDF, PNG, JPG)</Label>
                 <Input
@@ -313,7 +313,7 @@ export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess, pare
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="quantity">Quantity *</Label>
                 <Input
@@ -339,7 +339,7 @@ export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess, pare
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="unit">UOM</Label>
                 <Select

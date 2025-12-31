@@ -98,9 +98,9 @@ export function BOMItemsFlat({ bomId, onEditItem, onViewItem, onAddChildItem }: 
           className={`rounded-md border bg-card text-card-foreground shadow-sm border-l-4 ${getBorderColor(item.itemType)}`}
         >
           <div className="p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-2">
+            <div className="flex flex-col md:flex-row items-start justify-between gap-3">
+              <div className="flex-1 min-w-0 w-full">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
                   {hasChildren && (
                     <Button
                       variant="ghost"
@@ -115,12 +115,12 @@ export function BOMItemsFlat({ bomId, onEditItem, onViewItem, onAddChildItem }: 
                       )}
                     </Button>
                   )}
-                  <h3 className="text-base font-semibold text-foreground truncate">
+                  <h3 className="text-base font-semibold text-foreground truncate max-w-[200px] md:max-w-none">
                     {item.name}
                   </h3>
                   {getItemTypeBadge(item.itemType)}
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-1.5 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-1.5 text-xs">
                   <div>
                     <span className="text-muted-foreground">Part No: </span>
                     <span className="font-medium">{item.partNumber || '—'}</span>
@@ -131,7 +131,7 @@ export function BOMItemsFlat({ bomId, onEditItem, onViewItem, onAddChildItem }: 
                   </div>
                   <div>
                     <span className="text-muted-foreground">Description: </span>
-                    <span className="font-medium">{item.description || '—'}</span>
+                    <span className="font-medium truncate block" title={item.description || ''}>{item.description || '—'}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">UOM: </span>
@@ -163,7 +163,7 @@ export function BOMItemsFlat({ bomId, onEditItem, onViewItem, onAddChildItem }: 
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto justify-end mt-4 md:mt-0">
                 {item.file2dPath && (
                   <Button
                     variant="outline"

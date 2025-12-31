@@ -289,7 +289,7 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="bomVersion">Version</Label>
                   <Input
@@ -348,9 +348,9 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
               </div>
             </div>
 
-            <div className="space-y-3 pl-10">
+            <div className={`space-y-3 pl-2 md:pl-10`}>
               {items.map((item, _index) => (
-                <div key={item.id} className={`border rounded-lg p-4 ${item.itemType === BOMItemType.SUB_ASSEMBLY ? 'ml-6' : item.itemType === BOMItemType.CHILD_PART ? 'ml-12' : ''}`}>
+                <div key={item.id} className={`border rounded-lg p-4 ${item.itemType === BOMItemType.SUB_ASSEMBLY ? 'ml-2 md:ml-6' : item.itemType === BOMItemType.CHILD_PART ? 'ml-4 md:ml-12' : ''}`}>
                   <div className="flex items-start gap-3 mb-3">
                     <Package className="h-5 w-5 mt-1 text-muted-foreground flex-shrink-0" />
                     <div className="flex-1 space-y-3">
@@ -362,7 +362,8 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
                           className="font-medium"
                         />
                         <div className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap ${getItemTypeColor(item.itemType)}`}>
-                          {ITEM_TYPE_LABELS[item.itemType]}
+                          <span className="hidden sm:inline">{ITEM_TYPE_LABELS[item.itemType]}</span>
+                          <span className="sm:hidden">{ITEM_TYPE_LABELS[item.itemType].split('-')[0].substring(0, 4)}</span>
                         </div>
                         {items.length > 1 && (
                           <Button
@@ -377,7 +378,7 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
                         )}
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <Input
                           placeholder="Part Number"
                           value={item.partNumber}
@@ -397,7 +398,7 @@ export function BOMCreateDialog({ projectId, open, onOpenChange, onSuccess }: BO
                         rows={2}
                       />
 
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
                           <Label className="text-xs mb-1">Quantity</Label>
                           <Input
