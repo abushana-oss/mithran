@@ -1,10 +1,10 @@
 # Database Setup Guide
 
-This document provides comprehensive instructions for setting up the Mithran platform database.
+This document provides comprehensive instructions for setting up the EMITHRAN platform database.
 
 ## Overview
 
-The Mithran platform uses **Supabase** (PostgreSQL) as its primary database. The backend connects to Supabase using both:
+The EMITHRAN platform uses **Supabase** (PostgreSQL) as its primary database. The backend connects to Supabase using both:
 - **Supabase Client SDK** - For RLS-enabled operations with user authentication
 - **Direct PostgreSQL Connection** - For administrative tasks and migrations
 
@@ -21,7 +21,7 @@ The Mithran platform uses **Supabase** (PostgreSQL) as its primary database. The
 1. Go to [supabase.com/dashboard](https://supabase.com/dashboard)
 2. Click **"New Project"**
 3. Fill in project details:
-   - **Name**: mithran-platform (or your preferred name)
+   - **Name**: EMITHRAN-platform (or your preferred name)
    - **Database Password**: Create a strong password (save this!)
    - **Region**: Choose closest to your users
 4. Click **"Create new project"** and wait for provisioning (~2 minutes)

@@ -1,5 +1,5 @@
 /**
- * API Client for Mithran Microservices
+ * API Client for EMITHRAN Microservices
  *
  * Production-grade API client with:
  * - Automatic retry with exponential backoff
@@ -376,7 +376,12 @@ class ApiClient {
   async uploadFiles<T>(endpoint: string, formData: FormData, options: { timeout?: number } = {}): Promise<T> {
     const { timeout = 30000 } = options;
     const url = `${this.baseUrl}${endpoint}`;
-    const token = this.getAccessToken();
+
+    // Try to get token from old auth or Supabase (same as request method)
+    let token = this.getAccessToken();
+    if (!token) {
+      token = await this.getSupabaseToken();
+    }
 
     const headers: Record<string, string> = {};
     if (token) {
@@ -397,16 +402,22 @@ class ApiClient {
         });
       }
 
-      const contentType = response.headers.get('content-type');
+
       let data: any;
 
-      if (contentType && contentType.includes('application/json')) {
-        data = await response.json();
-      } else {
-        data = await response.text();
+      const responseText = await response.text();
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        data = { message: responseText };
       }
 
       if (!response.ok) {
+        console.error('[API] Upload failed details:', {
+          status: response.status,
+          data
+        });
+
         throw new ApiError(
           data?.error?.message || data?.message || 'Upload failed',
           response.status,

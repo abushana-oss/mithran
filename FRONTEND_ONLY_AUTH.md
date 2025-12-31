@@ -65,7 +65,7 @@ After running migrations, add authorized users:
 ```sql
 -- Add yourself as admin
 INSERT INTO authorized_users (email, full_name, role, is_active)
-VALUES ('emuski@mithran.com', 'Emuski', 'admin', true);
+VALUES ('emuski@EMITHRAN.com', 'Emuski', 'admin', true);
 
 -- Add more users
 INSERT INTO authorized_users (email, full_name, role, is_active)

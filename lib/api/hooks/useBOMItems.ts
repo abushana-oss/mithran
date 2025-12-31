@@ -76,7 +76,8 @@ export function useBOMItems(bomId?: string) {
       return apiClient.get<{ items: BOMItem[] }>(`/bom-items?bomId=${bomId}`);
     },
     enabled: !!bomId,
-    staleTime: 1000 * 60 * 2,
+    staleTime: 0, // Always fetch fresh data for real-time updates
+    refetchOnWindowFocus: true,
   });
 }
 

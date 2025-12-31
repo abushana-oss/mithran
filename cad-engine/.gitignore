@@ -1,47 +1,44 @@
-# Python
+# Ignore Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-venv/
-env/
-ENV/
-*.egg-info/
-dist/
-build/
-*.egg
 
-# Virtual Environments
-.venv
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Virtual environment
 venv/
-ENV/
 env/
+ENV/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-.DS_Store
-
-# Temporary CAD files
-*.step
-*.stp
-*.stl
-*.iges
-*.igs
-temp_*
-tmp_*
 
 # Logs
 *.log
 logs/
+
+# Temporary files
+*.tmp
+/tmp/
+temp/
+
+# OS files
+.DS_Store
+Thumbs.db
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
 
-# OS
-Thumbs.db
+# Distribution
+dist/
+build/
+*.egg-info/

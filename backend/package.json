@@ -1,8 +1,8 @@
 {
   "name": "api-gateway",
   "version": "1.0.0",
-  "description": "Mithran API Gateway - Central entry point for all microservices",
-  "author": "Mithran Team",
+  "description": "EMITHRAN API Gateway - Central entry point for all microservices",
+  "author": "EMITHRAN Team",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {

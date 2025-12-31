@@ -416,7 +416,7 @@ CREATE POLICY "Service role can manage authorized users"
 -- ============================================================================
 
 INSERT INTO authorized_users (email, full_name, role, is_active)
-VALUES ('emuski@mithran.com', 'Emuski', 'admin', true)
+VALUES ('emuski@EMITHRAN.com', 'Emuski', 'admin', true)
 ON CONFLICT (email) DO UPDATE
 SET is_active = true, role = 'admin', updated_at = NOW();
 

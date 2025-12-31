@@ -51,7 +51,7 @@ function generateCurvedPath(
 
 // Count total descendants for spacing calculation
 function countDescendants(item: BOMItem, expandedNodes: Set<string>): number {
-  if (!item.children || !expandedNodes.has(item.id)) return 1;
+  if (!item.children || item.children.length === 0 || !expandedNodes.has(item.id)) return 1;
 
   return item.children.reduce((sum, child) => {
     return sum + countDescendants(child, expandedNodes);
@@ -68,7 +68,7 @@ function calculateHierarchicalPositions(
 ): { nodes: TreeNode[]; totalHeight: number } {
   const nodes: TreeNode[] = [];
   const levelSpacing = 280; // Horizontal spacing between levels
-  const verticalSpacing = 120; // Minimum vertical spacing between nodes
+  const verticalSpacing = 110; // Compact spacing (card height is 80px)
 
   let currentY = startY;
 
@@ -77,7 +77,7 @@ function calculateHierarchicalPositions(
 
     // Calculate how much vertical space this node and its children need
     const descendantCount = countDescendants(item, expandedNodes);
-    const nodeHeight = descendantCount * verticalSpacing;
+    const nodeHeight = Math.max(descendantCount * verticalSpacing, verticalSpacing);
 
     // Position this node in the middle of its allocated space
     const nodeY = currentY + nodeHeight / 2;

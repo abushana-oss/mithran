@@ -20,20 +20,20 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Mithran - Manufacturing Cost Modeling Platform',
-    template: '%s | Mithran',
+    default: 'EMITHRAN - Manufacturing One-Stop Solution',
+    template: '%s | EMITHRAN',
   },
-  description: 'Enterprise manufacturing cost modeling platform for should-cost analysis, vendor management, and cost optimization.',
-  authors: [{ name: 'Mithran' }],
+  description: 'Enterprise manufacturing One-Stop Solution for should-cost analysis, vendor management, and cost optimization.',
+  authors: [{ name: 'EMITHRAN' }],
   keywords: ['manufacturing', 'cost modeling', 'should-cost analysis', 'vendor management', 'BOM processing'],
   openGraph: {
-    title: 'Mithran - Manufacturing Cost Modeling Platform',
-    description: 'Enterprise manufacturing cost modeling platform for should-cost analysis, vendor management, and cost optimization.',
+    title: 'EMITHRAN - Manufacturing One-Stop Solution',
+    description: 'Enterprise manufacturing One-Stop Solution for should-cost analysis, vendor management, and cost optimization.',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    site: '@Mithran',
+    site: '@EMITHRAN',
   },
   icons: {
     icon: [

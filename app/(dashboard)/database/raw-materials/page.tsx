@@ -495,13 +495,12 @@ export default function RawMaterialsPage() {
                 placeholder="Type 'delete' to confirm"
                 value={deleteConfirmText}
                 onChange={(e) => setDeleteConfirmText(e.target.value)}
-                className={`font-mono ${
-                  deleteConfirmText && deleteConfirmText.toLowerCase() !== CONFIRM_DELETE_TEXT
+                className={`font-mono ${deleteConfirmText && deleteConfirmText.toLowerCase() !== CONFIRM_DELETE_TEXT
                     ? 'border-red-500 focus-visible:ring-red-500'
                     : deleteConfirmText.toLowerCase() === CONFIRM_DELETE_TEXT
-                    ? 'border-green-500 focus-visible:ring-green-500'
-                    : ''
-                }`}
+                      ? 'border-green-500 focus-visible:ring-green-500'
+                      : ''
+                  }`}
                 autoComplete="off"
               />
               {deleteConfirmText && deleteConfirmText.toLowerCase() !== CONFIRM_DELETE_TEXT && (
@@ -550,263 +549,263 @@ export default function RawMaterialsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 pt-4">
-                {/* Material Identification Section */}
-                <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
-                  <h3 className="text-sm font-semibold text-foreground">Material Identification</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Material Group *</Label>
-                      <Input
-                        placeholder="e.g., Plastic & Rubber"
-                        value={newMaterial.materialGroup}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, materialGroup: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Material *</Label>
-                      <Input
-                        placeholder="e.g., Acrylonitrile Butadiene Styrene"
-                        value={newMaterial.material}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, material: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Abbreviation</Label>
-                      <Input
-                        placeholder="e.g., ABS"
-                        value={newMaterial.materialAbbreviation}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, materialAbbreviation: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Grade</Label>
-                      <Input
-                        placeholder="e.g., General Purpose"
-                        value={newMaterial.materialGrade}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, materialGrade: e.target.value })}
-                      />
-                    </div>
-                  </div>
+            {/* Material Identification Section */}
+            <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
+              <h3 className="text-sm font-semibold text-foreground">Material Identification</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Material Group *</Label>
+                  <Input
+                    placeholder="e.g., Plastic & Rubber"
+                    value={newMaterial.materialGroup}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, materialGroup: e.target.value })}
+                  />
                 </div>
-
-                {/* Material Properties Section */}
-                <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
-                  <h3 className="text-sm font-semibold text-foreground">Material Properties</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Stock Form</Label>
-                      <Input
-                        placeholder="e.g., Pellet, Granules"
-                        value={newMaterial.stockForm}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, stockForm: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Material State</Label>
-                      <Input
-                        placeholder="e.g., Amorphous, Semi-Crystalline"
-                        value={newMaterial.matlState}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, matlState: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Application</Label>
-                      <Input
-                        placeholder="e.g., General purpose applications"
-                        value={newMaterial.application}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, application: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Regrinding</Label>
-                      <Select
-                        value={newMaterial.regrinding}
-                        onValueChange={(value) => setNewMaterial({ ...newMaterial, regrinding: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select option" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Yes">Yes</SelectItem>
-                          <SelectItem value="No">No</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Regrinding %</Label>
-                      <Input
-                        type="number"
-                        placeholder="e.g., 10"
-                        value={newMaterial.regrindingPercentage}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, regrindingPercentage: e.target.value })}
-                      />
-                    </div>
-                  </div>
+                <div className="space-y-2">
+                  <Label>Material *</Label>
+                  <Input
+                    placeholder="e.g., Acrylonitrile Butadiene Styrene"
+                    value={newMaterial.material}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, material: e.target.value })}
+                  />
                 </div>
-
-                {/* Processing Parameters Section */}
-                <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
-                  <h3 className="text-sm font-semibold text-foreground">Processing Parameters</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Clamping Pressure (MPa)</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        placeholder="e.g., 50.5"
-                        value={newMaterial.clampingPressureMpa}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, clampingPressureMpa: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Eject Deflection Temp (°C)</Label>
-                      <Input
-                        type="number"
-                        placeholder="e.g., 80"
-                        value={newMaterial.ejectDeflectionTempC}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, ejectDeflectionTempC: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Melting Temp (°C)</Label>
-                      <Input
-                        type="number"
-                        placeholder="e.g., 220"
-                        value={newMaterial.meltingTempC}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, meltingTempC: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Mold Temp (°C)</Label>
-                      <Input
-                        type="number"
-                        placeholder="e.g., 60"
-                        value={newMaterial.moldTempC}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, moldTempC: e.target.value })}
-                      />
-                    </div>
-                  </div>
+                <div className="space-y-2">
+                  <Label>Abbreviation</Label>
+                  <Input
+                    placeholder="e.g., ABS"
+                    value={newMaterial.materialAbbreviation}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, materialAbbreviation: e.target.value })}
+                  />
                 </div>
-
-                {/* Physical Properties Section */}
-                <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
-                  <h3 className="text-sm font-semibold text-foreground">Physical Properties</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Density (kg/m³)</Label>
-                      <Input
-                        type="number"
-                        placeholder="e.g., 1050"
-                        value={newMaterial.densityKgM3}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, densityKgM3: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Specific Heat of Melt (J/g·°C)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="e.g., 2.1"
-                        value={newMaterial.specificHeatMelt}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, specificHeatMelt: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Thermal Conductivity of Melt (W/m·°C)</Label>
-                      <Input
-                        type="number"
-                        step="0.001"
-                        placeholder="e.g., 0.18"
-                        value={newMaterial.thermalConductivityMelt}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, thermalConductivityMelt: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Cost Data Section */}
-                <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
-                  <h3 className="text-sm font-semibold text-foreground">Cost Data</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Location</Label>
-                      <Input
-                        placeholder="e.g., USA, India, China"
-                        value={newMaterial.location}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, location: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Year</Label>
-                      <Input
-                        type="number"
-                        placeholder="e.g., 2024"
-                        value={newMaterial.year}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, year: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Q1 Cost (₹)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="e.g., 2.5"
-                        value={newMaterial.q1Cost}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, q1Cost: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Q2 Cost (₹)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="e.g., 2.6"
-                        value={newMaterial.q2Cost}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, q2Cost: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Q3 Cost (₹)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="e.g., 2.7"
-                        value={newMaterial.q3Cost}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, q3Cost: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Q4 Cost (₹)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="e.g., 2.8"
-                        value={newMaterial.q4Cost}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, q4Cost: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Submit Button */}
-                <div className="flex gap-2 sticky bottom-0 bg-background pt-4 border-t">
-                  <Button
-                    variant="outline"
-                    onClick={() => setCreateDialogOpen(false)}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleCreateMaterial}
-                    disabled={createMutation.isPending}
-                    className="flex-1"
-                  >
-                    {createMutation.isPending ? 'Creating...' : 'Create Material'}
-                  </Button>
+                <div className="space-y-2">
+                  <Label>Grade</Label>
+                  <Input
+                    placeholder="e.g., General Purpose"
+                    value={newMaterial.materialGrade}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, materialGrade: e.target.value })}
+                  />
                 </div>
               </div>
-            </DialogContent>
+            </div>
+
+            {/* Material Properties Section */}
+            <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
+              <h3 className="text-sm font-semibold text-foreground">Material Properties</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Stock Form</Label>
+                  <Input
+                    placeholder="e.g., Pellet, Granules"
+                    value={newMaterial.stockForm}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, stockForm: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Material State</Label>
+                  <Input
+                    placeholder="e.g., Amorphous, Semi-Crystalline"
+                    value={newMaterial.matlState}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, matlState: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Application</Label>
+                  <Input
+                    placeholder="e.g., General purpose applications"
+                    value={newMaterial.application}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, application: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Regrinding</Label>
+                  <Select
+                    value={newMaterial.regrinding}
+                    onValueChange={(value) => setNewMaterial({ ...newMaterial, regrinding: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select option" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Yes">Yes</SelectItem>
+                      <SelectItem value="No">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Regrinding %</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 10"
+                    value={newMaterial.regrindingPercentage}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, regrindingPercentage: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Processing Parameters Section */}
+            <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
+              <h3 className="text-sm font-semibold text-foreground">Processing Parameters</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Clamping Pressure (MPa)</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    placeholder="e.g., 50.5"
+                    value={newMaterial.clampingPressureMpa}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, clampingPressureMpa: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Eject Deflection Temp (°C)</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 80"
+                    value={newMaterial.ejectDeflectionTempC}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, ejectDeflectionTempC: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Melting Temp (°C)</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 220"
+                    value={newMaterial.meltingTempC}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, meltingTempC: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Mold Temp (°C)</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 60"
+                    value={newMaterial.moldTempC}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, moldTempC: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Physical Properties Section */}
+            <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
+              <h3 className="text-sm font-semibold text-foreground">Physical Properties</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Density (kg/m³)</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 1050"
+                    value={newMaterial.densityKgM3}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, densityKgM3: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Specific Heat of Melt (J/g·°C)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 2.1"
+                    value={newMaterial.specificHeatMelt}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, specificHeatMelt: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Thermal Conductivity of Melt (W/m·°C)</Label>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    placeholder="e.g., 0.18"
+                    value={newMaterial.thermalConductivityMelt}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, thermalConductivityMelt: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Cost Data Section */}
+            <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
+              <h3 className="text-sm font-semibold text-foreground">Cost Data</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Location</Label>
+                  <Input
+                    placeholder="e.g., USA, India, China"
+                    value={newMaterial.location}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, location: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Year</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 2024"
+                    value={newMaterial.year}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, year: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Q1 Cost (₹)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 2.5"
+                    value={newMaterial.q1Cost}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, q1Cost: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Q2 Cost (₹)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 2.6"
+                    value={newMaterial.q2Cost}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, q2Cost: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Q3 Cost (₹)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 2.7"
+                    value={newMaterial.q3Cost}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, q3Cost: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Q4 Cost (₹)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 2.8"
+                    value={newMaterial.q4Cost}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, q4Cost: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <div className="flex gap-2 sticky bottom-0 bg-background pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={() => setCreateDialogOpen(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateMaterial}
+                disabled={createMutation.isPending}
+                className="flex-1"
+              >
+                {createMutation.isPending ? 'Creating...' : 'Create Material'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
       </Dialog>
 
       {/* Edit Material Dialog */}
@@ -819,267 +818,267 @@ export default function RawMaterialsPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 pt-4">
-                {/* Material Identification Section */}
-                <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
-                  <h3 className="text-sm font-semibold text-foreground">Material Identification</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Material Group *</Label>
-                      <Input
-                        placeholder="e.g., Plastic & Rubber"
-                        value={newMaterial.materialGroup}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, materialGroup: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Material *</Label>
-                      <Input
-                        placeholder="e.g., Acrylonitrile Butadiene Styrene"
-                        value={newMaterial.material}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, material: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Abbreviation</Label>
-                      <Input
-                        placeholder="e.g., ABS"
-                        value={newMaterial.materialAbbreviation}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, materialAbbreviation: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Grade</Label>
-                      <Input
-                        placeholder="e.g., General Purpose"
-                        value={newMaterial.materialGrade}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, materialGrade: e.target.value })}
-                      />
-                    </div>
-                  </div>
+            {/* Material Identification Section */}
+            <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
+              <h3 className="text-sm font-semibold text-foreground">Material Identification</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Material Group *</Label>
+                  <Input
+                    placeholder="e.g., Plastic & Rubber"
+                    value={newMaterial.materialGroup}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, materialGroup: e.target.value })}
+                  />
                 </div>
-
-                {/* Material Properties Section */}
-                <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
-                  <h3 className="text-sm font-semibold text-foreground">Material Properties</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Stock Form</Label>
-                      <Input
-                        placeholder="e.g., Pellet, Granules"
-                        value={newMaterial.stockForm}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, stockForm: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Material State</Label>
-                      <Input
-                        placeholder="e.g., Amorphous, Semi-Crystalline"
-                        value={newMaterial.matlState}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, matlState: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <Label>Application</Label>
-                      <Input
-                        placeholder="e.g., General purpose applications"
-                        value={newMaterial.application}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, application: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Regrinding</Label>
-                      <Select
-                        value={newMaterial.regrinding}
-                        onValueChange={(value) => setNewMaterial({ ...newMaterial, regrinding: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select option" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Yes">Yes</SelectItem>
-                          <SelectItem value="No">No</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Regrinding %</Label>
-                      <Input
-                        type="number"
-                        placeholder="e.g., 10"
-                        value={newMaterial.regrindingPercentage}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, regrindingPercentage: e.target.value })}
-                      />
-                    </div>
-                  </div>
+                <div className="space-y-2">
+                  <Label>Material *</Label>
+                  <Input
+                    placeholder="e.g., Acrylonitrile Butadiene Styrene"
+                    value={newMaterial.material}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, material: e.target.value })}
+                  />
                 </div>
-
-                {/* Processing Parameters Section */}
-                <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
-                  <h3 className="text-sm font-semibold text-foreground">Processing Parameters</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Clamping Pressure (MPa)</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        placeholder="e.g., 50.5"
-                        value={newMaterial.clampingPressureMpa}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, clampingPressureMpa: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Eject Deflection Temp (°C)</Label>
-                      <Input
-                        type="number"
-                        placeholder="e.g., 80"
-                        value={newMaterial.ejectDeflectionTempC}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, ejectDeflectionTempC: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Melting Temp (°C)</Label>
-                      <Input
-                        type="number"
-                        placeholder="e.g., 220"
-                        value={newMaterial.meltingTempC}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, meltingTempC: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Mold Temp (°C)</Label>
-                      <Input
-                        type="number"
-                        placeholder="e.g., 60"
-                        value={newMaterial.moldTempC}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, moldTempC: e.target.value })}
-                      />
-                    </div>
-                  </div>
+                <div className="space-y-2">
+                  <Label>Abbreviation</Label>
+                  <Input
+                    placeholder="e.g., ABS"
+                    value={newMaterial.materialAbbreviation}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, materialAbbreviation: e.target.value })}
+                  />
                 </div>
-
-                {/* Physical Properties Section */}
-                <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
-                  <h3 className="text-sm font-semibold text-foreground">Physical Properties</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Density (kg/m³)</Label>
-                      <Input
-                        type="number"
-                        placeholder="e.g., 1050"
-                        value={newMaterial.densityKgM3}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, densityKgM3: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Specific Heat of Melt (J/g·°C)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="e.g., 2.1"
-                        value={newMaterial.specificHeatMelt}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, specificHeatMelt: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Thermal Conductivity of Melt (W/m·°C)</Label>
-                      <Input
-                        type="number"
-                        step="0.001"
-                        placeholder="e.g., 0.18"
-                        value={newMaterial.thermalConductivityMelt}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, thermalConductivityMelt: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Cost Data Section */}
-                <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
-                  <h3 className="text-sm font-semibold text-foreground">Cost Data</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Location</Label>
-                      <Input
-                        placeholder="e.g., USA, India, China"
-                        value={newMaterial.location}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, location: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Year</Label>
-                      <Input
-                        type="number"
-                        placeholder="e.g., 2024"
-                        value={newMaterial.year}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, year: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Q1 Cost (₹)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="e.g., 2.5"
-                        value={newMaterial.q1Cost}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, q1Cost: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Q2 Cost (₹)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="e.g., 2.6"
-                        value={newMaterial.q2Cost}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, q2Cost: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Q3 Cost (₹)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="e.g., 2.7"
-                        value={newMaterial.q3Cost}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, q3Cost: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Q4 Cost (₹)</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="e.g., 2.8"
-                        value={newMaterial.q4Cost}
-                        onChange={(e) => setNewMaterial({ ...newMaterial, q4Cost: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Submit Button */}
-                <div className="flex gap-2 sticky bottom-0 bg-background pt-4 border-t">
-                  <Button
-                    variant="outline"
-                    onClick={() => setEditDialogOpen(false)}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleUpdateMaterial}
-                    disabled={updateMutation.isPending}
-                    className="flex-1"
-                  >
-                    {updateMutation.isPending ? 'Updating...' : 'Update Material'}
-                  </Button>
+                <div className="space-y-2">
+                  <Label>Grade</Label>
+                  <Input
+                    placeholder="e.g., General Purpose"
+                    value={newMaterial.materialGrade}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, materialGrade: e.target.value })}
+                  />
                 </div>
               </div>
-            </DialogContent>
+            </div>
+
+            {/* Material Properties Section */}
+            <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
+              <h3 className="text-sm font-semibold text-foreground">Material Properties</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Stock Form</Label>
+                  <Input
+                    placeholder="e.g., Pellet, Granules"
+                    value={newMaterial.stockForm}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, stockForm: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Material State</Label>
+                  <Input
+                    placeholder="e.g., Amorphous, Semi-Crystalline"
+                    value={newMaterial.matlState}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, matlState: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Application</Label>
+                  <Input
+                    placeholder="e.g., General purpose applications"
+                    value={newMaterial.application}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, application: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Regrinding</Label>
+                  <Select
+                    value={newMaterial.regrinding}
+                    onValueChange={(value) => setNewMaterial({ ...newMaterial, regrinding: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select option" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Yes">Yes</SelectItem>
+                      <SelectItem value="No">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Regrinding %</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 10"
+                    value={newMaterial.regrindingPercentage}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, regrindingPercentage: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Processing Parameters Section */}
+            <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
+              <h3 className="text-sm font-semibold text-foreground">Processing Parameters</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Clamping Pressure (MPa)</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    placeholder="e.g., 50.5"
+                    value={newMaterial.clampingPressureMpa}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, clampingPressureMpa: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Eject Deflection Temp (°C)</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 80"
+                    value={newMaterial.ejectDeflectionTempC}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, ejectDeflectionTempC: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Melting Temp (°C)</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 220"
+                    value={newMaterial.meltingTempC}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, meltingTempC: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Mold Temp (°C)</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 60"
+                    value={newMaterial.moldTempC}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, moldTempC: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Physical Properties Section */}
+            <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
+              <h3 className="text-sm font-semibold text-foreground">Physical Properties</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Density (kg/m³)</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 1050"
+                    value={newMaterial.densityKgM3}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, densityKgM3: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Specific Heat of Melt (J/g·°C)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 2.1"
+                    value={newMaterial.specificHeatMelt}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, specificHeatMelt: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Thermal Conductivity of Melt (W/m·°C)</Label>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    placeholder="e.g., 0.18"
+                    value={newMaterial.thermalConductivityMelt}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, thermalConductivityMelt: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Cost Data Section */}
+            <div className="space-y-4 p-4 bg-secondary/30 rounded-lg">
+              <h3 className="text-sm font-semibold text-foreground">Cost Data</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Location</Label>
+                  <Input
+                    placeholder="e.g., USA, India, China"
+                    value={newMaterial.location}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, location: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Year</Label>
+                  <Input
+                    type="number"
+                    placeholder="e.g., 2024"
+                    value={newMaterial.year}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, year: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Q1 Cost (₹)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 2.5"
+                    value={newMaterial.q1Cost}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, q1Cost: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Q2 Cost (₹)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 2.6"
+                    value={newMaterial.q2Cost}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, q2Cost: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Q3 Cost (₹)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 2.7"
+                    value={newMaterial.q3Cost}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, q3Cost: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Q4 Cost (₹)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g., 2.8"
+                    value={newMaterial.q4Cost}
+                    onChange={(e) => setNewMaterial({ ...newMaterial, q4Cost: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Submit Button */}
+            <div className="flex gap-2 sticky bottom-0 bg-background pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={() => setEditDialogOpen(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleUpdateMaterial}
+                disabled={updateMutation.isPending}
+                className="flex-1"
+              >
+                {updateMutation.isPending ? 'Updating...' : 'Update Material'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
       </Dialog>
 
       {/* Material Filters */}
-      <Card className="p-4">
+      <Card className="p-3">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-foreground">Material Filters</h3>
@@ -1131,7 +1130,7 @@ export default function RawMaterialsPage() {
       </Card>
 
       {/* Location & Cost Filters */}
-      <Card className="p-4 bg-secondary/30">
+      <Card className="p-3 bg-secondary/30">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-foreground">Location & Cost Filters</h3>
@@ -1197,39 +1196,39 @@ export default function RawMaterialsPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-card hover:bg-card">
-                <TableHead className="cursor-pointer" onClick={() => toggleSort('material_group')}>
+                <TableHead className="cursor-pointer h-9 px-2 text-xs" onClick={() => toggleSort('material_group')}>
                   <div className="flex items-center font-semibold">
-                    Material Group
+                    Group
                     <SortIcon column="material_group" />
                   </div>
                 </TableHead>
-                <TableHead className="cursor-pointer" onClick={() => toggleSort('material')}>
+                <TableHead className="cursor-pointer h-9 px-2 text-xs" onClick={() => toggleSort('material')}>
                   <div className="flex items-center font-semibold">
                     Material
                     <SortIcon column="material" />
                   </div>
                 </TableHead>
-                <TableHead>Abbr</TableHead>
-                <TableHead>Grade</TableHead>
-                <TableHead>Stock Form</TableHead>
-                <TableHead>State</TableHead>
-                <TableHead>Application</TableHead>
-                <TableHead>Regrind</TableHead>
-                <TableHead className="text-right">Regrind %</TableHead>
-                <TableHead className="text-right">Clamp Pressure (MPa)</TableHead>
-                <TableHead className="text-right">Eject Temp (°C)</TableHead>
-                <TableHead className="text-right">Melt Temp (°C)</TableHead>
-                <TableHead className="text-right">Mold Temp (°C)</TableHead>
-                <TableHead className="text-right">Density (kg/m³)</TableHead>
-                <TableHead className="text-right">Sp. Heat</TableHead>
-                <TableHead className="text-right">Thermal Cond.</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Year</TableHead>
-                <TableHead className="text-right">Q1</TableHead>
-                <TableHead className="text-right">Q2</TableHead>
-                <TableHead className="text-right">Q3</TableHead>
-                <TableHead className="text-right">Q4</TableHead>
-                <TableHead className="w-20">Actions</TableHead>
+                <TableHead className="h-9 px-2 text-xs">Abbr</TableHead>
+                <TableHead className="h-9 px-2 text-xs">Grade</TableHead>
+                <TableHead className="h-9 px-2 text-xs">Stock Form</TableHead>
+                <TableHead className="h-9 px-2 text-xs">State</TableHead>
+                <TableHead className="h-9 px-2 text-xs">Application</TableHead>
+                <TableHead className="h-9 px-2 text-xs">Regrind</TableHead>
+                <TableHead className="text-right h-9 px-2 text-xs">Regrind %</TableHead>
+                <TableHead className="text-right h-9 px-2 text-xs">Clamp (MPa)</TableHead>
+                <TableHead className="text-right h-9 px-2 text-xs">Eject (°C)</TableHead>
+                <TableHead className="text-right h-9 px-2 text-xs">Melt (°C)</TableHead>
+                <TableHead className="text-right h-9 px-2 text-xs">Mold (°C)</TableHead>
+                <TableHead className="text-right h-9 px-2 text-xs">Density</TableHead>
+                <TableHead className="text-right h-9 px-2 text-xs">Sp. Heat</TableHead>
+                <TableHead className="text-right h-9 px-2 text-xs">Th. Cond.</TableHead>
+                <TableHead className="h-9 px-2 text-xs">Location</TableHead>
+                <TableHead className="h-9 px-2 text-xs">Year</TableHead>
+                <TableHead className="text-right h-9 px-2 text-xs">Q1</TableHead>
+                <TableHead className="text-right h-9 px-2 text-xs">Q2</TableHead>
+                <TableHead className="text-right h-9 px-2 text-xs">Q3</TableHead>
+                <TableHead className="text-right h-9 px-2 text-xs">Q4</TableHead>
+                <TableHead className="w-20 h-9 px-2 text-xs">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1248,67 +1247,67 @@ export default function RawMaterialsPage() {
               ) : (
                 rawMaterials.map((material) => (
                   <TableRow key={material.id} className="hover:bg-secondary/30">
-                    <TableCell className="font-medium">
-                      <Badge variant="outline">{material.materialGroup}</Badge>
+                    <TableCell className="font-medium p-2 text-xs">
+                      <Badge variant="outline" className="text-[10px] px-1 py-0 h-5">{material.materialGroup}</Badge>
                     </TableCell>
-                    <TableCell className="font-medium">{material.material}</TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="font-medium p-2 text-xs truncate max-w-[120px]" title={material.material}>{material.material}</TableCell>
+                    <TableCell className="text-muted-foreground p-2 text-xs">
                       {material.materialAbbreviation || '-'}
                     </TableCell>
-                    <TableCell>{material.materialGrade || '-'}</TableCell>
-                    <TableCell>{material.stockForm || '-'}</TableCell>
-                    <TableCell>{material.matlState || '-'}</TableCell>
-                    <TableCell className="max-w-xs truncate" title={material.application || ''}>
+                    <TableCell className="p-2 text-xs truncate max-w-[100px]" title={material.materialGrade || ''}>{material.materialGrade || '-'}</TableCell>
+                    <TableCell className="p-2 text-xs">{material.stockForm || '-'}</TableCell>
+                    <TableCell className="p-2 text-xs">{material.matlState || '-'}</TableCell>
+                    <TableCell className="max-w-[100px] truncate p-2 text-xs" title={material.application || ''}>
                       {material.application || '-'}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="p-2 text-xs">
                       {material.regrinding === 'Yes' ? (
-                        <Badge variant="default" className="bg-green-600">Yes</Badge>
+                        <Badge variant="default" className="bg-green-600 text-[10px] px-1 py-0 h-5">Yes</Badge>
                       ) : material.regrinding === 'No' ? (
-                        <Badge variant="secondary">No</Badge>
+                        <Badge variant="secondary" className="text-[10px] px-1 py-0 h-5">No</Badge>
                       ) : (
                         '-'
                       )}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right p-2 text-xs">
                       {material.regrindingPercentage ? `${material.regrindingPercentage}%` : '-'}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right p-2 text-xs">
                       {material.clampingPressureMpa?.toFixed(1) || '-'}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right p-2 text-xs">
                       {material.ejectDeflectionTempC?.toFixed(0) || '-'}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right p-2 text-xs">
                       {material.meltingTempC?.toFixed(0) || '-'}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right p-2 text-xs">
                       {material.moldTempC?.toFixed(0) || '-'}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right p-2 text-xs">
                       {material.densityKgM3?.toFixed(0) || '-'}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right p-2 text-xs">
                       {material.specificHeatMelt?.toFixed(2) || '-'}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right p-2 text-xs">
                       {material.thermalConductivityMelt?.toFixed(3) || '-'}
                     </TableCell>
-                    <TableCell>{material.location || '-'}</TableCell>
-                    <TableCell>{material.year || '-'}</TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="p-2 text-xs">{material.location || '-'}</TableCell>
+                    <TableCell className="p-2 text-xs">{material.year || '-'}</TableCell>
+                    <TableCell className="text-right p-2 text-xs">
                       {material.q1Cost ? `₹${material.q1Cost.toFixed(2)}` : '-'}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right p-2 text-xs">
                       {material.q2Cost ? `₹${material.q2Cost.toFixed(2)}` : '-'}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right p-2 text-xs">
                       {material.q3Cost ? `₹${material.q3Cost.toFixed(2)}` : '-'}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right p-2 text-xs">
                       {material.q4Cost ? `₹${material.q4Cost.toFixed(2)}` : '-'}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="p-2 text-xs">
                       <div className="flex items-center gap-1">
                         <Button
                           variant="ghost"

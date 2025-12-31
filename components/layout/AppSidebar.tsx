@@ -58,8 +58,8 @@ export function AppSidebar() {
         <div className="flex items-center gap-3">
           {!collapsed && (
             <div className="flex-1 min-w-0">
-              <h2 className="font-bold text-lg text-sidebar-foreground tracking-tight">Mithran</h2>
-              <p className="text-xs text-sidebar-foreground/50">Cost Modeling Platform</p>
+              <h2 className="font-bold text-lg text-sidebar-foreground tracking-tight">EMITHRAN</h2>
+              <p className="text-xs text-sidebar-foreground/50">One-Stop Solution</p>
             </div>
           )}
         </div>

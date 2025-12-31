@@ -466,4 +466,4 @@ geometry.computeVertexNormals();
 - React Three Fiber: MIT License
 - @react-three/drei: MIT License
 
-Built for Mithran Manufacturing Platform following 2025-2026 industry standards.
+Built for EMITHRAN Manufacturing Platform following 2025-2026 industry standards.

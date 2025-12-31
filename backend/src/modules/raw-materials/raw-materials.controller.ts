@@ -24,7 +24,7 @@ const XLSX = require('xlsx');
 @ApiBearerAuth()
 @Controller({ path: 'raw-materials', version: '1' })
 export class RawMaterialsController {
-  constructor(private readonly rawMaterialsService: RawMaterialsService) {}
+  constructor(private readonly rawMaterialsService: RawMaterialsService) { }
 
   @Get()
   @ApiOperation({ summary: 'Get all raw materials' })
@@ -87,6 +87,17 @@ export class RawMaterialsController {
     @CurrentUser() user: any,
     @AccessToken() token: string,
   ): Promise<{ message: string; created: number; failed: number; errors?: any[] }> {
+    console.log('Upload request received');
+    if (file) {
+      console.log('File details:', {
+        originalname: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+      });
+    } else {
+      console.log('No file received in request');
+    }
+
     if (!file) {
       throw new BadRequestException('No file provided');
     }
@@ -124,11 +135,11 @@ export class RawMaterialsController {
           const validHeaders = firstRow.filter(cell =>
             cell && typeof cell === 'string' &&
             (cell.toLowerCase().includes('material') ||
-             cell.toLowerCase().includes('group') ||
-             cell.toLowerCase().includes('grade') ||
-             cell.toLowerCase().includes('location') ||
-             cell.toLowerCase().includes('density') ||
-             cell.toLowerCase().includes('temp'))
+              cell.toLowerCase().includes('group') ||
+              cell.toLowerCase().includes('grade') ||
+              cell.toLowerCase().includes('location') ||
+              cell.toLowerCase().includes('density') ||
+              cell.toLowerCase().includes('temp'))
           );
 
           console.log(`Row ${skipRows + 1}: Found ${validHeaders.length} material-related headers out of ${firstRow.length} columns`);

@@ -1,5 +1,5 @@
--- Mithran Platform - Initial Database Schema
--- This migration creates all tables required for the manufacturing cost modeling platform
+-- EMITHRAN Platform - Initial Database Schema
+-- This migration creates all tables required for the manufacturing One-Stop Solution
 -- Run this in your Supabase SQL Editor
 
 -- Enable UUID extension

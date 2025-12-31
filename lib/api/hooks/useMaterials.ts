@@ -93,7 +93,7 @@ export interface CreateMaterialData {
   notes?: string;
 }
 
-export interface UpdateMaterialData extends Partial<CreateMaterialData> {}
+export interface UpdateMaterialData extends Partial<CreateMaterialData> { }
 
 export interface LinkMaterialToBOMItemData {
   bomItemId: string;
@@ -176,7 +176,7 @@ export function useMaterialFilterOptions() {
     queryKey: ['materials', 'filter-options'],
     queryFn: async () => {
       const response = await apiClient.get<MaterialListResponse>('/materials', {
-        params: { limit: 1000 }, // Get all for filter options
+        params: { limit: 100 }, // Backend max limit is 100
       });
 
       const materialGroups = [...new Set(response.materials.map(m => m.materialGroup))].sort();

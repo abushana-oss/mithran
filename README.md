@@ -1,6 +1,6 @@
-# Mithran - Manufacturing Cost Modeling Platform
+# EMITHRAN - Manufacturing One-Stop Solution
 
-Enterprise manufacturing cost modeling platform for should-cost analysis, vendor management, and BOM processing.
+Enterprise manufacturing One-Stop Solution for should-cost analysis, vendor management, and BOM processing.
 
 ## Architecture
 
@@ -65,7 +65,7 @@ Supabase Auth            Infrastructure
 
 ### Project Structure
 ```
-mithran/
+EMITHRAN/
 ├── backend/
 │   ├── services/
 │   │   ├── api-gateway/      # Main API gateway (Port 4000)
@@ -150,5 +150,5 @@ Proprietary and confidential.
 
 ---
 
-**Mithran Development Team**
-# mithran
+**EMITHRAN Development Team**
+# EMITHRAN

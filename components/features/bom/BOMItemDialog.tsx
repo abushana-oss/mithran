@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { createBOMItem, updateBOMItem } from '@/lib/api/hooks/useBOMItems';
 import { BOMItemType, ITEM_TYPE_LABELS } from '@/lib/types/bom.types';
 import { apiClient } from '@/lib/api/client';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface BOMItemDialogProps {
   bomId: string;
@@ -37,6 +38,7 @@ interface BOMItemDialogProps {
 }
 
 export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess, parentItemId, defaultItemType, getAutoParent }: BOMItemDialogProps) {
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [autoParentId, setAutoParentId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
@@ -153,6 +155,9 @@ export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess, pare
           toast.error('Item saved but file upload failed');
         }
       }
+
+      // Invalidate React Query cache to refresh the tree immediately
+      await queryClient.invalidateQueries({ queryKey: ['bom-items', 'list', bomId] });
 
       onOpenChange(false);
       onSuccess?.();
@@ -375,7 +380,7 @@ export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess, pare
                   <p className="text-xs text-muted-foreground">
                     Will be added under: {
                       formData.itemType === BOMItemType.SUB_ASSEMBLY ? 'Latest Assembly' :
-                      formData.itemType === BOMItemType.CHILD_PART ? 'Latest Sub-Assembly' : ''
+                        formData.itemType === BOMItemType.CHILD_PART ? 'Latest Sub-Assembly' : ''
                     }
                   </p>
                 )}

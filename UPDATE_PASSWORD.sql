@@ -1,18 +1,18 @@
 -- ============================================================================
--- UPDATE PASSWORD FOR emuski@mithran.com
+-- UPDATE PASSWORD FOR emuski@EMITHRAN.com
 -- ============================================================================
 -- Run this in: https://iuvtsvjpmovfymvnmqys.supabase.co/project/iuvtsvjpmovfymvnmqys/sql
 --
--- This will update the password to: AdminMithran67
+-- This will update the password to: AdminEMITHRAN67
 -- ============================================================================
 
 -- Update the user's password
 -- Note: Supabase will automatically hash this password
 UPDATE auth.users
 SET
-  encrypted_password = crypt('AdminMithran67', gen_salt('bf')),
+  encrypted_password = crypt('AdminEMITHRAN67', gen_salt('bf')),
   updated_at = NOW()
-WHERE email = 'emuski@mithran.com';
+WHERE email = 'emuski@EMITHRAN.com';
 
 -- Verify the user exists
 SELECT
@@ -26,13 +26,13 @@ SELECT
     ELSE 'No password'
   END as password_status
 FROM auth.users
-WHERE email = 'emuski@mithran.com';
+WHERE email = 'emuski@EMITHRAN.com';
 
 -- ============================================================================
--- DONE! Password updated to: AdminMithran67
+-- DONE! Password updated to: AdminEMITHRAN67
 -- ============================================================================
 --
 -- You can now login with:
--- Email: emuski@mithran.com
--- Password: AdminMithran67
+-- Email: emuski@EMITHRAN.com
+-- Password: AdminEMITHRAN67
 -- ============================================================================

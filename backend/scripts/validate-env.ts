@@ -218,7 +218,7 @@ class EnvironmentValidator {
    * Run all validations
    */
   async validate(): Promise<void> {
-    console.log('🔍 Mithran Platform - Environment Validation\n');
+    console.log('🔍 EMITHRAN Platform - Environment Validation\n');
     console.log('='.repeat(70));
 
     // Validate environment variables
