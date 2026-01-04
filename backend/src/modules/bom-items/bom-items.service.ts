@@ -26,7 +26,7 @@ export class BOMItemsService {
 
     let query = client
       .from('bom_items')
-      .select('*, bom:project_id!inner(name, description)')
+      .select('*, bom:bom_id!inner(name, description)')
       .order('created_at', { ascending: false });
 
     // Apply filters
@@ -81,7 +81,7 @@ export class BOMItemsService {
 
     const { data, error } = await client
       .from('bom_items')
-      .select('*, bom:project_id!inner(name, description)')
+      .select('*, bom:bom_id!inner(name, description)')
       .eq('id', id)
       .single();
 
@@ -115,7 +115,7 @@ export class BOMItemsService {
         ...createBOMItemDto,
         created_by: userId,
       })
-      .select('*, bom:project_id!inner(name, description)')
+      .select('*, bom:bom_id!inner(name, description)')
       .single();
 
     if (error) {
@@ -144,7 +144,7 @@ export class BOMItemsService {
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
-      .select('*, bom:project_id!inner(name, description)')
+      .select('*, bom:bom_id!inner(name, description)')
       .single();
 
     if (error) {

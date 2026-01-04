@@ -54,6 +54,64 @@ export interface CreateProcessData {
 
 export interface UpdateProcessData extends Partial<CreateProcessData> {}
 
+export interface ColumnDefinition {
+  name: string;
+  type: string;
+  label: string;
+}
+
+export interface ReferenceTable {
+  id: string;
+  processId: string;
+  tableName: string;
+  tableDescription?: string;
+  columnDefinitions: ColumnDefinition[];
+  displayOrder: number;
+  isEditable: boolean;
+  createdAt: string;
+  updatedAt: string;
+  rows?: TableRow[];
+}
+
+export interface TableRow {
+  id: string;
+  tableId: string;
+  rowData: Record<string, any>;
+  rowOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateReferenceTableData {
+  processId: string;
+  tableName: string;
+  tableDescription?: string;
+  columnDefinitions: ColumnDefinition[];
+  displayOrder?: number;
+  isEditable?: boolean;
+}
+
+export interface UpdateReferenceTableData extends Partial<Omit<CreateReferenceTableData, 'processId'>> {}
+
+export interface CreateTableRowData {
+  tableId: string;
+  rowData: Record<string, any>;
+  rowOrder?: number;
+}
+
+export interface UpdateTableRowData {
+  rowData?: Record<string, any>;
+  rowOrder?: number;
+}
+
+export interface BulkUpdateTableRowsData {
+  tableId: string;
+  rows: Array<{
+    row_data: Record<string, any>;
+    row_order: number;
+  }>;
+}
+
 // ============================================================================
 // QUERY HOOKS
 // ============================================================================
@@ -135,6 +193,186 @@ export function useDeleteProcess() {
     },
     onError: (error: any) => {
       toast.error(error?.message || 'Failed to delete process');
+    },
+  });
+}
+
+// ============================================================================
+// REFERENCE TABLE QUERY HOOKS
+// ============================================================================
+
+export function useReferenceTables(processId: string | undefined) {
+  return useQuery({
+    queryKey: ['processes', processId, 'reference-tables'],
+    queryFn: async () => {
+      if (!processId) throw new Error('Process ID is required');
+      const response = await apiClient.get<ReferenceTable[]>(`/processes/${processId}/reference-tables`);
+      return response;
+    },
+    enabled: !!processId,
+    staleTime: 1000 * 60 * 2, // 2 minutes
+  });
+}
+
+export function useReferenceTable(tableId: string | undefined) {
+  return useQuery({
+    queryKey: ['reference-tables', tableId],
+    queryFn: async () => {
+      if (!tableId) throw new Error('Table ID is required');
+      const response = await apiClient.get<ReferenceTable>(`/processes/reference-tables/${tableId}`);
+      return response;
+    },
+    enabled: !!tableId,
+    staleTime: 1000 * 60 * 2,
+  });
+}
+
+// ============================================================================
+// REFERENCE TABLE MUTATION HOOKS
+// ============================================================================
+
+export function useCreateReferenceTable() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: CreateReferenceTableData) => {
+      const response = await apiClient.post<ReferenceTable>(
+        `/processes/${data.processId}/reference-tables`,
+        data
+      );
+      return response;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['processes', variables.processId, 'reference-tables'] });
+      toast.success('Reference table created successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Failed to create reference table');
+    },
+  });
+}
+
+export function useUpdateReferenceTable() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ tableId, data }: { tableId: string; data: UpdateReferenceTableData }) => {
+      const response = await apiClient.put<ReferenceTable>(
+        `/processes/reference-tables/${tableId}`,
+        data
+      );
+      return response;
+    },
+    onSuccess: (updatedTable, variables) => {
+      queryClient.setQueryData(['reference-tables', variables.tableId], updatedTable);
+      queryClient.invalidateQueries({ queryKey: ['processes'] });
+      toast.success('Reference table updated successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Failed to update reference table');
+    },
+  });
+}
+
+export function useDeleteReferenceTable() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (tableId: string) => {
+      await apiClient.delete(`/processes/reference-tables/${tableId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['processes'] });
+      toast.success('Reference table deleted successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Failed to delete reference table');
+    },
+  });
+}
+
+// ============================================================================
+// TABLE ROW MUTATION HOOKS
+// ============================================================================
+
+export function useCreateTableRow() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: CreateTableRowData) => {
+      const response = await apiClient.post<TableRow>(
+        `/processes/reference-tables/${data.tableId}/rows`,
+        data
+      );
+      return response;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['reference-tables', variables.tableId] });
+      toast.success('Row added successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Failed to add row');
+    },
+  });
+}
+
+export function useUpdateTableRow() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ rowId, tableId, data }: { rowId: string; tableId: string; data: UpdateTableRowData }) => {
+      const response = await apiClient.put<TableRow>(
+        `/processes/reference-tables/rows/${rowId}`,
+        data
+      );
+      return response;
+    },
+    onSuccess: (_, variables) => {
+      if (variables.tableId) {
+        queryClient.invalidateQueries({ queryKey: ['reference-tables', variables.tableId] });
+      }
+      toast.success('Row updated successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Failed to update row');
+    },
+  });
+}
+
+export function useDeleteTableRow() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ rowId, tableId }: { rowId: string; tableId: string }) => {
+      await apiClient.delete(`/processes/reference-tables/rows/${rowId}`);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['reference-tables', variables.tableId] });
+      toast.success('Row deleted successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Failed to delete row');
+    },
+  });
+}
+
+export function useBulkUpdateTableRows() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: BulkUpdateTableRowsData) => {
+      const response = await apiClient.post<TableRow[]>(
+        `/processes/reference-tables/${data.tableId}/rows/bulk`,
+        data
+      );
+      return response;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['reference-tables', variables.tableId] });
+      toast.success('Table rows updated successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error?.message || 'Failed to update table rows');
     },
   });
 }

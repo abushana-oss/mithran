@@ -10,6 +10,7 @@ export { projectsApi } from './projects';
 export { vendorsApi } from './vendors';
 export { bomApi } from './bom';
 export { calculatorsApi } from './calculators';
+export { processesApi } from './processes';
 
 export type {
   AuthUser,
@@ -71,3 +72,19 @@ export type {
   FormulaType,
   DisplayFormat,
 } from './calculators';
+
+export type {
+  Process,
+  ColumnDefinition,
+  ReferenceTable,
+  TableRow,
+  CreateProcessData,
+  UpdateProcessData,
+  CreateReferenceTableData,
+  UpdateReferenceTableData,
+  CreateTableRowData,
+  UpdateTableRowData,
+  BulkUpdateTableRowsData,
+  ProcessQuery,
+  ProcessListResponse,
+} from './processes';

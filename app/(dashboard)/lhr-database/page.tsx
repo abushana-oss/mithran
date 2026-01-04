@@ -17,6 +17,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -36,6 +43,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Plus, Pencil, Trash2, Search, TrendingUp, Users } from 'lucide-react';
+import { toast } from 'sonner';
 import { useLSR, useCreateLSR, useUpdateLSR, useDeleteLSR, useLSRStatistics } from '@/lib/api/hooks';
 import { CreateLSRDto, LSREntry } from '@/lib/api/lsr';
 
@@ -110,6 +118,57 @@ export default function LHRDatabasePage() {
 
   const handleInputChange = (field: keyof CreateLSRDto, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Auto-generate labour code when labour type changes
+  const handleLabourTypeChange = (labourType: string) => {
+    setFormData(prev => {
+      // Only auto-generate if labour code is empty or was auto-generated
+      const shouldAutoGenerate = !prev.labourCode || prev.labourCode.startsWith('UN-L-') ||
+                                  prev.labourCode.startsWith('SS-L-') || prev.labourCode.startsWith('SK-L-') ||
+                                  prev.labourCode.startsWith('HS-L-') || prev.labourCode.startsWith('SV-L-') ||
+                                  prev.labourCode.startsWith('MG-L-');
+
+      if (shouldAutoGenerate) {
+        // Generate code based on type
+        const prefix = labourType === 'Unskilled' ? 'UN-L-' :
+                      labourType === 'Semi-Skilled' ? 'SS-L-' :
+                      labourType === 'Skilled' ? 'SK-L-' :
+                      labourType === 'Highly Skilled' ? 'HS-L-' :
+                      labourType === 'Supervisor' ? 'SV-L-' :
+                      labourType === 'Manager' ? 'MG-L-' : 'LB-L-';
+
+        // Count existing entries of this type to generate next number
+        const existingCodes = lsrEntries.filter(e => e.labourCode.startsWith(prefix));
+        const nextNumber = existingCodes.length + 1;
+
+        // Suggest default wages based on labour type (user can modify)
+        const suggestedMonthlyWage =
+          labourType === 'Unskilled' ? 12000 :
+          labourType === 'Semi-Skilled' ? 18000 :
+          labourType === 'Skilled' ? 25000 :
+          labourType === 'Highly Skilled' ? 35000 :
+          labourType === 'Supervisor' ? 45000 :
+          labourType === 'Manager' ? 60000 : 15000;
+
+        const suggestedDailyWage = suggestedMonthlyWage / 30;
+        const suggestedDA = Math.round(suggestedMonthlyWage * 0.05); // 5% of monthly wage
+        const suggestedPerks = 30; // 30% standard
+
+        return {
+          ...prev,
+          labourType,
+          labourCode: `${prefix}${nextNumber}`,
+          // Only set suggested values if current values are empty
+          minimumWagePerMonth: prev.minimumWagePerMonth === '' || prev.minimumWagePerMonth === 0 ? suggestedMonthlyWage : prev.minimumWagePerMonth,
+          minimumWagePerDay: prev.minimumWagePerDay === '' || prev.minimumWagePerDay === 0 ? suggestedDailyWage : prev.minimumWagePerDay,
+          dearnessAllowance: prev.dearnessAllowance === '' || prev.dearnessAllowance === 0 ? suggestedDA : prev.dearnessAllowance,
+          perksPercentage: prev.perksPercentage === '' || prev.perksPercentage === 0 ? suggestedPerks : prev.perksPercentage,
+        };
+      }
+
+      return { ...prev, labourType };
+    });
   };
 
   // Handle number inputs - allows empty strings
@@ -243,11 +302,24 @@ export default function LHRDatabasePage() {
       return;
     }
 
-    // Validate required fields
-    if (!trimmedLabourCode || !formData.labourType || !formData.description) {
+    // Validate required fields with specific feedback
+    const missingFields = [];
+    if (!trimmedLabourCode) missingFields.push('Labour Code');
+    if (!formData.labourType) missingFields.push('Labour Type');
+
+    if (missingFields.length > 0) {
       toast.error('Please fill in all required fields', {
-        description: 'Labour code, type, and description are required.',
-        duration: 4000,
+        description: `Missing: ${missingFields.join(', ')}`,
+        duration: 5000,
+      });
+      return;
+    }
+
+    // Validate working hours configuration
+    if (workingHoursPerYear === 0) {
+      toast.error('Please configure working hours first', {
+        description: 'Enter working days/year, shifts/day, and hours/shift to calculate LHR',
+        duration: 5000,
       });
       return;
     }
@@ -303,11 +375,24 @@ export default function LHRDatabasePage() {
       return;
     }
 
-    // Validate required fields
-    if (!trimmedLabourCode || !formData.labourType || !formData.description) {
+    // Validate required fields with specific feedback
+    const missingFields = [];
+    if (!trimmedLabourCode) missingFields.push('Labour Code');
+    if (!formData.labourType) missingFields.push('Labour Type');
+
+    if (missingFields.length > 0) {
       toast.error('Please fill in all required fields', {
-        description: 'Labour code, type, and description are required.',
-        duration: 4000,
+        description: `Missing: ${missingFields.join(', ')}`,
+        duration: 5000,
+      });
+      return;
+    }
+
+    // Validate working hours configuration
+    if (workingHoursPerYear === 0) {
+      toast.error('Please configure working hours first', {
+        description: 'Enter working days/year, shifts/day, and hours/shift to calculate LHR',
+        duration: 5000,
       });
       return;
     }
@@ -379,104 +464,6 @@ export default function LHRDatabasePage() {
         </Card>
       )}
 
-      {/* Working Hours Configuration Card - User Input Required */}
-      <Card className={workingHoursPerYear === 0 ? 'border-orange-500/50' : ''}>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            Working Hours Configuration
-            {workingHoursPerYear === 0 && (
-              <span className="text-xs font-normal text-orange-600 bg-orange-50 px-2 py-1 rounded">
-                Required - Enter your values
-              </span>
-            )}
-          </CardTitle>
-          <CardDescription>
-            Enter your actual working schedule. LHR will auto-calculate based on these values.
-            <br />
-            <span className="text-xs text-muted-foreground">
-              Example: 281 days × 2 shifts × 9 hrs = 5,058 hrs/year
-            </span>
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            <div className="space-y-2">
-              <Label htmlFor="workingDays" className="text-sm font-medium">
-                Working Days/Year *
-              </Label>
-              <Input
-                id="workingDays"
-                type="number"
-                min="1"
-                max="365"
-                placeholder="e.g., 281"
-                value={workingConfig.workingDaysPerYear || ''}
-                onChange={(e) =>
-                  setWorkingConfig((prev) => ({
-                    ...prev,
-                    workingDaysPerYear: parseInt(e.target.value) || 0,
-                  }))
-                }
-                className="text-xl font-bold h-12"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="shiftsPerDay" className="text-sm font-medium">
-                Shifts/Day *
-              </Label>
-              <Input
-                id="shiftsPerDay"
-                type="number"
-                min="1"
-                max="3"
-                placeholder="e.g., 2"
-                value={workingConfig.shiftsPerDay || ''}
-                onChange={(e) =>
-                  setWorkingConfig((prev) => ({
-                    ...prev,
-                    shiftsPerDay: parseInt(e.target.value) || 0,
-                  }))
-                }
-                className="text-xl font-bold h-12"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="hoursPerShift" className="text-sm font-medium">
-                Hours/Shift *
-              </Label>
-              <Input
-                id="hoursPerShift"
-                type="number"
-                min="1"
-                max="24"
-                step="0.5"
-                placeholder="e.g., 9"
-                value={workingConfig.hoursPerShift || ''}
-                onChange={(e) =>
-                  setWorkingConfig((prev) => ({
-                    ...prev,
-                    hoursPerShift: parseFloat(e.target.value) || 0,
-                  }))
-                }
-                className="text-xl font-bold h-12"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">
-                Total Hours/Year
-              </Label>
-              <div className={`text-xl font-bold h-12 flex items-center justify-center rounded-md ${workingHoursPerYear > 0 ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-                }`}>
-                {workingHoursPerYear > 0 ? workingHoursPerYear.toLocaleString() : '---'}
-              </div>
-              <p className="text-xs text-muted-foreground text-center">
-                {workingHoursPerYear > 0 ? 'Auto-calculated ' : 'Waiting for input'}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Statistics Cards */}
       {statistics && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -537,36 +524,158 @@ export default function LHRDatabasePage() {
                     </DialogDescription>
                   </DialogHeader>
                   <div className="grid gap-4 py-4">
+                    {/* Working Hours Configuration - Required First */}
+                    <Card className={workingHoursPerYear === 0 ? 'border-orange-500/50' : 'border-green-500/50'}>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          Working Hours Configuration
+                          {workingHoursPerYear === 0 ? (
+                            <span className="text-xs font-normal text-orange-600 bg-orange-50 px-2 py-1 rounded">
+                              Required - Enter values first
+                            </span>
+                          ) : (
+                            <span className="text-xs font-normal text-green-600 bg-green-50 px-2 py-1 rounded">
+                              ✓ Configured
+                            </span>
+                          )}
+                        </CardTitle>
+                        <CardDescription className="text-xs">
+                          Enter your working schedule. Example: 281 days × 2 shifts × 9 hrs = 5,058 hrs/year
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent className="pb-3">
+                        <div className="grid grid-cols-4 gap-3">
+                          <div className="space-y-1.5">
+                            <Label htmlFor="workingDays" className="text-xs">
+                              Days/Year *
+                            </Label>
+                            <Input
+                              id="workingDays"
+                              type="number"
+                              min="1"
+                              max="365"
+                              placeholder="281"
+                              value={workingConfig.workingDaysPerYear || ''}
+                              onChange={(e) =>
+                                setWorkingConfig((prev) => ({
+                                  ...prev,
+                                  workingDaysPerYear: parseInt(e.target.value) || 0,
+                                }))
+                              }
+                              className="text-base font-semibold h-9"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="shiftsPerDay" className="text-xs">
+                              Shifts/Day *
+                            </Label>
+                            <Input
+                              id="shiftsPerDay"
+                              type="number"
+                              min="1"
+                              max="3"
+                              placeholder="2"
+                              value={workingConfig.shiftsPerDay || ''}
+                              onChange={(e) =>
+                                setWorkingConfig((prev) => ({
+                                  ...prev,
+                                  shiftsPerDay: parseInt(e.target.value) || 0,
+                                }))
+                              }
+                              className="text-base font-semibold h-9"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor="hoursPerShift" className="text-xs">
+                              Hours/Shift *
+                            </Label>
+                            <Input
+                              id="hoursPerShift"
+                              type="number"
+                              min="1"
+                              max="24"
+                              step="0.5"
+                              placeholder="9"
+                              value={workingConfig.hoursPerShift || ''}
+                              onChange={(e) =>
+                                setWorkingConfig((prev) => ({
+                                  ...prev,
+                                  hoursPerShift: parseFloat(e.target.value) || 0,
+                                }))
+                              }
+                              className="text-base font-semibold h-9"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">
+                              Total Hrs/Year
+                            </Label>
+                            <div className={`text-base font-bold h-9 flex items-center justify-center rounded-md ${workingHoursPerYear > 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-muted text-muted-foreground border'
+                              }`}>
+                              {workingHoursPerYear > 0 ? workingHoursPerYear.toLocaleString() : '---'}
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="labourCode">Labour Code*</Label>
+                        <Label htmlFor="labourType">Labour Type* (Select first)</Label>
+                        <Select
+                          value={formData.labourType}
+                          onValueChange={handleLabourTypeChange}
+                        >
+                          <SelectTrigger id="labourType">
+                            <SelectValue placeholder="Select labour type..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Unskilled">Unskilled</SelectItem>
+                            <SelectItem value="Semi-Skilled">Semi-Skilled</SelectItem>
+                            <SelectItem value="Skilled">Skilled</SelectItem>
+                            <SelectItem value="Highly Skilled">Highly Skilled</SelectItem>
+                            <SelectItem value="Supervisor">Supervisor</SelectItem>
+                            <SelectItem value="Manager">Manager</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="labourCode">
+                          Labour Code* <span className="text-xs text-muted-foreground font-normal">(Auto-generated)</span>
+                        </Label>
                         <Input
                           id="labourCode"
                           value={formData.labourCode}
                           onChange={(e) => handleInputChange('labourCode', e.target.value)}
-                          placeholder="UN-L-1"
+                          placeholder="Select labour type first..."
+                          className={formData.labourCode ? 'font-mono font-semibold' : ''}
                         />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="labourType">Labour Type*</Label>
-                        <Input
-                          id="labourType"
-                          value={formData.labourType}
-                          onChange={(e) => handleInputChange('labourType', e.target.value)}
-                          placeholder="Unskilled, Semi-Skilled, etc."
-                        />
+                        <p className="text-xs text-muted-foreground">
+                          Auto-generated based on labour type. You can edit if needed.
+                        </p>
                       </div>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="description">Description*</Label>
+                      <Label htmlFor="description">Description (optional)</Label>
                       <Textarea
                         id="description"
                         value={formData.description}
                         onChange={(e) => handleInputChange('description', e.target.value)}
-                        placeholder="Job responsibilities and tasks..."
-                        rows={4}
+                        placeholder={
+                          formData.labourType === 'Unskilled' ? 'e.g., General helper, cleaning, material handling, basic assembly tasks' :
+                          formData.labourType === 'Semi-Skilled' ? 'e.g., Machine operator, basic welding, quality checking, packaging' :
+                          formData.labourType === 'Skilled' ? 'e.g., Certified welder, CNC operator, electrician, fitter, specialized technician' :
+                          formData.labourType === 'Highly Skilled' ? 'e.g., Senior technician, advanced machining, precision work, tool & die maker' :
+                          formData.labourType === 'Supervisor' ? 'e.g., Floor supervisor, team lead, shift in-charge, quality supervisor' :
+                          formData.labourType === 'Manager' ? 'e.g., Production manager, operations manager, department head' :
+                          'Job responsibilities and tasks...'
+                        }
+                        rows={3}
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Describe the main responsibilities and required skills for this labour type
+                      </p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -582,7 +691,7 @@ export default function LHRDatabasePage() {
                           placeholder="e.g., 400"
                         />
                         <p className="text-xs text-muted-foreground">
-                          Calculated: Monthly ÷ {daysPerMonthForWage} days
+                          {formData.labourType ? 'Suggested value auto-filled. Syncs with monthly.' : `Calculated: Monthly ÷ ${daysPerMonthForWage} days`}
                         </p>
                       </div>
                       <div className="space-y-2">
@@ -597,7 +706,7 @@ export default function LHRDatabasePage() {
                           placeholder="e.g., 12000"
                         />
                         <p className="text-xs text-muted-foreground">
-                          Calculated: Daily × {daysPerMonthForWage} days
+                          {formData.labourType ? 'Suggested value auto-filled. Syncs with daily.' : `Calculated: Daily × ${daysPerMonthForWage} days`}
                         </p>
                       </div>
                     </div>
@@ -793,6 +902,101 @@ export default function LHRDatabasePage() {
             <DialogDescription>Update labour entry information</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            {/* Working Hours Configuration - Required First */}
+            <Card className={workingHoursPerYear === 0 ? 'border-orange-500/50' : 'border-green-500/50'}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  Working Hours Configuration
+                  {workingHoursPerYear === 0 ? (
+                    <span className="text-xs font-normal text-orange-600 bg-orange-50 px-2 py-1 rounded">
+                      Required - Enter values first
+                    </span>
+                  ) : (
+                    <span className="text-xs font-normal text-green-600 bg-green-50 px-2 py-1 rounded">
+                      ✓ Configured
+                    </span>
+                  )}
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Enter your working schedule. Example: 281 days × 2 shifts × 9 hrs = 5,058 hrs/year
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pb-3">
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-workingDays" className="text-xs">
+                      Days/Year *
+                    </Label>
+                    <Input
+                      id="edit-workingDays"
+                      type="number"
+                      min="1"
+                      max="365"
+                      placeholder="281"
+                      value={workingConfig.workingDaysPerYear || ''}
+                      onChange={(e) =>
+                        setWorkingConfig((prev) => ({
+                          ...prev,
+                          workingDaysPerYear: parseInt(e.target.value) || 0,
+                        }))
+                      }
+                      className="text-base font-semibold h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-shiftsPerDay" className="text-xs">
+                      Shifts/Day *
+                    </Label>
+                    <Input
+                      id="edit-shiftsPerDay"
+                      type="number"
+                      min="1"
+                      max="3"
+                      placeholder="2"
+                      value={workingConfig.shiftsPerDay || ''}
+                      onChange={(e) =>
+                        setWorkingConfig((prev) => ({
+                          ...prev,
+                          shiftsPerDay: parseInt(e.target.value) || 0,
+                        }))
+                      }
+                      className="text-base font-semibold h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-hoursPerShift" className="text-xs">
+                      Hours/Shift *
+                    </Label>
+                    <Input
+                      id="edit-hoursPerShift"
+                      type="number"
+                      min="1"
+                      max="24"
+                      step="0.5"
+                      placeholder="9"
+                      value={workingConfig.hoursPerShift || ''}
+                      onChange={(e) =>
+                        setWorkingConfig((prev) => ({
+                          ...prev,
+                          hoursPerShift: parseFloat(e.target.value) || 0,
+                        }))
+                      }
+                      className="text-base font-semibold h-9"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">
+                      Total Hrs/Year
+                    </Label>
+                    <div className={`text-base font-bold h-9 flex items-center justify-center rounded-md ${workingHoursPerYear > 0 ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-muted text-muted-foreground border'
+                      }`}>
+                      {workingHoursPerYear > 0 ? workingHoursPerYear.toLocaleString() : '---'}
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="edit-labourCode">Labour Code*</Label>
@@ -804,20 +1008,32 @@ export default function LHRDatabasePage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="edit-labourType">Labour Type*</Label>
-                <Input
-                  id="edit-labourType"
+                <Select
                   value={formData.labourType}
-                  onChange={(e) => handleInputChange('labourType', e.target.value)}
-                />
+                  onValueChange={(value) => handleInputChange('labourType', value)}
+                >
+                  <SelectTrigger id="edit-labourType">
+                    <SelectValue placeholder="Select labour type..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Unskilled">Unskilled</SelectItem>
+                    <SelectItem value="Semi-Skilled">Semi-Skilled</SelectItem>
+                    <SelectItem value="Skilled">Skilled</SelectItem>
+                    <SelectItem value="Highly Skilled">Highly Skilled</SelectItem>
+                    <SelectItem value="Supervisor">Supervisor</SelectItem>
+                    <SelectItem value="Manager">Manager</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="edit-description">Description*</Label>
+              <Label htmlFor="edit-description">Description (optional)</Label>
               <Textarea
                 id="edit-description"
                 value={formData.description}
                 onChange={(e) => handleInputChange('description', e.target.value)}
+                placeholder="Job responsibilities and tasks..."
                 rows={4}
               />
             </div>

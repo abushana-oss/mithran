@@ -1,7 +1,16 @@
 import { Injectable, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { Logger } from '../../common/logger/logger.service';
 import { SupabaseService } from '../../common/supabase/supabase.service';
-import { CreateProcessDto, UpdateProcessDto, QueryProcessesDto } from './dto/processes.dto';
+import {
+  CreateProcessDto,
+  UpdateProcessDto,
+  QueryProcessesDto,
+  CreateReferenceTableDto,
+  UpdateReferenceTableDto,
+  CreateTableRowDto,
+  UpdateTableRowDto,
+  BulkUpdateTableRowsDto,
+} from './dto/processes.dto';
 import { ProcessResponseDto, ProcessListResponseDto } from './dto/process-response.dto';
 
 @Injectable()
@@ -94,7 +103,7 @@ export class ProcessesService {
         machine_type: createProcessDto.machineType,
         labor_required: createProcessDto.laborRequired,
         skill_level_required: createProcessDto.skillLevelRequired,
-        user_id: userId,
+        user_id: userId || null,
       })
       .select()
       .single();
@@ -154,5 +163,271 @@ export class ProcessesService {
     }
 
     return { message: 'Process deleted successfully' };
+  }
+
+  // ============================================================================
+  // REFERENCE TABLES METHODS
+  // ============================================================================
+
+  /**
+   * Get all reference tables for a process with their rows
+   */
+  async getReferenceTables(processId: string, accessToken: string): Promise<any[]> {
+    this.logger.log(`Fetching reference tables for process: ${processId}`, 'ProcessesService');
+
+    // Get all tables for this process
+    const { data: tables, error: tablesError } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_reference_tables')
+      .select('*')
+      .eq('process_id', processId)
+      .order('display_order', { ascending: true });
+
+    if (tablesError) {
+      this.logger.error(`Error fetching reference tables: ${tablesError.message}`, 'ProcessesService');
+      throw new InternalServerErrorException(`Failed to fetch reference tables: ${tablesError.message}`);
+    }
+
+    // For each table, get its rows
+    const tablesWithRows = await Promise.all(
+      (tables || []).map(async (table) => {
+        const { data: rows, error: rowsError } = await this.supabaseService
+          .getClient(accessToken)
+          .from('process_table_rows')
+          .select('*')
+          .eq('table_id', table.id)
+          .order('row_order', { ascending: true });
+
+        if (rowsError) {
+          this.logger.error(`Error fetching rows for table ${table.id}: ${rowsError.message}`, 'ProcessesService');
+          return { ...table, rows: [] };
+        }
+
+        return { ...table, rows: rows || [] };
+      })
+    );
+
+    return tablesWithRows;
+  }
+
+  /**
+   * Get a specific reference table with its rows
+   */
+  async getReferenceTable(tableId: string, accessToken: string): Promise<any> {
+    this.logger.log(`Fetching reference table: ${tableId}`, 'ProcessesService');
+
+    const { data: table, error: tableError } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_reference_tables')
+      .select('*')
+      .eq('id', tableId)
+      .single();
+
+    if (tableError || !table) {
+      this.logger.error(`Reference table not found: ${tableId}`, 'ProcessesService');
+      throw new NotFoundException(`Reference table with ID ${tableId} not found`);
+    }
+
+    // Get rows for this table
+    const { data: rows, error: rowsError } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_table_rows')
+      .select('*')
+      .eq('table_id', tableId)
+      .order('row_order', { ascending: true });
+
+    if (rowsError) {
+      this.logger.error(`Error fetching rows: ${rowsError.message}`, 'ProcessesService');
+      return { ...table, rows: [] };
+    }
+
+    return { ...table, rows: rows || [] };
+  }
+
+  /**
+   * Create a new reference table
+   */
+  async createReferenceTable(dto: CreateReferenceTableDto, accessToken: string): Promise<any> {
+    this.logger.log('Creating reference table', 'ProcessesService');
+
+    const { data, error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_reference_tables')
+      .insert({
+        process_id: dto.processId,
+        table_name: dto.tableName,
+        table_description: dto.tableDescription,
+        column_definitions: dto.columnDefinitions,
+        display_order: dto.displayOrder || 0,
+        is_editable: dto.isEditable !== undefined ? dto.isEditable : true,
+      })
+      .select()
+      .single();
+
+    if (error || !data) {
+      this.logger.error(`Error creating reference table: ${error?.message}`, 'ProcessesService');
+      throw new InternalServerErrorException(`Failed to create reference table: ${error?.message}`);
+    }
+
+    return data;
+  }
+
+  /**
+   * Update a reference table
+   */
+  async updateReferenceTable(tableId: string, dto: UpdateReferenceTableDto, accessToken: string): Promise<any> {
+    this.logger.log(`Updating reference table: ${tableId}`, 'ProcessesService');
+
+    const updateData: any = {};
+    if (dto.tableName !== undefined) updateData.table_name = dto.tableName;
+    if (dto.tableDescription !== undefined) updateData.table_description = dto.tableDescription;
+    if (dto.columnDefinitions !== undefined) updateData.column_definitions = dto.columnDefinitions;
+    if (dto.displayOrder !== undefined) updateData.display_order = dto.displayOrder;
+    if (dto.isEditable !== undefined) updateData.is_editable = dto.isEditable;
+
+    const { data, error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_reference_tables')
+      .update(updateData)
+      .eq('id', tableId)
+      .select()
+      .single();
+
+    if (error || !data) {
+      this.logger.error(`Error updating reference table: ${error?.message}`, 'ProcessesService');
+      throw new NotFoundException(`Failed to update reference table with ID ${tableId}`);
+    }
+
+    return data;
+  }
+
+  /**
+   * Delete a reference table (cascade deletes rows)
+   */
+  async deleteReferenceTable(tableId: string, accessToken: string): Promise<{ message: string }> {
+    this.logger.log(`Deleting reference table: ${tableId}`, 'ProcessesService');
+
+    const { error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_reference_tables')
+      .delete()
+      .eq('id', tableId);
+
+    if (error) {
+      this.logger.error(`Error deleting reference table: ${error.message}`, 'ProcessesService');
+      throw new InternalServerErrorException(`Failed to delete reference table: ${error.message}`);
+    }
+
+    return { message: 'Reference table deleted successfully' };
+  }
+
+  /**
+   * Add a row to a reference table
+   */
+  async createTableRow(dto: CreateTableRowDto, accessToken: string): Promise<any> {
+    this.logger.log('Creating table row', 'ProcessesService');
+
+    const { data, error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_table_rows')
+      .insert({
+        table_id: dto.tableId,
+        row_data: dto.rowData,
+        row_order: dto.rowOrder || 0,
+      })
+      .select()
+      .single();
+
+    if (error || !data) {
+      this.logger.error(`Error creating table row: ${error?.message}`, 'ProcessesService');
+      throw new InternalServerErrorException(`Failed to create table row: ${error?.message}`);
+    }
+
+    return data;
+  }
+
+  /**
+   * Update a table row
+   */
+  async updateTableRow(rowId: string, dto: UpdateTableRowDto, accessToken: string): Promise<any> {
+    this.logger.log(`Updating table row: ${rowId}`, 'ProcessesService');
+
+    const updateData: any = {};
+    if (dto.rowData !== undefined) updateData.row_data = dto.rowData;
+    if (dto.rowOrder !== undefined) updateData.row_order = dto.rowOrder;
+
+    const { data, error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_table_rows')
+      .update(updateData)
+      .eq('id', rowId)
+      .select()
+      .single();
+
+    if (error || !data) {
+      this.logger.error(`Error updating table row: ${error?.message}`, 'ProcessesService');
+      throw new NotFoundException(`Failed to update table row with ID ${rowId}`);
+    }
+
+    return data;
+  }
+
+  /**
+   * Delete a table row
+   */
+  async deleteTableRow(rowId: string, accessToken: string): Promise<{ message: string }> {
+    this.logger.log(`Deleting table row: ${rowId}`, 'ProcessesService');
+
+    const { error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_table_rows')
+      .delete()
+      .eq('id', rowId);
+
+    if (error) {
+      this.logger.error(`Error deleting table row: ${error.message}`, 'ProcessesService');
+      throw new InternalServerErrorException(`Failed to delete table row: ${error.message}`);
+    }
+
+    return { message: 'Table row deleted successfully' };
+  }
+
+  /**
+   * Bulk update table rows (delete old, insert new)
+   */
+  async bulkUpdateTableRows(dto: BulkUpdateTableRowsDto, accessToken: string): Promise<any[]> {
+    this.logger.log(`Bulk updating rows for table: ${dto.tableId}`, 'ProcessesService');
+
+    // Delete all existing rows for this table
+    const { error: deleteError } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_table_rows')
+      .delete()
+      .eq('table_id', dto.tableId);
+
+    if (deleteError) {
+      this.logger.error(`Error deleting old rows: ${deleteError.message}`, 'ProcessesService');
+      throw new InternalServerErrorException(`Failed to delete old rows: ${deleteError.message}`);
+    }
+
+    // Insert new rows
+    const rowsToInsert = dto.rows.map((row) => ({
+      table_id: dto.tableId,
+      row_data: row.row_data,
+      row_order: row.row_order,
+    }));
+
+    const { data, error: insertError } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_table_rows')
+      .insert(rowsToInsert)
+      .select();
+
+    if (insertError || !data) {
+      this.logger.error(`Error inserting new rows: ${insertError?.message}`, 'ProcessesService');
+      throw new InternalServerErrorException(`Failed to insert new rows: ${insertError?.message}`);
+    }
+
+    return data;
   }
 }
