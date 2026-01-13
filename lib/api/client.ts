@@ -10,7 +10,7 @@
  * - Supabase authentication integration
  */
 
-import { config } from '../config';
+import { config as appConfig } from '../config';
 import { supabase } from '../supabase/client';
 
 type RequestOptions = {
@@ -56,7 +56,7 @@ class ApiClient {
   private pendingRequests = new Map<string, Promise<any>>();
 
   constructor() {
-    this.baseUrl = config.api.baseUrl;
+    this.baseUrl = appConfig.api.baseUrl;
     this.loadTokens();
   }
 
@@ -168,7 +168,7 @@ class ApiClient {
       headers = {},
       cache,
       retry = true,
-      timeout = 30000,
+      timeout = appConfig.api.timeout,
     } = options;
 
     // Build URL with query parameters
@@ -217,7 +217,7 @@ class ApiClient {
         requestConfig = await interceptor(requestConfig);
       }
 
-      const config: RequestInit = {
+      const requestInit: RequestInit = {
         method: requestConfig.method,
         headers: requestConfig.headers,
         cache: cache || (method === 'GET' ? 'default' : 'no-store'),
@@ -225,12 +225,12 @@ class ApiClient {
       };
 
       if (requestConfig.body) {
-        config.body = JSON.stringify(requestConfig.body);
+        requestInit.body = JSON.stringify(requestConfig.body);
       }
 
       try {
         const startTime = Date.now();
-        const response = await fetch(requestConfig.url, config);
+        const response = await fetch(requestConfig.url, requestInit);
         const responseTime = Date.now() - startTime;
 
         let data: ApiResponse<T>;
@@ -309,12 +309,12 @@ class ApiClient {
           if (
             retry &&
             (error.statusCode >= 500 || error.statusCode === 0) &&
-            attemptNumber < 3
+            attemptNumber < appConfig.api.retryAttempts
           ) {
-            const backoffMs = Math.min(1000 * Math.pow(2, attemptNumber - 1), 10000);
+            const backoffMs = Math.min(appConfig.api.retryDelay * Math.pow(2, attemptNumber - 1), 10000);
             if (process.env.NODE_ENV === 'development') {
               console.warn(
-                `[API] Request failed with ${error.statusCode}, retrying in ${backoffMs}ms... (attempt ${attemptNumber}/3)`,
+                `[API] Request failed with ${error.statusCode}, retrying in ${backoffMs}ms... (attempt ${attemptNumber}/${appConfig.api.retryAttempts})`,
               );
             }
             await this.sleep(backoffMs);

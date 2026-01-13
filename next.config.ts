@@ -26,35 +26,38 @@ const nextConfig: NextConfig = {
   // Experimental features for better performance
   experimental: {
     // Enable optimizePackageImports for better bundle size
-    optimizePackageImports: [
-      'lucide-react',
-      '@radix-ui/react-accordion',
-      '@radix-ui/react-alert-dialog',
-      '@radix-ui/react-avatar',
-      '@radix-ui/react-checkbox',
-      '@radix-ui/react-collapsible',
-      '@radix-ui/react-context-menu',
-      '@radix-ui/react-dialog',
-      '@radix-ui/react-dropdown-menu',
-      '@radix-ui/react-hover-card',
-      '@radix-ui/react-label',
-      '@radix-ui/react-menubar',
-      '@radix-ui/react-navigation-menu',
-      '@radix-ui/react-popover',
-      '@radix-ui/react-progress',
-      '@radix-ui/react-radio-group',
-      '@radix-ui/react-scroll-area',
-      '@radix-ui/react-select',
-      '@radix-ui/react-separator',
-      '@radix-ui/react-slider',
-      '@radix-ui/react-slot',
-      '@radix-ui/react-switch',
-      '@radix-ui/react-tabs',
-      '@radix-ui/react-toast',
-      '@radix-ui/react-toggle',
-      '@radix-ui/react-toggle-group',
-      '@radix-ui/react-tooltip',
-    ],
+    optimizePackageImports:
+      process.env.NODE_ENV === 'production'
+        ? [
+            'lucide-react',
+            '@radix-ui/react-accordion',
+            '@radix-ui/react-alert-dialog',
+            '@radix-ui/react-avatar',
+            '@radix-ui/react-checkbox',
+            '@radix-ui/react-collapsible',
+            '@radix-ui/react-context-menu',
+            '@radix-ui/react-dialog',
+            '@radix-ui/react-dropdown-menu',
+            '@radix-ui/react-hover-card',
+            '@radix-ui/react-label',
+            '@radix-ui/react-menubar',
+            '@radix-ui/react-navigation-menu',
+            '@radix-ui/react-popover',
+            '@radix-ui/react-progress',
+            '@radix-ui/react-radio-group',
+            '@radix-ui/react-scroll-area',
+            '@radix-ui/react-select',
+            '@radix-ui/react-separator',
+            '@radix-ui/react-slider',
+            '@radix-ui/react-slot',
+            '@radix-ui/react-switch',
+            '@radix-ui/react-tabs',
+            '@radix-ui/react-toast',
+            '@radix-ui/react-toggle',
+            '@radix-ui/react-toggle-group',
+            '@radix-ui/react-tooltip',
+          ]
+        : [],
   },
 
   // TypeScript configuration
@@ -95,6 +98,7 @@ const nextConfig: NextConfig = {
             value: (() => {
               const apiGateway = process.env.NEXT_PUBLIC_API_GATEWAY_URL;
               const cadEngine = process.env.NEXT_PUBLIC_CAD_ENGINE_URL;
+              const isDev = process.env.NODE_ENV !== 'production';
               const connectSrc = [
                 "'self'",
                 'https://*.supabase.co',
@@ -102,6 +106,8 @@ const nextConfig: NextConfig = {
                 'http://localhost:4000',
                 'ws://localhost:4000',
                 'http://localhost:5000',
+                'ws://localhost:3000',
+                'ws://localhost:3001',
               ];
               if (apiGateway) connectSrc.push(apiGateway);
               if (cadEngine) connectSrc.push(cadEngine);
@@ -113,7 +119,7 @@ const nextConfig: NextConfig = {
                 "frame-ancestors 'none'",
                 "img-src 'self' data: https: blob:",
                 "style-src 'self' 'unsafe-inline'",
-                "script-src 'self'",
+                isDev ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'" : "script-src 'self'",
                 `connect-src ${connectSrc.join(' ')}`,
                 "worker-src 'self' blob:",
                 'upgrade-insecure-requests',

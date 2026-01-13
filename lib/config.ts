@@ -11,9 +11,9 @@ export const config = {
     baseUrl: (typeof window === 'undefined'
       ? process.env.API_URL
       : process.env.NEXT_PUBLIC_API_URL) || 'http://localhost:4000/api/v1',
-    timeout: 30000, // 30 seconds
-    retryAttempts: 3,
-    retryDelay: 1000, // 1 second
+    timeout: process.env.NODE_ENV === 'development' ? 8000 : 30000,
+    retryAttempts: process.env.NODE_ENV === 'development' ? 1 : 3,
+    retryDelay: process.env.NODE_ENV === 'development' ? 500 : 1000,
   },
 
   // Authentication Configuration
