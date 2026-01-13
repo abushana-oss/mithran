@@ -1,18 +1,29 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, Inject, forwardRef } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, Inject, forwardRef, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { CalculatorsServiceV2 } from './calculators.service';
 import { CurrentUser } from '../../common/decorators/user.decorator';
 import { AccessToken } from '../../common/decorators/access-token.decorator';
-import { CreateCalculatorDto, UpdateCalculatorDto, QueryCalculatorDto, ExecuteCalculatorDto } from './dto/calculator.dto';
+import {
+  CreateCalculatorDto,
+  UpdateCalculatorDto,
+  QueryCalculatorDto,
+  ExecuteCalculatorDto,
+  CreateFieldDto,
+  UpdateFieldDto,
+  CreateFormulaDto,
+  UpdateFormulaDto
+} from './dto/calculator.dto';
 
 @ApiTags('Calculators')
 @ApiBearerAuth()
+@UseGuards(ThrottlerGuard)
 @Controller({ path: 'calculators', version: '1' })
 export class CalculatorsController {
   constructor(
     @Inject(forwardRef(() => CalculatorsServiceV2))
     private readonly calculatorsService: CalculatorsServiceV2
-  ) {}
+  ) { }
 
   @Get()
   @ApiOperation({ summary: 'Get all calculators' })
@@ -83,4 +94,99 @@ export class CalculatorsController {
     return this.calculatorsService.execute(id, dto, user.id, token);
   }
 
+  // ========================================
+  // FIELD ENDPOINTS
+  // ========================================
+
+  @Get(':id/fields')
+  @ApiOperation({ summary: 'Get all fields for a calculator' })
+  async getFields(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @AccessToken() token: string,
+  ) {
+    return this.calculatorsService.getFields(id, user.id, token);
+  }
+
+  @Post(':id/fields')
+  @ApiOperation({ summary: 'Add a new field to calculator' })
+  async createField(
+    @Param('id') id: string,
+    @Body() dto: CreateFieldDto,
+    @CurrentUser() user: any,
+    @AccessToken() token: string,
+  ) {
+    return this.calculatorsService.createField(id, dto, user.id, token);
+  }
+
+  @Put(':id/fields/:fieldId')
+  @ApiOperation({ summary: 'Update a specific field' })
+  async updateField(
+    @Param('id') id: string,
+    @Param('fieldId') fieldId: string,
+    @Body() dto: UpdateFieldDto,
+    @CurrentUser() user: any,
+    @AccessToken() token: string,
+  ) {
+    return this.calculatorsService.updateField(id, fieldId, dto, user.id, token);
+  }
+
+  @Delete(':id/fields/:fieldId')
+  @ApiOperation({ summary: 'Remove a field from calculator' })
+  async removeField(
+    @Param('id') id: string,
+    @Param('fieldId') fieldId: string,
+    @CurrentUser() user: any,
+    @AccessToken() token: string,
+  ) {
+    return this.calculatorsService.removeField(id, fieldId, user.id, token);
+  }
+
+  // ========================================
+  // FORMULA ENDPOINTS
+  // ========================================
+
+  @Get(':id/formulas')
+  @ApiOperation({ summary: 'Get all formulas for a calculator' })
+  async getFormulas(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @AccessToken() token: string,
+  ) {
+    return this.calculatorsService.getFormulas(id, user.id, token);
+  }
+
+  @Post(':id/formulas')
+  @ApiOperation({ summary: 'Add a new formula to calculator' })
+  async createFormula(
+    @Param('id') id: string,
+    @Body() dto: CreateFormulaDto,
+    @CurrentUser() user: any,
+    @AccessToken() token: string,
+  ) {
+    return this.calculatorsService.createFormula(id, dto, user.id, token);
+  }
+
+  @Put(':id/formulas/:formulaId')
+  @ApiOperation({ summary: 'Update a specific formula' })
+  async updateFormula(
+    @Param('id') id: string,
+    @Param('formulaId') formulaId: string,
+    @Body() dto: UpdateFormulaDto,
+    @CurrentUser() user: any,
+    @AccessToken() token: string,
+  ) {
+    return this.calculatorsService.updateFormula(id, formulaId, dto, user.id, token);
+  }
+
+  @Delete(':id/formulas/:formulaId')
+  @ApiOperation({ summary: 'Remove a formula from calculator' })
+  async removeFormula(
+    @Param('id') id: string,
+    @Param('formulaId') formulaId: string,
+    @CurrentUser() user: any,
+    @AccessToken() token: string,
+  ) {
+    return this.calculatorsService.removeFormula(id, formulaId, user.id, token);
+  }
 }

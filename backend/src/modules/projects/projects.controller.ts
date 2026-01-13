@@ -12,6 +12,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagg
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto, UpdateProjectDto, QueryProjectsDto } from './dto/projects.dto';
 import { ProjectResponseDto, ProjectListResponseDto } from './dto/project-response.dto';
+import { AddTeamMemberDto, UpdateTeamMemberDto, TeamMemberResponseDto, TeamMembersListResponseDto } from './dto/project-team-member.dto';
 import { CurrentUser } from '../../common/decorators/user.decorator';
 import { AccessToken } from '../../common/decorators/access-token.decorator';
 
@@ -62,5 +63,37 @@ export class ProjectsController {
   @ApiResponse({ status: 200, description: 'Cost analysis retrieved successfully' })
   async getCostAnalysis(@Param('id') id: string, @CurrentUser() user: any, @AccessToken() token: string) {
     return this.projectsService.getCostAnalysis(id, user.id, token);
+  }
+
+  // ============================================================================
+  // TEAM MEMBER ENDPOINTS
+  // ============================================================================
+
+  @Get(':id/team')
+  @ApiOperation({ summary: 'Get project team members' })
+  @ApiResponse({ status: 200, description: 'Team members retrieved successfully', type: TeamMembersListResponseDto })
+  async getTeamMembers(@Param('id') id: string, @CurrentUser() user: any, @AccessToken() token: string): Promise<TeamMembersListResponseDto> {
+    return this.projectsService.getTeamMembers(id, user.id, token);
+  }
+
+  @Post(':id/team')
+  @ApiOperation({ summary: 'Add team member to project' })
+  @ApiResponse({ status: 201, description: 'Team member added successfully', type: TeamMemberResponseDto })
+  async addTeamMember(@Param('id') id: string, @Body() dto: AddTeamMemberDto, @CurrentUser() user: any, @AccessToken() token: string): Promise<TeamMemberResponseDto> {
+    return this.projectsService.addTeamMember(id, dto, user.id, token);
+  }
+
+  @Put(':id/team/:memberId')
+  @ApiOperation({ summary: 'Update team member role' })
+  @ApiResponse({ status: 200, description: 'Team member updated successfully', type: TeamMemberResponseDto })
+  async updateTeamMember(@Param('id') id: string, @Param('memberId') memberId: string, @Body() dto: UpdateTeamMemberDto, @CurrentUser() user: any, @AccessToken() token: string): Promise<TeamMemberResponseDto> {
+    return this.projectsService.updateTeamMember(id, memberId, dto, user.id, token);
+  }
+
+  @Delete(':id/team/:memberId')
+  @ApiOperation({ summary: 'Remove team member from project' })
+  @ApiResponse({ status: 200, description: 'Team member removed successfully' })
+  async removeTeamMember(@Param('id') id: string, @Param('memberId') memberId: string, @CurrentUser() user: any, @AccessToken() token: string) {
+    return this.projectsService.removeTeamMember(id, memberId, user.id, token);
   }
 }

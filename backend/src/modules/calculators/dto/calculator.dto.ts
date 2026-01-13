@@ -146,6 +146,8 @@ export class CreateFieldDto {
   fieldGroup?: string;
 }
 
+export class UpdateFieldDto extends CreateFieldDto { }
+
 export class CreateFormulaDto {
   @ApiProperty()
   @IsString()
@@ -222,6 +224,8 @@ export class CreateFormulaDto {
   @IsOptional()
   resultGroup?: string;
 }
+
+export class UpdateFormulaDto extends CreateFormulaDto { }
 
 // ============================================================================
 // MAIN CALCULATOR DTOS

@@ -5,18 +5,9 @@ import { useRouter } from 'next/navigation';
 import { Plus, Search, Trash2, Edit2, X, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Switch } from '@/components/ui/switch';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useCalculators, useCreateCalculator, useDeleteCalculator, useUpdateCalculator } from '@/lib/api/hooks';
 
 
@@ -131,8 +122,8 @@ export default function CalculatorsPage() {
       </div>
 
 
-      {/* Calculator List */}
-      <div className="space-y-2">
+      {/* Calculator List - Grid Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {isLoading ? (
           Array.from({ length: 6 }).map((_, i) => (
             <Card key={i} className="border">
@@ -145,7 +136,7 @@ export default function CalculatorsPage() {
             </Card>
           ))
         ) : calculators.length === 0 ? (
-          <div className="text-center py-12">
+          <div className="col-span-full text-center py-12">
             <p className="text-muted-foreground">
               {searchQuery ? 'No calculators found' : 'No calculators'}
             </p>
@@ -168,24 +159,26 @@ export default function CalculatorsPage() {
             return (
               <Card
                 key={calc.id}
-                className="border"
+                className="border hover:shadow-md transition-shadow cursor-pointer flex flex-col"
+                onClick={() => router.push(`/calculators/builder/${calc.id}`)}
               >
-                <CardContent className="p-5">
-                  <div className="space-y-4">
+                <CardContent className="p-4 flex flex-col h-full">
+                  <div className="space-y-3 flex-1">
                     {/* Header with Actions */}
-                    <div className="flex items-start justify-between gap-4 pb-3 border-b border-border">
-                      <div className="flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
                         {isEditing ? (
                           <div className="space-y-2">
                             <Input
                               value={editForm.name}
                               onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                              className="h-8 text-sm font-medium"
+                              className="h-8 text-sm font-semibold"
                               placeholder="Calculator name"
+                              onClick={(e) => e.stopPropagation()}
                             />
                           </div>
                         ) : (
-                          <h3 className="font-medium text-base">{calc.name}</h3>
+                          <h3 className="font-semibold text-base truncate">{calc.name}</h3>
                         )}
                       </div>
                       <div className="flex gap-1 shrink-0">
@@ -194,15 +187,15 @@ export default function CalculatorsPage() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-8 w-8 p-0"
+                              className="h-7 w-7 p-0"
                               onClick={handleCancelEdit}
                             >
-                              <X className="h-4 w-4" />
+                              <X className="h-3.5 w-3.5" />
                             </Button>
                             <Button
                               size="sm"
                               variant="default"
-                              className="h-8 px-3 text-xs"
+                              className="h-7 px-2 text-xs"
                               onClick={(e) => handleSaveEdit(calc.id, e)}
                             >
                               <Check className="h-3 w-3 mr-1" />
@@ -214,214 +207,111 @@ export default function CalculatorsPage() {
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-8 w-8 p-0"
+                              className="h-7 w-7 p-0"
                               onClick={(e) => handleEditClick(calc, e)}
                               title="Edit"
                             >
-                              <Edit2 className="h-4 w-4" />
+                              <Edit2 className="h-3.5 w-3.5" />
                             </Button>
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive"
+                              className="h-7 w-7 p-0 hover:bg-destructive/10 hover:text-destructive"
                               onClick={(e) => handleDeleteCalculator(calc.id, calc.name, e)}
                               title="Delete"
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </>
                         )}
                       </div>
                     </div>
 
-                    {/* Basic Information */}
-                    <div className="space-y-3">
-                      <h4 className="text-xs font-medium text-muted-foreground uppercase">Basic Information</h4>
+                    {/* Quick Info */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {calc.calcCategory && (
+                        <Badge variant="outline" className="text-xs capitalize">
+                          {calc.calcCategory}
+                        </Badge>
+                      )}
+                      {calc.isTemplate && (
+                        <Badge variant="outline" className="text-xs bg-amber-400/10 text-amber-400 border-amber-400/20">
+                          Template
+                        </Badge>
+                      )}
+                      {calc.fields && calc.fields.length > 0 && (
+                        <Badge variant="secondary" className="text-xs">
+                          {calc.fields.length} Field{calc.fields.length !== 1 ? 's' : ''}
+                        </Badge>
+                      )}
+                    </div>
 
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label className="text-xs text-muted-foreground">Category</Label>
-                          {isEditing ? (
-                            <Select
-                              value={editForm.calcCategory}
-                              onValueChange={(value) => setEditForm({ ...editForm, calcCategory: value })}
-                            >
-                              <SelectTrigger className="h-8 text-xs mt-1">
-                                <SelectValue placeholder="Select..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="costing">Costing</SelectItem>
-                                <SelectItem value="material">Material</SelectItem>
-                                <SelectItem value="process">Process</SelectItem>
-                                <SelectItem value="tooling">Tooling</SelectItem>
-                                <SelectItem value="custom">Custom</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <div className="text-sm mt-1">
-                              {calc.calcCategory ? (
-                                <Badge variant="outline" className="text-xs capitalize">
-                                  {calc.calcCategory}
-                                </Badge>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">-</span>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                    {/* Fields Preview - Compact */}
+                    {calc.fields && calc.fields.length > 0 && (
+                      <div className="border-t border-border pt-3 space-y-2 flex-1 overflow-hidden">
+                        <h4 className="text-xs font-semibold text-muted-foreground uppercase">Fields</h4>
+                        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                          {calc.fields.slice(0, 12).map((field: any, idx: number) => (
+                            <div key={field.id || idx} className="space-y-1">
+                              <div className="flex items-start gap-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0 mt-1.5" />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-semibold text-sm">{field.displayLabel || field.fieldName}</span>
+                                    {field.unit && (
+                                      <span className="text-xs text-muted-foreground">({field.unit})</span>
+                                    )}
+                                  </div>
 
-                        <div>
-                          <Label className="text-xs text-muted-foreground">Options</Label>
-                          {isEditing ? (
-                            <div className="flex items-center gap-3 mt-1">
-                              <div className="flex items-center gap-1.5">
-                                <Switch
-                                  checked={editForm.isTemplate}
-                                  onCheckedChange={(checked) => setEditForm({ ...editForm, isTemplate: checked })}
-                                  id={`template-${calc.id}`}
-                                  className="scale-75"
-                                />
-                                <Label htmlFor={`template-${calc.id}`} className="text-xs">Template</Label>
+                                  {/* Show formula for calculated fields */}
+                                  {field.fieldType === 'calculated' && field.defaultValue && (
+                                    <code className="text-xs bg-muted px-2 py-1 rounded text-primary block mt-1 break-all">
+                                      {field.defaultValue}
+                                    </code>
+                                  )}
+
+                                  {/* Show database source */}
+                                  {field.fieldType === 'database_lookup' && field.dataSource && (
+                                    <div className="text-xs text-muted-foreground mt-0.5">
+                                      <span className="font-medium">Source:</span> {field.dataSource.replace('_', ' ')}
+                                      {field.sourceField && <span> → {field.sourceField}</span>}
+                                    </div>
+                                  )}
+
+                                  {/* Show default value for number fields */}
+                                  {field.fieldType === 'number' && field.defaultValue && (
+                                    <div className="text-xs text-muted-foreground mt-0.5">
+                                      <span className="font-medium">Default:</span> {field.defaultValue}
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          ) : (
-                            <div className="flex gap-2 mt-1">
-                              {calc.isTemplate && (
-                                <Badge variant="outline" className="text-xs bg-amber-400/10 text-amber-400 border-amber-400/20">
-                                  Template
-                                </Badge>
-                              )}
-                              {!calc.isTemplate && (
-                                <span className="text-xs text-muted-foreground">-</span>
-                              )}
+                          ))}
+                          {calc.fields.length > 12 && (
+                            <div className="text-xs text-muted-foreground italic pl-4">
+                              +{calc.fields.length - 12} more fields...
                             </div>
                           )}
                         </div>
                       </div>
+                    )}
+
+                    {/* Action Footer */}
+                    <div className="border-t border-border pt-3 mt-auto">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full text-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/calculators/builder/${calc.id}`);
+                        }}
+                      >
+                        <Edit2 className="h-3.5 w-3.5 mr-2" />
+                        Edit Calculator
+                      </Button>
                     </div>
-
-                    {/* Fields & Formulas */}
-                    <div className="border-t border-border pt-3 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-medium text-muted-foreground uppercase">Configuration</h4>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-2 text-xs"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            router.push(`/calculators/builder/${calc.id}`);
-                          }}
-                        >
-                          Edit Builder
-                        </Button>
-                      </div>
-
-                      {/* Fields */}
-                      {calc.fields && calc.fields.length > 0 ? (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">
-                              {calc.fields.length} Field{calc.fields.length !== 1 ? 's' : ''}
-                            </Badge>
-                          </div>
-                          <div className="space-y-2">
-                            {calc.fields.map((field: any, idx: number) => (
-                              <div key={field.id || idx} className="pl-3 border-l-2 border-primary/20 py-1">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs font-medium">{field.displayLabel || field.fieldName || 'Unnamed Field'}</span>
-                                      <Badge variant="outline" className="text-[10px] capitalize">
-                                        {field.fieldType === 'database_lookup' ? 'Database' :
-                                         field.fieldType === 'calculated' ? 'Formula' :
-                                         field.fieldType}
-                                      </Badge>
-                                      {field.unit && (
-                                        <span className="text-[10px] text-muted-foreground">({field.unit})</span>
-                                      )}
-                                    </div>
-
-                                    {/* Database Lookup Details */}
-                                    {field.fieldType === 'database_lookup' && field.dataSource && (
-                                      <div className="mt-1 text-[10px] text-muted-foreground space-y-0.5">
-                                        <div className="flex items-center gap-1">
-                                          <span className="font-medium">Source:</span>
-                                          <span className="capitalize">{field.dataSource.replace('_', ' ')}</span>
-                                        </div>
-                                        {field.lookupConfig?.displayLabel && (
-                                          <div className="flex items-center gap-1">
-                                            <span className="font-medium">Record:</span>
-                                            <span>{field.lookupConfig.displayLabel}</span>
-                                          </div>
-                                        )}
-                                        {field.sourceField && (
-                                          <div className="flex items-center gap-1">
-                                            <span className="font-medium">Field:</span>
-                                            <code className="px-1 bg-muted rounded">{field.sourceField}</code>
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-
-                                    {/* Custom Formula Details */}
-                                    {field.fieldType === 'calculated' && field.defaultValue && (
-                                      <div className="mt-1">
-                                        <code className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-primary">
-                                          {field.defaultValue}
-                                        </code>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-xs text-muted-foreground py-2">
-                          No fields configured
-                        </div>
-                      )}
-
-                      {/* Formulas */}
-                      {calc.formulas && calc.formulas.length > 0 && (
-                        <div className="space-y-2 pt-2 border-t border-border/50">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">
-                              {calc.formulas.length} Formula{calc.formulas.length !== 1 ? 's' : ''}
-                            </Badge>
-                          </div>
-                          <div className="space-y-2">
-                            {calc.formulas.map((formula: any, idx: number) => (
-                              <div key={formula.id || idx} className="pl-3 border-l-2 border-emerald-500/20 py-1">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs font-medium">{formula.displayLabel || formula.formulaName || 'Unnamed Formula'}</span>
-                                      {formula.isPrimaryResult && (
-                                        <Badge variant="default" className="text-[10px]">Primary</Badge>
-                                      )}
-                                      {formula.outputUnit && (
-                                        <span className="text-[10px] text-muted-foreground">({formula.outputUnit})</span>
-                                      )}
-                                    </div>
-                                    {formula.formulaExpression && (
-                                      <div className="mt-1">
-                                        <code className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-emerald-600 dark:text-emerald-400">
-                                          {formula.formulaExpression}
-                                        </code>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
 
                   </div>
                 </CardContent>

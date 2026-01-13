@@ -60,6 +60,7 @@ export function DatabaseRecordPicker({
     const fetchRecords = async () => {
       setIsLoading(true);
       setError(null);
+      let endpoint = '';
 
       try {
         // Special handling for processes - use hardcoded constants
@@ -83,7 +84,6 @@ export function DatabaseRecordPicker({
 
         const { apiClient } = await import('@/lib/api/client');
 
-        let endpoint = '';
         let mapFunction: (data: any) => DatabaseRecord;
 
         switch (dataSource) {
@@ -220,7 +220,7 @@ export function DatabaseRecordPicker({
           aria-expanded={open}
           disabled={disabled}
           className="w-full justify-between"
-          onClick={(e) => {
+          onClick={() => {
             console.log('[DatabaseRecordPicker] Button clicked, current state:', {
               open,
               selectedRecord: selectedRecord?.displayLabel,

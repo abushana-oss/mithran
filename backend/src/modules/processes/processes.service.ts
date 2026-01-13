@@ -12,6 +12,14 @@ import {
   BulkUpdateTableRowsDto,
 } from './dto/processes.dto';
 import { ProcessResponseDto, ProcessListResponseDto } from './dto/process-response.dto';
+import {
+  CreateProcessCalculatorMappingDto,
+  UpdateProcessCalculatorMappingDto,
+  QueryProcessCalculatorMappingsDto,
+  ProcessCalculatorMappingResponseDto,
+  ProcessCalculatorMappingListResponseDto,
+  ProcessHierarchyDto,
+} from './dto/process-calculator-mapping.dto';
 
 @Injectable()
 export class ProcessesService {
@@ -429,5 +437,210 @@ export class ProcessesService {
     }
 
     return data;
+  }
+
+  // ============================================================================
+  // PROCESS CALCULATOR MAPPING METHODS
+  // ============================================================================
+
+  /**
+   * Get all process calculator mappings with optional filters
+   */
+  async getProcessCalculatorMappings(
+    query: QueryProcessCalculatorMappingsDto,
+    accessToken: string,
+  ): Promise<ProcessCalculatorMappingListResponseDto> {
+    this.logger.log('Fetching process calculator mappings', 'ProcessesService');
+
+    const page = query.page || 1;
+    const limit = Math.min(query.limit || 50, 1000);
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+
+    let queryBuilder = this.supabaseService
+      .getClient(accessToken)
+      .from('process_calculator_mappings')
+      .select('*', { count: 'exact' })
+      .order('display_order', { ascending: true })
+      .range(from, to);
+
+    // Apply filters
+    if (query.processGroup) {
+      queryBuilder = queryBuilder.eq('process_group', query.processGroup);
+    }
+
+    if (query.processRoute) {
+      queryBuilder = queryBuilder.eq('process_route', query.processRoute);
+    }
+
+    if (query.operation) {
+      queryBuilder = queryBuilder.eq('operation', query.operation);
+    }
+
+    if (query.calculatorId) {
+      queryBuilder = queryBuilder.eq('calculator_id', query.calculatorId);
+    }
+
+    if (query.isActive !== undefined) {
+      queryBuilder = queryBuilder.eq('is_active', query.isActive);
+    }
+
+    if (query.search) {
+      queryBuilder = queryBuilder.or(
+        `process_group.ilike.%${query.search}%,process_route.ilike.%${query.search}%,operation.ilike.%${query.search}%,calculator_name.ilike.%${query.search}%`,
+      );
+    }
+
+    const { data, error, count } = await queryBuilder;
+
+    if (error) {
+      this.logger.error(`Error fetching process calculator mappings: ${error.message}`, 'ProcessesService');
+      throw new InternalServerErrorException(`Failed to fetch process calculator mappings: ${error.message}`);
+    }
+
+    const mappings = (data || []).map((row) => ProcessCalculatorMappingResponseDto.fromDatabase(row));
+
+    return {
+      mappings,
+      count: count || 0,
+      page,
+      limit,
+    };
+  }
+
+  /**
+   * Get a specific process calculator mapping by ID
+   */
+  async getProcessCalculatorMapping(id: string, accessToken: string): Promise<ProcessCalculatorMappingResponseDto> {
+    this.logger.log(`Fetching process calculator mapping: ${id}`, 'ProcessesService');
+
+    const { data, error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_calculator_mappings')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error || !data) {
+      this.logger.error(`Process calculator mapping not found: ${id}`, 'ProcessesService');
+      throw new NotFoundException(`Process calculator mapping with ID ${id} not found`);
+    }
+
+    return ProcessCalculatorMappingResponseDto.fromDatabase(data);
+  }
+
+  /**
+   * Create a new process calculator mapping
+   */
+  async createProcessCalculatorMapping(
+    dto: CreateProcessCalculatorMappingDto,
+    accessToken: string,
+  ): Promise<ProcessCalculatorMappingResponseDto> {
+    this.logger.log('Creating process calculator mapping', 'ProcessesService');
+
+    const { data, error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_calculator_mappings')
+      .insert({
+        process_group: dto.processGroup,
+        process_route: dto.processRoute,
+        operation: dto.operation,
+        calculator_id: dto.calculatorId || null,
+        calculator_name: dto.calculatorName || null,
+        is_active: dto.isActive !== undefined ? dto.isActive : true,
+        display_order: dto.displayOrder || 0,
+      })
+      .select()
+      .single();
+
+    if (error || !data) {
+      this.logger.error(`Error creating process calculator mapping: ${error?.message}`, 'ProcessesService');
+      throw new InternalServerErrorException(`Failed to create process calculator mapping: ${error?.message}`);
+    }
+
+    return ProcessCalculatorMappingResponseDto.fromDatabase(data);
+  }
+
+  /**
+   * Update a process calculator mapping
+   */
+  async updateProcessCalculatorMapping(
+    id: string,
+    dto: UpdateProcessCalculatorMappingDto,
+    accessToken: string,
+  ): Promise<ProcessCalculatorMappingResponseDto> {
+    this.logger.log(`Updating process calculator mapping: ${id}`, 'ProcessesService');
+
+    const updateData: any = {};
+    if (dto.processGroup !== undefined) updateData.process_group = dto.processGroup;
+    if (dto.processRoute !== undefined) updateData.process_route = dto.processRoute;
+    if (dto.operation !== undefined) updateData.operation = dto.operation;
+    if (dto.calculatorId !== undefined) updateData.calculator_id = dto.calculatorId;
+    if (dto.calculatorName !== undefined) updateData.calculator_name = dto.calculatorName;
+    if (dto.isActive !== undefined) updateData.is_active = dto.isActive;
+    if (dto.displayOrder !== undefined) updateData.display_order = dto.displayOrder;
+
+    const { data, error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_calculator_mappings')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error || !data) {
+      this.logger.error(`Error updating process calculator mapping: ${error?.message}`, 'ProcessesService');
+      throw new NotFoundException(`Failed to update process calculator mapping with ID ${id}`);
+    }
+
+    return ProcessCalculatorMappingResponseDto.fromDatabase(data);
+  }
+
+  /**
+   * Delete a process calculator mapping
+   */
+  async deleteProcessCalculatorMapping(id: string, accessToken: string): Promise<{ message: string }> {
+    this.logger.log(`Deleting process calculator mapping: ${id}`, 'ProcessesService');
+
+    const { error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_calculator_mappings')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      this.logger.error(`Error deleting process calculator mapping: ${error.message}`, 'ProcessesService');
+      throw new InternalServerErrorException(`Failed to delete process calculator mapping: ${error.message}`);
+    }
+
+    return { message: 'Process calculator mapping deleted successfully' };
+  }
+
+  /**
+   * Get unique process hierarchy values for filter dropdowns
+   */
+  async getProcessHierarchy(accessToken: string): Promise<ProcessHierarchyDto> {
+    this.logger.log('Fetching process hierarchy', 'ProcessesService');
+
+    const { data, error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('process_calculator_mappings')
+      .select('process_group, process_route, operation')
+      .eq('is_active', true);
+
+    if (error) {
+      this.logger.error(`Error fetching process hierarchy: ${error.message}`, 'ProcessesService');
+      throw new InternalServerErrorException(`Failed to fetch process hierarchy: ${error.message}`);
+    }
+
+    const processGroups = [...new Set(data.map((row) => row.process_group))].sort();
+    const processRoutes = [...new Set(data.map((row) => row.process_route))].sort();
+    const operations = [...new Set(data.map((row) => row.operation))].sort();
+
+    return {
+      processGroups,
+      processRoutes,
+      operations,
+    };
   }
 }

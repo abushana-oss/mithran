@@ -60,6 +60,41 @@ export class RawMaterialsService {
     return { items, total: count || 0 };
   }
 
+  async getFilterOptions(userId?: string, accessToken?: string): Promise<{
+    materialGroups: string[];
+    materialTypes: string[];
+    locations: string[];
+    grades: string[];
+    years: number[];
+  }> {
+    this.logger.log('Fetching filter options', 'RawMaterialsService');
+
+    const { data, error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('raw_materials')
+      .select('material_group, material, location, material_grade, year');
+
+    if (error) {
+      this.logger.error(`Error fetching filter options: ${error.message}`, 'RawMaterialsService');
+      throw new InternalServerErrorException(`Failed to fetch filter options: ${error.message}`);
+    }
+
+    // Extract unique values
+    const materialGroups = [...new Set(data.map(m => m.material_group).filter(Boolean))].sort();
+    const materialTypes = [...new Set(data.map(m => m.material).filter(Boolean))].sort();
+    const locations = [...new Set(data.map(m => m.location).filter(Boolean))].sort();
+    const grades = [...new Set(data.map(m => m.material_grade).filter(Boolean))].sort();
+    const years = [...new Set(data.map(m => m.year).filter(Boolean))].sort((a, b) => b - a);
+
+    return {
+      materialGroups,
+      materialTypes,
+      locations,
+      grades,
+      years,
+    };
+  }
+
   async findOne(id: string, userId: string, accessToken: string): Promise<RawMaterialResponseDto> {
     this.logger.log(`Fetching raw material: ${id}`, 'RawMaterialsService');
 

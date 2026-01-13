@@ -38,6 +38,14 @@ export class RawMaterialsController {
     return this.rawMaterialsService.findAll(query, user?.id, token);
   }
 
+  @Get('filter-options')
+  @Public()
+  @ApiOperation({ summary: 'Get unique filter options for raw materials' })
+  @ApiResponse({ status: 200, description: 'Filter options retrieved successfully' })
+  async getFilterOptions(@CurrentUser() user?: any, @AccessToken() token?: string) {
+    return this.rawMaterialsService.getFilterOptions(user?.id, token);
+  }
+
   @Get('grouped')
   @ApiOperation({ summary: 'Get raw materials grouped by material group' })
   @ApiResponse({ status: 200, description: 'Grouped materials retrieved successfully' })

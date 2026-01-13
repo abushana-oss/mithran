@@ -5,7 +5,6 @@ Provides security-focused file validation including magic number checking
 """
 
 import os
-import magic
 from pathlib import Path
 from typing import Tuple
 

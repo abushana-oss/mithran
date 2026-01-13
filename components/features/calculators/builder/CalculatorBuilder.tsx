@@ -9,8 +9,13 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Badge } from '@/components/ui/badge';
-import { useCalculator, useUpdateCalculator } from '@/lib/api/hooks';
+import {
+  useCalculator,
+  useUpdateCalculator,
+  useCreateField,
+  useUpdateField,
+  useDeleteField
+} from '@/lib/api/hooks';
 import type { Calculator, CalculatorField, FieldType, DataSource } from '@/lib/api/calculators';
 import { FormulaEditor } from './FormulaEditor';
 import { DatabaseFieldExtractor } from './DatabaseFieldExtractor';
@@ -38,6 +43,9 @@ export function CalculatorBuilder({ calculatorId }: CalculatorBuilderProps) {
 
   const { data: calculator, isLoading, error } = useCalculator(calculatorId);
   const updateCalculator = useUpdateCalculator();
+  const createField = useCreateField();
+  const updateField = useUpdateField();
+  const deleteField = useDeleteField();
 
   // ============================================================================
   // LOCAL STATE (Transient Edit State - NOT Persisted Until Save)
@@ -46,8 +54,9 @@ export function CalculatorBuilder({ calculatorId }: CalculatorBuilderProps) {
   // This is the ONLY state - one unified object
   const [draftCalculator, setDraftCalculator] = useState<Calculator | null>(null);
 
-  // Track which field is being saved
+  // Track which field is being saved or deleted
   const [savingFieldId, setSavingFieldId] = useState<string | null>(null);
+  const [deletingFieldId, setDeletingFieldId] = useState<string | null>(null);
 
   // Track which fields are saved (not in edit mode)
   const [savedFieldIds, setSavedFieldIds] = useState<Set<string>>(new Set());
@@ -118,9 +127,10 @@ export function CalculatorBuilder({ calculatorId }: CalculatorBuilderProps) {
     const field = fields?.[index];
     if (!field || !fields) return;
 
-    // Use the exact display label as field name
+    // Use the exact display label as field name, but trim whitespace
     if (updates.displayLabel !== undefined) {
-      updates.fieldName = updates.displayLabel;
+      updates.fieldName = updates.displayLabel.trim();
+      updates.displayLabel = updates.displayLabel.trim();
     }
 
     const updatedFields = [...fields];
@@ -143,12 +153,26 @@ export function CalculatorBuilder({ calculatorId }: CalculatorBuilderProps) {
     }
   };
 
-  const handleDeleteField = (index: number) => {
+  const handleDeleteField = async (index: number) => {
     const fields = currentData?.fields;
     const field = fields?.[index];
     if (!field || !fields) return;
 
     const fieldId = field.id;
+    if (deletingFieldId === fieldId) return;
+
+    setDeletingFieldId(fieldId);
+
+    // Persist delete to server if it's not a temp field
+    if (!fieldId.startsWith('temp-')) {
+      try {
+        await deleteField.mutateAsync({ calculatorId, fieldId });
+      } catch (err) {
+        console.error('Delete failed:', err);
+        setDeletingFieldId(null);
+        return; // Stop if delete failed
+      }
+    }
 
     setDraftCalculator({
       ...currentData,
@@ -166,6 +190,7 @@ export function CalculatorBuilder({ calculatorId }: CalculatorBuilderProps) {
       newSet.delete(fieldId);
       return newSet;
     });
+    setDeletingFieldId(null);
   };
 
   // Formula management removed as it's now integrated into fields
@@ -178,80 +203,64 @@ export function CalculatorBuilder({ calculatorId }: CalculatorBuilderProps) {
   const handleSaveField = async (fieldId: string) => {
     if (!currentData || !currentData.fields) return;
 
-    const field = currentData.fields.find(f => f.id === fieldId);
+    const fieldIndex = currentData.fields.findIndex(f => f.id === fieldId);
+    if (fieldIndex === -1) return;
+    const field = currentData.fields[fieldIndex];
     if (!field) return;
 
     setSavingFieldId(fieldId);
 
     try {
-      const response = await updateCalculator.mutateAsync({
-        id: calculatorId,
-        data: {
-          name: currentData.name,
-          description: currentData.description,
-          calcCategory: currentData.calcCategory,
-          calculatorType: currentData.calculatorType,
-          isTemplate: currentData.isTemplate,
-          isPublic: currentData.isPublic,
-          displayConfig: currentData.displayConfig,
-          fields: currentData.fields?.map(f => ({
-            fieldName: f.fieldName || f.displayLabel || '',
-            displayLabel: f.displayLabel || '',
-            fieldType: f.fieldType,
-            dataSource: f.dataSource,
-            sourceTable: f.sourceTable,
-            sourceField: f.sourceField,
-            lookupConfig: f.lookupConfig,
-            defaultValue: f.defaultValue,
-            unit: f.unit,
-            minValue: f.minValue,
-            maxValue: f.maxValue,
-            isRequired: f.isRequired,
-            validationRules: f.validationRules,
-            inputConfig: f.inputConfig,
-            displayOrder: f.displayOrder,
-            fieldGroup: f.fieldGroup,
-          })),
-          formulas: currentData.formulas?.map(f => ({
-            formulaName: f.formulaName || f.displayLabel || '',
-            displayLabel: f.displayLabel || '',
-            description: f.description,
-            formulaType: f.formulaType || 'expression',
-            formulaExpression: f.formulaExpression || '',
-            visualFormula: f.visualFormula,
-            dependsOnFields: f.dependsOnFields,
-            dependsOnFormulas: f.dependsOnFormulas,
-            outputUnit: f.outputUnit,
-            decimalPlaces: f.decimalPlaces,
-            displayFormat: f.displayFormat,
-            executionOrder: f.executionOrder,
-            displayInResults: f.displayInResults,
-            isPrimaryResult: f.isPrimaryResult,
-            resultGroup: f.resultGroup,
-          })),
-        },
-      });
+      const fieldData = {
+        fieldName: (field.fieldName || field.displayLabel || '').trim(),
+        displayLabel: (field.displayLabel || '').trim(),
+        fieldType: field.fieldType,
+        dataSource: field.dataSource,
+        sourceTable: field.sourceTable,
+        sourceField: field.sourceField,
+        lookupConfig: field.lookupConfig,
+        defaultValue: field.defaultValue,
+        unit: field.unit,
+        minValue: field.minValue,
+        maxValue: field.maxValue,
+        isRequired: field.isRequired,
+        validationRules: field.validationRules,
+        inputConfig: field.inputConfig,
+        displayOrder: field.displayOrder,
+        fieldGroup: field.fieldGroup,
+      };
 
-      // Update draft calculator with the response to get any new IDs
-      if (response && response.fields) {
-        setDraftCalculator(response);
-
-        // Find the saved field's new ID if it changed (was temp)
-        const savedField = response.fields.find(f =>
-          f.displayLabel === field.displayLabel && f.fieldType === field.fieldType
-        );
-
-        const newFieldId = savedField?.id || fieldId;
-
-        // Mark only this specific field as saved
-        setSavedFieldIds(prev => new Set(prev).add(newFieldId));
-        setEditingFieldIds(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(fieldId);
-          newSet.delete(newFieldId);
-          return newSet;
+      let savedField;
+      if (fieldId.startsWith('temp-')) {
+        savedField = await createField.mutateAsync({
+          calculatorId,
+          ...fieldData
+        });
+      } else {
+        savedField = await updateField.mutateAsync({
+          calculatorId,
+          fieldId,
+          data: fieldData
         });
       }
+
+      // Update ONLY this specific field in the local draft to preserve other unsaved changes
+      setDraftCalculator(prev => {
+        if (!prev || !prev.fields) return prev;
+        const updatedFields = [...prev.fields];
+        updatedFields[fieldIndex] = savedField;
+        return { ...prev, fields: updatedFields };
+      });
+
+      // Mark this specific field as saved
+      setSavedFieldIds(prev => new Set(prev).add(savedField.id));
+      setEditingFieldIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(fieldId);
+        newSet.delete(savedField.id);
+        return newSet;
+      });
+
     } catch (err) {
       console.error('Field save failed:', err);
     } finally {
@@ -279,7 +288,7 @@ export function CalculatorBuilder({ calculatorId }: CalculatorBuilderProps) {
     if (!currentData) return;
 
     try {
-      await updateCalculator.mutateAsync({
+      const savedCalculator = await updateCalculator.mutateAsync({
         id: calculatorId,
         data: {
           name: currentData.name,
@@ -291,8 +300,8 @@ export function CalculatorBuilder({ calculatorId }: CalculatorBuilderProps) {
           displayConfig: currentData.displayConfig,
           // ATOMIC: All fields and formulas in one payload
           fields: currentData.fields?.map(f => ({
-            fieldName: f.fieldName || f.displayLabel || '',
-            displayLabel: f.displayLabel || '',
+            fieldName: (f.fieldName || f.displayLabel || '').trim(),
+            displayLabel: (f.displayLabel || '').trim(),
             fieldType: f.fieldType,
             dataSource: f.dataSource,
             sourceTable: f.sourceTable,
@@ -330,6 +339,16 @@ export function CalculatorBuilder({ calculatorId }: CalculatorBuilderProps) {
 
       // Clear draft state after successful save
       setDraftCalculator(null);
+
+      // Mark all fields as saved
+      if (savedCalculator?.fields) {
+        const allFieldIds = savedCalculator.fields.map((f: any) => f.id);
+        setSavedFieldIds(new Set(allFieldIds));
+        setEditingFieldIds(new Set());
+      }
+
+      // Navigate back to calculators list
+      router.push('/calculators');
     } catch (err) {
       console.error('Save failed:', err);
       // Error toast is handled by the mutation hook
@@ -567,7 +586,7 @@ export function CalculatorBuilder({ calculatorId }: CalculatorBuilderProps) {
                             variant="default"
                             size="sm"
                             onClick={() => handleSaveField(field.id)}
-                            disabled={savingFieldId === field.id || !field.displayLabel}
+                            disabled={savingFieldId === field.id || deletingFieldId === field.id || !field.displayLabel}
                             title="Save this field"
                             className="gap-2"
                           >
@@ -600,79 +619,99 @@ export function CalculatorBuilder({ calculatorId }: CalculatorBuilderProps) {
                           size="sm"
                           onClick={() => handleDeleteField(index)}
                           className="text-destructive gap-2"
-                          disabled={savingFieldId === field.id}
+                          disabled={savingFieldId === field.id || deletingFieldId === field.id}
                         >
-                          <Trash2 className="h-4 w-4" />
-                          Delete
+                          {deletingFieldId === field.id ? (
+                            <>
+                              <span className="h-4 w-4 animate-spin">⏳</span>
+                              Deleting...
+                            </>
+                          ) : (
+                            <>
+                              <Trash2 className="h-4 w-4" />
+                              Delete
+                            </>
+                          )}
                         </Button>
                       </div>
                     </div>
 
                     {/* Database Lookup Configuration */}
-                    {field.fieldType === 'database_lookup' && (
-                      <div className="pl-4 border-l-2 border-primary/20 space-y-3">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-2">
-                            <Label className="text-xs">Data Source *</Label>
-                            <Select
-                              value={field.dataSource || 'raw_materials'}
-                              disabled={isFieldSaved}
-                              onValueChange={(value: DataSource) => {
-                                // Clear selected record when changing data source
+                    {
+                      field.fieldType === 'database_lookup' && (
+                        <div className="pl-4 border-l-2 border-primary/20 space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-2">
+                              <Label className="text-xs">Data Source *</Label>
+                              <Select
+                                value={field.dataSource || 'raw_materials'}
+                                disabled={isFieldSaved}
+                                onValueChange={(value: DataSource) => {
+                                  // Clear selected record when changing data source
+                                  handleUpdateField(index, {
+                                    dataSource: value,
+                                    lookupConfig: {}
+                                  });
+                                }}
+                              >
+                                <SelectTrigger className={cn(isFieldSaved ? "bg-secondary/20" : "bg-primary/5 border-primary/10")}>
+                                  <SelectValue placeholder="Select data source..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="raw_materials">Raw Materials</SelectItem>
+                                  <SelectItem value="mhr">Machine Hour Rate (MHR)</SelectItem>
+                                  <SelectItem value="lhr">Labor Hour Rate (LHR)</SelectItem>
+                                  <SelectItem value="processes">Processes</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          {field.dataSource && field.dataSource !== 'manual' && (
+                            <DatabaseFieldExtractor
+                              dataSource={field.dataSource as DataSource}
+                              selectedField={field.sourceField}
+                              onFieldSelect={(selectedField) => {
                                 handleUpdateField(index, {
-                                  dataSource: value,
-                                  lookupConfig: {}
+                                  sourceField: selectedField
                                 });
                               }}
-                            >
-                              <SelectTrigger className={cn(isFieldSaved ? "bg-secondary/20" : "bg-primary/5 border-primary/10")}>
-                                <SelectValue placeholder="Select data source..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="raw_materials">Raw Materials</SelectItem>
-                                <SelectItem value="mhr">Machine Hour Rate (MHR)</SelectItem>
-                                <SelectItem value="lhr">Labor Hour Rate (LHR)</SelectItem>
-                                <SelectItem value="processes">Processes</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
+                              disabled={isFieldSaved}
+                            />
+                          )}
                         </div>
-
-                        {field.dataSource && field.dataSource !== 'manual' && (
-                          <DatabaseFieldExtractor
-                            dataSource={field.dataSource}
-                            selectedField={field.sourceField}
-                            onFieldSelect={(selectedField) => {
-                              handleUpdateField(index, {
-                                sourceField: selectedField
-                              });
-                            }}
-                            disabled={isFieldSaved}
-                          />
-                        )}
-                      </div>
-                    )}
+                      )
+                    }
 
                     {/* Custom Formula Configuration */}
-                    {field.fieldType === 'calculated' && (
-                      <div className="pl-4 border-l-2 border-primary/20 space-y-3">
-                        <FormulaEditor
-                          value={field.defaultValue || ''}
-                          onChange={(value) => handleUpdateField(index, { defaultValue: value })}
-                          availableFields={
-                            currentData.fields
-                              ?.filter((f, i) => i !== index && f.fieldType !== 'calculated' && (f.displayLabel || f.fieldName))
-                              .map((f) => ({
-                                id: f.id,
-                                name: f.fieldName || f.displayLabel || '',
-                                type: f.fieldType,
-                                label: f.displayLabel || f.fieldName || '',
-                              })) || []
-                          }
-                          disabled={isFieldSaved}
-                        />
-                      </div>
-                    )}
+                    {
+                      field.fieldType === 'calculated' && (
+                        <div className="pl-4 border-l-2 border-primary/20 space-y-3">
+                          <FormulaEditor
+                            value={field.defaultValue || ''}
+                            onChange={(value) => handleUpdateField(index, { defaultValue: value })}
+                            availableFields={
+                              (currentData.fields || [])
+                                .filter((f, i) => {
+                                  // Exclude the current field itself
+                                  if (i === index) return false;
+                                  // Only include calculated fields that come BEFORE this one (prevent circular deps)
+                                  if (f.fieldType === 'calculated' && i >= index) return false;
+                                  // Must have a label or field name
+                                  return f.displayLabel || f.fieldName;
+                                })
+                                .map((f) => ({
+                                  id: f.id,
+                                  name: f.fieldName || f.displayLabel || '',
+                                  type: f.fieldType,
+                                  label: f.displayLabel || f.fieldName || '',
+                                }))
+                            }
+                            disabled={isFieldSaved}
+                          />
+                        </div>
+                      )
+                    }
                   </div>
                 );
               })}

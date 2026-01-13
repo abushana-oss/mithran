@@ -1,7 +1,7 @@
 import { apiClient } from './client';
 
 export interface LSREntry {
-  id: number;
+  id: string | number; // Support both UUID (string) and number IDs
   labourCode: string;
   labourType: string;
   description: string;
@@ -48,7 +48,7 @@ export const lsrApi = {
     return response || [];
   },
 
-  getById: async (id: number): Promise<LSREntry> => {
+  getById: async (id: string | number): Promise<LSREntry> => {
     const response = await apiClient.get<LSREntry>(`/lsr/${id}`);
     if (!response) throw new Error('LSR record not found');
     return response;
@@ -66,13 +66,13 @@ export const lsrApi = {
     return response;
   },
 
-  update: async (id: number, data: UpdateLSRDto): Promise<LSREntry> => {
+  update: async (id: string | number, data: UpdateLSRDto): Promise<LSREntry> => {
     const response = await apiClient.put<LSREntry>(`/lsr/${id}`, data);
     if (!response) throw new Error('Failed to update LSR record');
     return response;
   },
 
-  delete: async (id: number): Promise<void> => {
+  delete: async (id: string | number): Promise<void> => {
     await apiClient.delete(`/lsr/${id}`);
   },
 

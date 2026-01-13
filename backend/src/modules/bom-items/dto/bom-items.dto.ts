@@ -99,6 +99,31 @@ export class CreateBOMItemDto {
   @IsUnitCostValidForMakeBuy()
   unitCost?: number;
 
+  @ApiPropertyOptional({ example: 1.5, description: 'Part weight in kg' })
+  @IsOptional()
+  @IsNumber()
+  weight?: number;
+
+  @ApiPropertyOptional({ example: 100.0, description: 'Maximum length in mm' })
+  @IsOptional()
+  @IsNumber()
+  maxLength?: number;
+
+  @ApiPropertyOptional({ example: 50.0, description: 'Maximum width in mm' })
+  @IsOptional()
+  @IsNumber()
+  maxWidth?: number;
+
+  @ApiPropertyOptional({ example: 30.0, description: 'Maximum height in mm' })
+  @IsOptional()
+  @IsNumber()
+  maxHeight?: number;
+
+  @ApiPropertyOptional({ example: 5000.0, description: 'Surface area in mm2' })
+  @IsOptional()
+  @IsNumber()
+  surfaceArea?: number;
+
   @ApiPropertyOptional({ example: 0 })
   @IsOptional()
   @IsNumber()
@@ -121,7 +146,7 @@ export class CreateBOMItemDto {
   materialId?: string;
 }
 
-export class UpdateBOMItemDto extends PartialType(CreateBOMItemDto) {}
+export class UpdateBOMItemDto extends PartialType(CreateBOMItemDto) { }
 
 export class QueryBOMItemsDto {
   @ApiPropertyOptional()

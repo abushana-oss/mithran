@@ -51,7 +51,7 @@ export default function LHRDatabasePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [deleteId, setDeleteId] = useState<number | string | null>(null);
   const [editingEntry, setEditingEntry] = useState<LSREntry | null>(null);
 
   // Working Hours Configuration - User Input Required
@@ -89,13 +89,15 @@ export default function LHRDatabasePage() {
     }
   };
 
-  const [formData, setFormData] = useState<CreateLSRDto & {
+  type LSRFormData = Omit<CreateLSRDto, 'minimumWagePerDay' | 'minimumWagePerMonth' | 'dearnessAllowance' | 'perksPercentage' | 'lhr'> & {
     minimumWagePerDay: number | '';
     minimumWagePerMonth: number | '';
     dearnessAllowance: number | '';
     perksPercentage: number | '';
     lhr: number | '';
-  }>(() => loadDraft() || {
+  };
+
+  const [formData, setFormData] = useState<LSRFormData>(() => loadDraft() || {
     labourCode: '',
     labourType: '',
     description: '',
@@ -116,7 +118,7 @@ export default function LHRDatabasePage() {
     }
   }, [formData]);
 
-  const handleInputChange = (field: keyof CreateLSRDto, value: string | number) => {
+  const handleInputChange = (field: keyof LSRFormData, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -125,18 +127,18 @@ export default function LHRDatabasePage() {
     setFormData(prev => {
       // Only auto-generate if labour code is empty or was auto-generated
       const shouldAutoGenerate = !prev.labourCode || prev.labourCode.startsWith('UN-L-') ||
-                                  prev.labourCode.startsWith('SS-L-') || prev.labourCode.startsWith('SK-L-') ||
-                                  prev.labourCode.startsWith('HS-L-') || prev.labourCode.startsWith('SV-L-') ||
-                                  prev.labourCode.startsWith('MG-L-');
+        prev.labourCode.startsWith('SS-L-') || prev.labourCode.startsWith('SK-L-') ||
+        prev.labourCode.startsWith('HS-L-') || prev.labourCode.startsWith('SV-L-') ||
+        prev.labourCode.startsWith('MG-L-');
 
       if (shouldAutoGenerate) {
         // Generate code based on type
         const prefix = labourType === 'Unskilled' ? 'UN-L-' :
-                      labourType === 'Semi-Skilled' ? 'SS-L-' :
-                      labourType === 'Skilled' ? 'SK-L-' :
-                      labourType === 'Highly Skilled' ? 'HS-L-' :
-                      labourType === 'Supervisor' ? 'SV-L-' :
-                      labourType === 'Manager' ? 'MG-L-' : 'LB-L-';
+          labourType === 'Semi-Skilled' ? 'SS-L-' :
+            labourType === 'Skilled' ? 'SK-L-' :
+              labourType === 'Highly Skilled' ? 'HS-L-' :
+                labourType === 'Supervisor' ? 'SV-L-' :
+                  labourType === 'Manager' ? 'MG-L-' : 'LB-L-';
 
         // Count existing entries of this type to generate next number
         const existingCodes = lsrEntries.filter(e => e.labourCode.startsWith(prefix));
@@ -145,11 +147,11 @@ export default function LHRDatabasePage() {
         // Suggest default wages based on labour type (user can modify)
         const suggestedMonthlyWage =
           labourType === 'Unskilled' ? 12000 :
-          labourType === 'Semi-Skilled' ? 18000 :
-          labourType === 'Skilled' ? 25000 :
-          labourType === 'Highly Skilled' ? 35000 :
-          labourType === 'Supervisor' ? 45000 :
-          labourType === 'Manager' ? 60000 : 15000;
+            labourType === 'Semi-Skilled' ? 18000 :
+              labourType === 'Skilled' ? 25000 :
+                labourType === 'Highly Skilled' ? 35000 :
+                  labourType === 'Supervisor' ? 45000 :
+                    labourType === 'Manager' ? 60000 : 15000;
 
         const suggestedDailyWage = suggestedMonthlyWage / 30;
         const suggestedDA = Math.round(suggestedMonthlyWage * 0.05); // 5% of monthly wage
@@ -172,7 +174,7 @@ export default function LHRDatabasePage() {
   };
 
   // Handle number inputs - allows empty strings
-  const handleNumberChange = (field: keyof CreateLSRDto, value: string) => {
+  const handleNumberChange = (field: keyof LSRFormData, value: string) => {
     if (value === '') {
       setFormData(prev => ({ ...prev, [field]: '' }));
     } else {
@@ -269,7 +271,7 @@ export default function LHRDatabasePage() {
   }, [calculatedLHR]);
 
   const resetForm = () => {
-    const emptyForm = {
+    const emptyForm: LSRFormData = {
       labourCode: '',
       labourType: '',
       description: '',
@@ -664,12 +666,12 @@ export default function LHRDatabasePage() {
                         onChange={(e) => handleInputChange('description', e.target.value)}
                         placeholder={
                           formData.labourType === 'Unskilled' ? 'e.g., General helper, cleaning, material handling, basic assembly tasks' :
-                          formData.labourType === 'Semi-Skilled' ? 'e.g., Machine operator, basic welding, quality checking, packaging' :
-                          formData.labourType === 'Skilled' ? 'e.g., Certified welder, CNC operator, electrician, fitter, specialized technician' :
-                          formData.labourType === 'Highly Skilled' ? 'e.g., Senior technician, advanced machining, precision work, tool & die maker' :
-                          formData.labourType === 'Supervisor' ? 'e.g., Floor supervisor, team lead, shift in-charge, quality supervisor' :
-                          formData.labourType === 'Manager' ? 'e.g., Production manager, operations manager, department head' :
-                          'Job responsibilities and tasks...'
+                            formData.labourType === 'Semi-Skilled' ? 'e.g., Machine operator, basic welding, quality checking, packaging' :
+                              formData.labourType === 'Skilled' ? 'e.g., Certified welder, CNC operator, electrician, fitter, specialized technician' :
+                                formData.labourType === 'Highly Skilled' ? 'e.g., Senior technician, advanced machining, precision work, tool & die maker' :
+                                  formData.labourType === 'Supervisor' ? 'e.g., Floor supervisor, team lead, shift in-charge, quality supervisor' :
+                                    formData.labourType === 'Manager' ? 'e.g., Production manager, operations manager, department head' :
+                                      'Job responsibilities and tasks...'
                         }
                         rows={3}
                       />

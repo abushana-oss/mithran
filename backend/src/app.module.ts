@@ -10,6 +10,7 @@ import { VendorsModule } from './modules/vendors/vendors.module';
 import { BOMsModule } from './modules/boms/boms.module';
 import { BOMItemsModule } from './modules/bom-items/bom-items.module';
 import { ProcessesModule } from './modules/processes/processes.module';
+import { ProcessRoutesModule } from './modules/process-routes/process-routes.module';
 import { RawMaterialsModule } from './modules/raw-materials/raw-materials.module';
 import { MHRModule } from './modules/mhr/mhr.module';
 import { LSRModule } from './modules/lsr/lsr.module';
@@ -53,6 +54,7 @@ import { validate } from './config/env.validation';
     BOMsModule,
     BOMItemsModule,
     ProcessesModule,
+    ProcessRoutesModule,
     RawMaterialsModule,
     MHRModule,
     LSRModule,

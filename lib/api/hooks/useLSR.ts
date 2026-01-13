@@ -32,7 +32,7 @@ export const useLSR = (search?: string) => {
   });
 };
 
-export const useLSRById = (id: number) => {
+export const useLSRById = (id: string | number) => {
   return useQuery({
     queryKey: ['lsr', id],
     queryFn: () => lsrApi.getById(id),
@@ -75,7 +75,7 @@ export const useUpdateLSR = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: number; data: UpdateLSRDto }) =>
+    mutationFn: ({ id, data }: { id: string | number; data: UpdateLSRDto }) =>
       lsrApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lsr'] });
@@ -100,7 +100,7 @@ export const useDeleteLSR = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: number) => lsrApi.delete(id),
+    mutationFn: (id: string | number) => lsrApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lsr'] });
       toast.success('Labour entry deleted successfully');

@@ -31,7 +31,10 @@ export function CalculatorExecutor({ calculatorId }: CalculatorExecutorProps) {
     if (calculator?.fields) {
       const initialValues: FieldValues = {};
       calculator.fields.forEach((field) => {
-        initialValues[field.fieldName] = field.defaultValue ?? null;
+        // Only set default values for non-calculated fields
+        if (field.fieldType !== 'calculated') {
+          initialValues[field.fieldName] = field.defaultValue ?? null;
+        }
       });
       setFieldValues(initialValues);
     }
@@ -51,7 +54,17 @@ export function CalculatorExecutor({ calculatorId }: CalculatorExecutorProps) {
 
       if (result.success) {
         setResults(result.results);
-        toast.success(`Calculation complete in ${result.durationMs}ms`);
+
+        // Check if any calculations failed
+        const hasErrors = Object.values(result.results).some(
+          (val: any) => val && typeof val === 'object' && val.error
+        );
+
+        if (hasErrors) {
+          toast.warning('Calculation completed with some errors. Check individual fields below.');
+        } else {
+          toast.success(`Calculation completed successfully in ${result.durationMs}ms`);
+        }
       } else {
         const errorMsg = result.error || 'Failed to execute calculator';
         setExecutionError(errorMsg);
@@ -134,48 +147,121 @@ export function CalculatorExecutor({ calculatorId }: CalculatorExecutorProps) {
         </Alert>
       )}
 
-      {/* Input Fields */}
+      {/* Input Fields - Only show non-calculated fields */}
       <Card>
         <CardHeader>
           <CardTitle>Input Values</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          {calculator.fields?.map((field) => (
-            <div key={field.id} className="space-y-2">
-              <Label htmlFor={field.fieldName}>
-                {field.displayLabel || field.fieldName}
-                {field.isRequired && <span className="text-destructive ml-1">*</span>}
-              </Label>
-              <Input
-                id={field.fieldName}
-                type={field.fieldType === 'number' ? 'number' : 'text'}
-                value={fieldValues[field.fieldName]?.toString() || ''}
-                onChange={(e) =>
-                  setFieldValues((prev) => ({
-                    ...prev,
-                    [field.fieldName]: field.fieldType === 'number' ? parseFloat(e.target.value) : e.target.value,
-                  }))
-                }
-                placeholder={field.displayLabel}
-                className="bg-primary/5 border-primary/10"
-              />
-              {field.unit && (
-                <p className="text-xs text-muted-foreground">Unit: {field.unit}</p>
-              )}
-            </div>
-          ))}
+          {calculator.fields
+            ?.filter((field) => field.fieldType !== 'calculated')
+            .map((field) => (
+              <div key={field.id} className="space-y-2">
+                <Label htmlFor={field.fieldName}>
+                  {field.displayLabel || field.fieldName}
+                  {field.isRequired && <span className="text-destructive ml-1">*</span>}
+                </Label>
+                <Input
+                  id={field.fieldName}
+                  type={field.fieldType === 'number' ? 'number' : 'text'}
+                  value={fieldValues[field.fieldName]?.toString() || ''}
+                  onChange={(e) =>
+                    setFieldValues((prev) => ({
+                      ...prev,
+                      [field.fieldName]: field.fieldType === 'number' ? parseFloat(e.target.value) : e.target.value,
+                    }))
+                  }
+                  placeholder={field.displayLabel}
+                  className="bg-primary/5 border-primary/10"
+                />
+                {field.unit && (
+                  <p className="text-xs text-muted-foreground">Unit: {field.unit}</p>
+                )}
+              </div>
+            ))}
         </CardContent>
       </Card>
 
-      {/* Results */}
-      {results && calculator.formulas && calculator.formulas.length > 0 && (
+      {/* Results - Show both calculated fields and formulas */}
+      {results && (
         <Card>
           <CardHeader>
             <CardTitle>Results</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {calculator.formulas
+              {/* Show calculated fields */}
+              {calculator.fields
+                ?.filter((field) => field.fieldType === 'calculated')
+                .map((field) => {
+                  const value = results[field.id] ?? results[field.fieldName];
+
+                  // Handle error case
+                  if (value && typeof value === 'object' && value.error) {
+                    return (
+                      <div key={field.id} className="flex justify-between items-center py-3 px-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+                        <div className="flex-1">
+                          <span className="font-semibold text-base">{field.displayLabel || field.fieldName}</span>
+                          {field.defaultValue && (
+                            <p className="text-xs text-muted-foreground mt-1 font-mono">
+                              {field.defaultValue}
+                            </p>
+                          )}
+                          <p className="text-xs text-destructive mt-1">
+                            Error: {value.error}
+                          </p>
+                        </div>
+                        <span className="text-sm text-destructive font-medium">
+                          Calculation Failed
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  // Don't skip if value is 0 or false, only skip if undefined
+                  if (value === undefined || value === null) {
+                    return (
+                      <div key={field.id} className="flex justify-between items-center py-3 px-4 bg-muted/50 border border-border rounded-lg">
+                        <div className="flex-1">
+                          <span className="font-semibold text-base">{field.displayLabel || field.fieldName}</span>
+                          {field.defaultValue && (
+                            <p className="text-xs text-muted-foreground mt-1 font-mono">
+                              {field.defaultValue}
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-sm text-muted-foreground">
+                          Pending
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  const displayValue = typeof value === 'object' ? value.value : value;
+                  const formattedValue = typeof displayValue === 'number'
+                    ? displayValue.toFixed(3)
+                    : displayValue?.toString() || 'N/A';
+
+                  return (
+                    <div key={field.id} className="flex justify-between items-center py-3 px-4 bg-success/5 border border-success/30 rounded-lg">
+                      <div className="flex-1">
+                        <span className="font-semibold text-base">{field.displayLabel || field.fieldName}</span>
+                        {field.defaultValue && (
+                          <p className="text-xs text-muted-foreground mt-1 font-mono">
+                            {field.defaultValue}
+                          </p>
+                        )}
+                      </div>
+                      <span className="text-2xl font-bold text-success">
+                        {formattedValue}
+                        {field.unit && <span className="text-sm text-muted-foreground ml-2">{field.unit}</span>}
+                      </span>
+                    </div>
+                  );
+                })}
+
+              {/* Show regular formulas if any */}
+              {calculator.formulas && calculator.formulas.length > 0 && calculator.formulas
                 .filter((formula) => formula.displayInResults !== false)
                 .map((formula) => {
                   const value = results[formula.id] ?? results[formula.formulaName];

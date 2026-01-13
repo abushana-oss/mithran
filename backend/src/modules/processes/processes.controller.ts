@@ -21,6 +21,14 @@ import {
   BulkUpdateTableRowsDto,
 } from './dto/processes.dto';
 import { ProcessResponseDto, ProcessListResponseDto } from './dto/process-response.dto';
+import {
+  CreateProcessCalculatorMappingDto,
+  UpdateProcessCalculatorMappingDto,
+  QueryProcessCalculatorMappingsDto,
+  ProcessCalculatorMappingResponseDto,
+  ProcessCalculatorMappingListResponseDto,
+  ProcessHierarchyDto,
+} from './dto/process-calculator-mapping.dto';
 import { CurrentUser } from '../../common/decorators/user.decorator';
 import { AccessToken } from '../../common/decorators/access-token.decorator';
 import { Public } from '../../common/decorators/public.decorator';
@@ -30,6 +38,74 @@ import { Public } from '../../common/decorators/public.decorator';
 @Controller({ path: 'processes', version: '1' })
 export class ProcessesController {
   constructor(private readonly processesService: ProcessesService) {}
+
+  // ============================================================================
+  // PROCESS CALCULATOR MAPPING ENDPOINTS (Must be before :id routes)
+  // Routes ordered: most specific -> general -> dynamic params
+  // ============================================================================
+
+  @Get('calculator-mappings/hierarchy')
+  @Public()
+  @ApiOperation({ summary: 'Get unique process hierarchy values for filters' })
+  @ApiResponse({ status: 200, description: 'Process hierarchy retrieved successfully', type: ProcessHierarchyDto })
+  async getProcessHierarchy(@AccessToken() token?: string): Promise<ProcessHierarchyDto> {
+    return this.processesService.getProcessHierarchy(token || '');
+  }
+
+  @Get('calculator-mappings')
+  @Public()
+  @ApiOperation({ summary: 'Get all process calculator mappings' })
+  @ApiResponse({ status: 200, description: 'Process calculator mappings retrieved successfully', type: ProcessCalculatorMappingListResponseDto })
+  async getProcessCalculatorMappings(
+    @Query() query: QueryProcessCalculatorMappingsDto,
+    @AccessToken() token?: string,
+  ): Promise<ProcessCalculatorMappingListResponseDto> {
+    return this.processesService.getProcessCalculatorMappings(query, token || '');
+  }
+
+  @Get('calculator-mappings/:id')
+  @ApiOperation({ summary: 'Get process calculator mapping by ID' })
+  @ApiResponse({ status: 200, description: 'Process calculator mapping retrieved successfully', type: ProcessCalculatorMappingResponseDto })
+  @ApiResponse({ status: 404, description: 'Process calculator mapping not found' })
+  async getProcessCalculatorMapping(
+    @Param('id') id: string,
+    @AccessToken() token: string,
+  ): Promise<ProcessCalculatorMappingResponseDto> {
+    return this.processesService.getProcessCalculatorMapping(id, token);
+  }
+
+  @Post('calculator-mappings')
+  @ApiOperation({ summary: 'Create new process calculator mapping' })
+  @ApiResponse({ status: 201, description: 'Process calculator mapping created successfully', type: ProcessCalculatorMappingResponseDto })
+  async createProcessCalculatorMapping(
+    @Body() createDto: CreateProcessCalculatorMappingDto,
+    @AccessToken() token: string,
+  ): Promise<ProcessCalculatorMappingResponseDto> {
+    return this.processesService.createProcessCalculatorMapping(createDto, token);
+  }
+
+  @Put('calculator-mappings/:id')
+  @ApiOperation({ summary: 'Update process calculator mapping' })
+  @ApiResponse({ status: 200, description: 'Process calculator mapping updated successfully', type: ProcessCalculatorMappingResponseDto })
+  @ApiResponse({ status: 404, description: 'Process calculator mapping not found' })
+  async updateProcessCalculatorMapping(
+    @Param('id') id: string,
+    @Body() updateDto: UpdateProcessCalculatorMappingDto,
+    @AccessToken() token: string,
+  ): Promise<ProcessCalculatorMappingResponseDto> {
+    return this.processesService.updateProcessCalculatorMapping(id, updateDto, token);
+  }
+
+  @Delete('calculator-mappings/:id')
+  @ApiOperation({ summary: 'Delete process calculator mapping' })
+  @ApiResponse({ status: 200, description: 'Process calculator mapping deleted successfully' })
+  async deleteProcessCalculatorMapping(@Param('id') id: string, @AccessToken() token: string) {
+    return this.processesService.deleteProcessCalculatorMapping(id, token);
+  }
+
+  // ============================================================================
+  // PROCESS CRUD ENDPOINTS
+  // ============================================================================
 
   @Get()
   @Public()

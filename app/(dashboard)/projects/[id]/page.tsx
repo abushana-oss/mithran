@@ -12,8 +12,9 @@ import {
   FileSpreadsheet,
   TrendingUp,
 } from 'lucide-react';
-import { useProject, useBOMs } from '@/lib/api/hooks';
+import { useProject, useBOMs, useUpdateProject } from '@/lib/api/hooks';
 import { ProjectModules } from '@/components/features/projects/ProjectModules';
+import { ProjectDetailsCard } from '@/components/features/projects/ProjectDetailsCard';
 
 export default function ProjectDetail() {
   const params = useParams<{ id: string }>();
@@ -30,6 +31,32 @@ export default function ProjectDetail() {
   const { data: sourcingListsData } = useBOMs({ projectId: id });
   const sourcingLists = sourcingListsData?.boms || [];
   const firstBomId = sourcingLists.length > 0 && sourcingLists[0] ? sourcingLists[0].id : undefined;
+
+  const updateProjectMutation = useUpdateProject();
+
+  const handleUpdateProject = async (data: {
+    name?: string;
+    description?: string;
+    country?: string;
+    state?: string;
+    city?: string;
+  }) => {
+    // Check if there's any data to update
+    if (!data.name && data.description === undefined && data.country === undefined && data.state === undefined && data.city === undefined) {
+      return;
+    }
+
+    await updateProjectMutation.mutateAsync({
+      id,
+      data: {
+        ...(data.name && { name: data.name }),
+        ...(data.description !== undefined && { description: data.description }),
+        ...(data.country !== undefined && { country: data.country }),
+        ...(data.state !== undefined && { state: data.state }),
+        ...(data.city !== undefined && { city: data.city }),
+      },
+    });
+  };
 
   // Loading state
   if (projectLoading) {
@@ -98,6 +125,9 @@ export default function ProjectDetail() {
           description={project.description || 'Project overview and cost management'}
         />
       </div>
+
+      {/* Project Details Card */}
+      <ProjectDetailsCard project={project} onUpdate={handleUpdateProject} />
 
       {/* Cost Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

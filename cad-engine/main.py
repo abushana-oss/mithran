@@ -396,7 +396,7 @@ if __name__ == "__main__":
         "main:app",
         host=config.host,
         port=config.port,
-        reload=(config.environment == "development"),
+        reload=(config.environment == "production"),
         log_level=config.log_level.lower(),
         access_log=True
     )

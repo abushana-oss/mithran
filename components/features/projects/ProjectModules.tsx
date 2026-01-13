@@ -109,19 +109,48 @@ export function ProjectModules({ projectId, bomCount, firstBomId }: ProjectModul
       },
     },
     {
-      title: 'Should Cost Analysis',
-      description: 'Cost modeling and analysis tools for accurate should-cost calculations and vendor negotiations',
-      borderColor: 'border-l-4 border-l-green-500',
-      status: 'coming-soon' as const,
-      onClick: undefined,
-    },
-    {
-      title: 'Process Planning',
+      title: 'Process Planning & Costing',
       description: 'Define manufacturing processes, material selection, and cost estimation for OEM and suppliers',
       borderColor: 'border-l-4 border-l-purple-500',
       status: 'available' as const,
       onClick: () => {
         router.push(`/projects/${projectId}/process-planning`);
+      },
+    },
+    {
+      title: 'Supplier Evaluation',
+      description: 'Manage supplier shortlist, RFQ sent (SSG), and supplier audit processes',
+      borderColor: 'border-l-4 border-l-orange-500',
+      status: 'available' as const,
+      onClick: () => {
+        router.push(`/projects/${projectId}/supplier-evaluation`);
+      },
+    },
+    {
+      title: 'Supplier Nomination',
+      description: 'Handle supplier negotiation and supplier analysis for nomination decisions',
+      borderColor: 'border-l-4 border-l-teal-500',
+      status: 'available' as const,
+      onClick: () => {
+        router.push(`/projects/${projectId}/supplier-nomination`);
+      },
+    },
+    {
+      title: 'Production Planning',
+      description: 'Manage ISIR/FIA sample submission, PPAP lot, and batch lot production planning',
+      borderColor: 'border-l-4 border-l-indigo-500',
+      status: 'available' as const,
+      onClick: () => {
+        router.push(`/projects/${projectId}/production-planning`);
+      },
+    },
+    {
+      title: 'Delivery',
+      description: 'Coordinate packing and logistics for efficient delivery management',
+      borderColor: 'border-l-4 border-l-green-500',
+      status: 'available' as const,
+      onClick: () => {
+        router.push(`/projects/${projectId}/delivery`);
       },
     },
   ];

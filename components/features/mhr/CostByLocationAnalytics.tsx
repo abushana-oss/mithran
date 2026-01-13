@@ -410,7 +410,7 @@ export const CostByLocationAnalytics: FC<CostByLocationAnalyticsProps> = ({ reco
                     fill="#8884d8"
                     dataKey="value"
                   >
-                    {totalCostData.map((entry, index) => (
+                    {totalCostData.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>

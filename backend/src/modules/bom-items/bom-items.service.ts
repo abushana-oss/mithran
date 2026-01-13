@@ -9,7 +9,45 @@ import { AccessToken } from '../../common/decorators/access-token.decorator';
 export class BOMItemsService {
   private readonly logger = new Logger(BOMItemsService.name);
 
-  constructor(private readonly supabaseService: SupabaseService) {}
+  constructor(private readonly supabaseService: SupabaseService) { }
+
+  /**
+   * Transform camelCase DTO properties to snake_case database columns
+   */
+  private transformDtoToDb(dto: any): any {
+    const transformed: any = {};
+
+    // Map camelCase to snake_case
+    const fieldMapping: Record<string, string> = {
+      bomId: 'bom_id',
+      partNumber: 'part_number',
+      itemType: 'item_type',
+      parentItemId: 'parent_item_id',
+      annualVolume: 'annual_volume',
+      materialGrade: 'material_grade',
+      makeBuy: 'make_buy',
+      unitCost: 'unit_cost',
+      sortOrder: 'sort_order',
+      file3dPath: 'file_3d_path',
+      file2dPath: 'file_2d_path',
+      materialId: 'material_id',
+      weight: 'weight',
+      maxLength: 'max_length',
+      maxWidth: 'max_width',
+      maxHeight: 'max_height',
+      surfaceArea: 'surface_area',
+    };
+
+    // Transform each field
+    for (const [key, value] of Object.entries(dto)) {
+      if (value !== undefined) {
+        const dbKey = fieldMapping[key] || key;
+        transformed[dbKey] = value;
+      }
+    }
+
+    return transformed;
+  }
 
   async findAll(
     bomId?: string,
@@ -62,8 +100,11 @@ export class BOMItemsService {
       throw new InternalServerErrorException(`Failed to fetch BOM items: ${error.message}`);
     }
 
+    // Transform database rows to DTOs
+    const transformedItems = (data || []).map(row => BOMItemResponseDto.fromDatabase(row));
+
     return {
-      items: data || [],
+      items: transformedItems,
       total: count || 0,
       page,
       limit,
@@ -94,7 +135,7 @@ export class BOMItemsService {
       throw new NotFoundException(`BOM item with ID ${id} not found`);
     }
 
-    return data;
+    return BOMItemResponseDto.fromDatabase(data);
   }
 
   async create(
@@ -109,11 +150,14 @@ export class BOMItemsService {
 
     const client = this.supabaseService.getClient(accessToken);
 
+    // Transform camelCase DTO to snake_case database columns
+    const dbData = this.transformDtoToDb(createBOMItemDto);
+
     const { data, error } = await client
       .from('bom_items')
       .insert({
-        ...createBOMItemDto,
-        created_by: userId,
+        ...dbData,
+        user_id: userId,
       })
       .select('*, bom:bom_id!inner(name, description)')
       .single();
@@ -123,7 +167,7 @@ export class BOMItemsService {
       throw new InternalServerErrorException(`Failed to create BOM item: ${error.message}`);
     }
 
-    return data;
+    return BOMItemResponseDto.fromDatabase(data);
   }
 
   async update(
@@ -136,11 +180,13 @@ export class BOMItemsService {
 
     const client = this.supabaseService.getClient(accessToken);
 
+    // Transform camelCase DTO to snake_case database columns
+    const dbData = this.transformDtoToDb(updateBOMItemDto);
+
     const { data, error } = await client
       .from('bom_items')
       .update({
-        ...updateBOMItemDto,
-        updated_by: userId,
+        ...dbData,
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
@@ -156,7 +202,7 @@ export class BOMItemsService {
       throw new NotFoundException(`BOM item with ID ${id} not found`);
     }
 
-    return data;
+    return BOMItemResponseDto.fromDatabase(data);
   }
 
   async updateSortOrder(
@@ -194,7 +240,7 @@ export class BOMItemsService {
     this.logger.log(`Getting ${fileType} file URL for BOM item: ${id}`, 'BOMItemsService');
 
     const bomItem = await this.findOne(id, userId, accessToken);
-    
+
     if (fileType === '2d' && bomItem.file2dPath) {
       const { data } = await this.supabaseService
         .getClient(accessToken)

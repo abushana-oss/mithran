@@ -2,7 +2,7 @@
 
 import { Suspense, useState, useRef, useEffect, useCallback } from 'react';
 import { Canvas, useLoader, useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, PerspectiveCamera, Environment, Grid, Center } from '@react-three/drei';
+import { OrbitControls, PerspectiveCamera, Grid, Center } from '@react-three/drei';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import * as THREE from 'three';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,11 @@ import {
 interface EDrawingsViewerProps {
   fileUrl: string;
   fileName: string;
+  onMeasurements?: (data: {
+    volume: number;
+    dimensions: { x: number; y: number; z: number };
+    surfaceArea: number;
+  }) => void;
 }
 
 // Standard CAD views configuration
@@ -341,7 +346,8 @@ function Scene({
       <directionalLight position={[-10, -10, -5]} intensity={0.4} />
       <hemisphereLight args={['#ffffff', '#444444', 0.6]} />
 
-      <Environment preset="studio" />
+      {/* Environment preset removed to prevent loading errors - using manual lights instead */}
+      {/* <Environment preset="studio" /> */}
 
       {/* Grid */}
       {showGrid && (
@@ -386,7 +392,7 @@ function Scene({
   );
 }
 
-export function EDrawingsViewer({ fileUrl, fileName }: EDrawingsViewerProps) {
+export function EDrawingsViewer({ fileUrl, fileName, onMeasurements }: EDrawingsViewerProps) {
   const [loading, setLoading] = useState(true);
   const [modelColor, setModelColor] = useState('#3b82f6');
   const [showGrid, setShowGrid] = useState(true);
@@ -422,7 +428,8 @@ export function EDrawingsViewer({ fileUrl, fileName }: EDrawingsViewerProps) {
     surfaceArea: number;
   }) => {
     setMeasurements(data);
-  }, []);
+    onMeasurements?.(data);
+  }, [onMeasurements]);
 
   const handleModelLoad = useCallback(() => {
     setLoading(false);
@@ -504,11 +511,10 @@ export function EDrawingsViewer({ fileUrl, fileName }: EDrawingsViewerProps) {
               variant="outline"
               size="sm"
               onClick={toggleTransparent}
-              className={`gap-1.5 font-medium text-xs ${
-                isTransparent
-                  ? 'bg-green-600 hover:bg-green-700 text-white border-green-700'
-                  : 'bg-[#505050] hover:bg-[#606060] text-white border-[#666666]'
-              }`}
+              className={`gap-1.5 font-medium text-xs ${isTransparent
+                ? 'bg-green-600 hover:bg-green-700 text-white border-green-700'
+                : 'bg-[#505050] hover:bg-[#606060] text-white border-[#666666]'
+                }`}
             >
               <Eye className="h-3.5 w-3.5" />
               Transparent
@@ -518,11 +524,10 @@ export function EDrawingsViewer({ fileUrl, fileName }: EDrawingsViewerProps) {
               variant="outline"
               size="sm"
               onClick={toggleWireframe}
-              className={`gap-1.5 font-medium text-xs ${
-                isWireframe
-                  ? 'bg-green-600 hover:bg-green-700 text-white border-green-700'
-                  : 'bg-[#505050] hover:bg-[#606060] text-white border-[#666666]'
-              }`}
+              className={`gap-1.5 font-medium text-xs ${isWireframe
+                ? 'bg-green-600 hover:bg-green-700 text-white border-green-700'
+                : 'bg-[#505050] hover:bg-[#606060] text-white border-[#666666]'
+                }`}
             >
               <Square className="h-3.5 w-3.5" />
               Wireframe
@@ -532,11 +537,10 @@ export function EDrawingsViewer({ fileUrl, fileName }: EDrawingsViewerProps) {
               variant="outline"
               size="sm"
               onClick={toggleCrossSection}
-              className={`gap-1.5 font-medium text-xs ${
-                showCrossSection
-                  ? 'bg-green-600 hover:bg-green-700 text-white border-green-700'
-                  : 'bg-[#505050] hover:bg-[#606060] text-white border-[#666666]'
-              }`}
+              className={`gap-1.5 font-medium text-xs ${showCrossSection
+                ? 'bg-green-600 hover:bg-green-700 text-white border-green-700'
+                : 'bg-[#505050] hover:bg-[#606060] text-white border-[#666666]'
+                }`}
             >
               <Slice className="h-3.5 w-3.5" />
               Cross Section
@@ -774,9 +778,8 @@ export function EDrawingsViewer({ fileUrl, fileName }: EDrawingsViewerProps) {
 
         {/* Right Panel - Properties & Controls - Toggleable */}
         <div
-          className={`flex-shrink-0 w-64 bg-[#3f3f3f] border-l border-[#555555] flex flex-col max-h-screen transition-transform duration-300 ease-in-out ${
-            showSidebar ? 'translate-x-0' : 'translate-x-full'
-          }`}
+          className={`flex-shrink-0 w-64 bg-[#3f3f3f] border-l border-[#555555] flex flex-col max-h-screen transition-transform duration-300 ease-in-out ${showSidebar ? 'translate-x-0' : 'translate-x-full'
+            }`}
         >
           <div className="px-2 py-1.5 border-b border-[#555555]">
             <h3 className="text-[11px] font-semibold text-white">Properties</h3>
@@ -784,118 +787,118 @@ export function EDrawingsViewer({ fileUrl, fileName }: EDrawingsViewerProps) {
           </div>
 
           <div className="flex-1 overflow-y-auto p-1.5 space-y-1.5">
-              {/* Part Details - Dimensions & Volume */}
-              {measurements && (
-                <Card className="bg-[#505050] border-[#666666]">
-                  <div className="p-1.5 space-y-1">
-                    <h4 className="text-[10px] font-semibold text-white flex items-center gap-1">
-                      <Box className="h-2.5 w-2.5" />
-                      Part Details
-                    </h4>
-                    <div className="space-y-1 text-[9px]">
-                      {/* Dimensions */}
-                      <div>
-                        <span className="text-gray-400 font-medium">Dimensions</span>
-                        <div className="bg-[#3f3f3f] rounded px-1 py-0.5 font-mono text-white text-[10px] mt-0.5">
-                          {measurements.dimensions.x.toFixed(1)} × {measurements.dimensions.y.toFixed(1)} × {measurements.dimensions.z.toFixed(1)} mm
-                        </div>
+            {/* Part Details - Dimensions & Volume */}
+            {measurements && (
+              <Card className="bg-[#505050] border-[#666666]">
+                <div className="p-1.5 space-y-1">
+                  <h4 className="text-[10px] font-semibold text-white flex items-center gap-1">
+                    <Box className="h-2.5 w-2.5" />
+                    Part Details
+                  </h4>
+                  <div className="space-y-1 text-[9px]">
+                    {/* Dimensions */}
+                    <div>
+                      <span className="text-gray-400 font-medium">Dimensions</span>
+                      <div className="bg-[#3f3f3f] rounded px-1 py-0.5 font-mono text-white text-[10px] mt-0.5">
+                        {measurements.dimensions.x.toFixed(1)} × {measurements.dimensions.y.toFixed(1)} × {measurements.dimensions.z.toFixed(1)} mm
                       </div>
+                    </div>
 
-                      {/* Volume */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-400">Volume</span>
-                        <span className="text-white font-mono text-[10px]">{measurements.volume.toFixed(2)} mm³</span>
-                      </div>
+                    {/* Volume */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400">Volume</span>
+                      <span className="text-white font-mono text-[10px]">{measurements.volume.toFixed(2)} mm³</span>
+                    </div>
 
-                      {/* Surface Area */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-400">Surface</span>
-                        <span className="text-white font-mono text-[10px]">{measurements.surfaceArea.toFixed(2)} mm²</span>
-                      </div>
+                    {/* Surface Area */}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-400">Surface</span>
+                      <span className="text-white font-mono text-[10px]">{measurements.surfaceArea.toFixed(2)} mm²</span>
                     </div>
                   </div>
-                </Card>
-              )}
+                </div>
+              </Card>
+            )}
 
-              {/* Section View Control */}
-              <Card className="bg-[#505050] border-[#666666]">
-                <div className="p-1.5">
-                  <h4 className="text-[10px] font-semibold text-white flex items-center gap-1 mb-1">
-                    <Slice className="h-2.5 w-2.5" />
-                    Section View
-                  </h4>
-                  <div className="space-y-0.5">
-                    <div className="flex items-center justify-between text-[9px]">
-                      <span className="text-gray-300">Position</span>
-                      <span className="text-white font-medium">{Math.round(sectionPlane * 100)}%</span>
-                    </div>
-                    <Slider
-                      value={[sectionPlane]}
-                      onValueChange={(v) => {
-                        const newValue = v[0] ?? 0;
-                        setSectionPlane(newValue);
-                        setShowCrossSection(newValue > 0);
-                      }}
-                      max={1}
-                      step={0.01}
-                      className="w-full"
-                      disabled={!showCrossSection}
+            {/* Section View Control */}
+            <Card className="bg-[#505050] border-[#666666]">
+              <div className="p-1.5">
+                <h4 className="text-[10px] font-semibold text-white flex items-center gap-1 mb-1">
+                  <Slice className="h-2.5 w-2.5" />
+                  Section View
+                </h4>
+                <div className="space-y-0.5">
+                  <div className="flex items-center justify-between text-[9px]">
+                    <span className="text-gray-300">Position</span>
+                    <span className="text-white font-medium">{Math.round(sectionPlane * 100)}%</span>
+                  </div>
+                  <Slider
+                    value={[sectionPlane]}
+                    onValueChange={(v) => {
+                      const newValue = v[0] ?? 0;
+                      setSectionPlane(newValue);
+                      setShowCrossSection(newValue > 0);
+                    }}
+                    max={1}
+                    step={0.01}
+                    className="w-full"
+                    disabled={!showCrossSection}
+                  />
+                  <p className="text-[8px] text-gray-400 leading-tight">
+                    {!showCrossSection ? 'Enable to use' : sectionPlane === 0 ? 'Slide to cut' : 'Active'}
+                  </p>
+                </div>
+              </div>
+            </Card>
+
+            {/* Display Settings */}
+            <Card className="bg-[#505050] border-[#666666]">
+              <div className="p-1.5">
+                <h4 className="text-[10px] font-semibold text-white flex items-center gap-1 mb-1">
+                  <Eye className="h-2.5 w-2.5" />
+                  Display
+                </h4>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[9px] text-gray-300">Color</label>
+                    <input
+                      type="color"
+                      value={modelColor}
+                      onChange={(e) => setModelColor(e.target.value)}
+                      className="h-4 w-8 rounded border border-[#666666] cursor-pointer"
+                      disabled={isWireframe}
                     />
-                    <p className="text-[8px] text-gray-400 leading-tight">
-                      {!showCrossSection ? 'Enable to use' : sectionPlane === 0 ? 'Slide to cut' : 'Active'}
-                    </p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[9px] text-gray-300">Grid</label>
+                    <input
+                      type="checkbox"
+                      checked={showGrid}
+                      onChange={(e) => setShowGrid(e.target.checked)}
+                      className="h-3 w-3 rounded"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[9px] text-gray-300">Transparent</label>
+                    <input
+                      type="checkbox"
+                      checked={isTransparent}
+                      onChange={(e) => setIsTransparent(e.target.checked)}
+                      className="h-3 w-3 rounded"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[9px] text-gray-300">Wireframe</label>
+                    <input
+                      type="checkbox"
+                      checked={isWireframe}
+                      onChange={(e) => setIsWireframe(e.target.checked)}
+                      className="h-3 w-3 rounded"
+                    />
                   </div>
                 </div>
-              </Card>
-
-              {/* Display Settings */}
-              <Card className="bg-[#505050] border-[#666666]">
-                <div className="p-1.5">
-                  <h4 className="text-[10px] font-semibold text-white flex items-center gap-1 mb-1">
-                    <Eye className="h-2.5 w-2.5" />
-                    Display
-                  </h4>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[9px] text-gray-300">Color</label>
-                      <input
-                        type="color"
-                        value={modelColor}
-                        onChange={(e) => setModelColor(e.target.value)}
-                        className="h-4 w-8 rounded border border-[#666666] cursor-pointer"
-                        disabled={isWireframe}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <label className="text-[9px] text-gray-300">Grid</label>
-                      <input
-                        type="checkbox"
-                        checked={showGrid}
-                        onChange={(e) => setShowGrid(e.target.checked)}
-                        className="h-3 w-3 rounded"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <label className="text-[9px] text-gray-300">Transparent</label>
-                      <input
-                        type="checkbox"
-                        checked={isTransparent}
-                        onChange={(e) => setIsTransparent(e.target.checked)}
-                        className="h-3 w-3 rounded"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <label className="text-[9px] text-gray-300">Wireframe</label>
-                      <input
-                        type="checkbox"
-                        checked={isWireframe}
-                        onChange={(e) => setIsWireframe(e.target.checked)}
-                        className="h-3 w-3 rounded"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </Card>
+              </div>
+            </Card>
 
           </div>
         </div>

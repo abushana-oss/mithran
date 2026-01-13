@@ -40,9 +40,14 @@ interface ModelViewerProps {
   fileName: string;
   fileType: string;
   bomItemId?: string; // For triggering conversion
+  onMeasurements?: (data: {
+    volume: number;
+    dimensions: { x: number; y: number; z: number };
+    surfaceArea: number;
+  }) => void;
 }
 
-export function ModelViewer({ fileUrl, fileName, fileType, bomItemId }: ModelViewerProps) {
+export function ModelViewer({ fileUrl, fileName, fileType, bomItemId, onMeasurements }: ModelViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [isConverting, setIsConverting] = useState(false);
   const [viewerKey, setViewerKey] = useState(0);
@@ -105,6 +110,7 @@ export function ModelViewer({ fileUrl, fileName, fileType, bomItemId }: ModelVie
             key={viewerKey}
             fileUrl={fileUrl}
             fileName={fileName}
+            onMeasurements={onMeasurements}
           />
         </Suspense>
 

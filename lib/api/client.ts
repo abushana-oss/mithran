@@ -305,10 +305,10 @@ class ApiClient {
         return responseData.data as T;
       } catch (error) {
         if (error instanceof ApiError) {
-          // Retry logic with exponential backoff for 5xx errors
+          // Retry logic with exponential backoff for 5xx errors AND network errors (0)
           if (
             retry &&
-            error.statusCode >= 500 &&
+            (error.statusCode >= 500 || error.statusCode === 0) &&
             attemptNumber < 3
           ) {
             const backoffMs = Math.min(1000 * Math.pow(2, attemptNumber - 1), 10000);

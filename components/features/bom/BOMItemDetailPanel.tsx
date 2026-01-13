@@ -92,7 +92,7 @@ export function BOMItemDetailPanel({ item, onClose, onUpdate, preferredView = '3
       if (file2dInputRef.current) file2dInputRef.current.value = '';
       if (file3dInputRef.current) file3dInputRef.current.value = '';
 
-      // Refresh the item data
+      // Refresh the item data in parent component
       onUpdate?.();
 
       // Reload file URLs for newly uploaded files

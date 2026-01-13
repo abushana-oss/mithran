@@ -3,6 +3,7 @@ import { Logger } from '../../common/logger/logger.service';
 import { SupabaseService } from '../../common/supabase/supabase.service';
 import { CreateProjectDto, UpdateProjectDto, QueryProjectsDto } from './dto/projects.dto';
 import { ProjectResponseDto, ProjectListResponseDto } from './dto/project-response.dto';
+import { AddTeamMemberDto, UpdateTeamMemberDto, TeamMemberResponseDto, TeamMembersListResponseDto } from './dto/project-team-member.dto';
 import { validate as isValidUUID } from 'uuid';
 
 @Injectable()
@@ -107,6 +108,9 @@ export class ProjectsService {
       .insert({
         name: createProjectDto.name,
         description: createProjectDto.description,
+        country: createProjectDto.country,
+        state: createProjectDto.state,
+        city: createProjectDto.city,
         status: createProjectDto.status || 'draft',
         quoted_cost: createProjectDto.quotedCost,
         user_id: userId,
@@ -142,6 +146,9 @@ export class ProjectsService {
     const updateData: any = {};
     if (updateProjectDto.name !== undefined) updateData.name = updateProjectDto.name;
     if (updateProjectDto.description !== undefined) updateData.description = updateProjectDto.description;
+    if (updateProjectDto.country !== undefined) updateData.country = updateProjectDto.country;
+    if (updateProjectDto.state !== undefined) updateData.state = updateProjectDto.state;
+    if (updateProjectDto.city !== undefined) updateData.city = updateProjectDto.city;
     if (updateProjectDto.status !== undefined) updateData.status = updateProjectDto.status;
     if (updateProjectDto.quotedCost !== undefined) updateData.quoted_cost = updateProjectDto.quotedCost;
 
@@ -221,5 +228,181 @@ export class ProjectsService {
       quotedCost: project.quotedCost || 0,
       costDifference: (project.quotedCost || 0) - Number(analysis?.estimated_cost || 0),
     };
+  }
+
+  // ============================================================================
+  // TEAM MEMBER MANAGEMENT
+  // ============================================================================
+
+  async getTeamMembers(projectId: string, userId: string, accessToken: string): Promise<TeamMembersListResponseDto> {
+    this.logger.log(`Getting team members for project: ${projectId}`, 'ProjectsService');
+
+    if (!this.isValidUUID(projectId)) {
+      throw new BadRequestException('Invalid project ID format');
+    }
+
+    // Verify user has access to this project
+    await this.findOne(projectId, userId, accessToken);
+
+    // Query team members
+    const { data, error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('project_team_members')
+      .select('id, user_id, role, created_at')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      this.logger.error(`Error fetching team members: ${error.message}`, 'ProjectsService');
+      throw new InternalServerErrorException(`Failed to fetch team members: ${error.message}`);
+    }
+
+    // Fetch user details using admin client
+    const adminClient = this.supabaseService.getAdminClient();
+    const members = await Promise.all(
+      (data || []).map(async (row) => {
+        const { data: userData, error: userError } = await adminClient.auth.admin.getUserById(row.user_id);
+
+        if (userError) {
+          this.logger.warn(`Failed to fetch user ${row.user_id}: ${userError.message}`);
+        }
+
+        return TeamMemberResponseDto.fromDatabase({
+          id: row.id,
+          user_id: row.user_id,
+          email: userData?.user?.email || 'unknown@example.com',
+          name: userData?.user?.user_metadata?.name || userData?.user?.user_metadata?.full_name,
+          role: row.role,
+          created_at: row.created_at,
+        });
+      })
+    );
+
+    return {
+      members,
+      total: members.length,
+    };
+  }
+
+  async addTeamMember(projectId: string, dto: AddTeamMemberDto, userId: string, accessToken: string): Promise<TeamMemberResponseDto> {
+    this.logger.log(`Adding team member to project: ${projectId}`, 'ProjectsService');
+
+    if (!this.isValidUUID(projectId)) {
+      throw new BadRequestException('Invalid project ID format');
+    }
+
+    // Verify user owns this project
+    await this.findOne(projectId, userId, accessToken);
+
+    // Find user by email using admin client
+    const adminClient = this.supabaseService.getAdminClient();
+    const { data: usersData, error: userError } = await adminClient.auth.admin.listUsers();
+
+    if (userError) {
+      this.logger.error(`Error listing users: ${userError.message}`, 'ProjectsService');
+      throw new InternalServerErrorException(`Failed to search for user: ${userError.message}`);
+    }
+
+    const targetUser = usersData.users.find(u => u.email === dto.email);
+    if (!targetUser) {
+      throw new NotFoundException(`User with email ${dto.email} not found`);
+    }
+
+    // Add team member
+    const { data, error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('project_team_members')
+      .insert({
+        project_id: projectId,
+        user_id: targetUser.id,
+        role: dto.role || 'member',
+        added_by: userId,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      if (error.code === '23505') { // Unique constraint violation
+        throw new BadRequestException('User is already a team member');
+      }
+      this.logger.error(`Error adding team member: ${error.message}`, 'ProjectsService');
+      throw new InternalServerErrorException(`Failed to add team member: ${error.message}`);
+    }
+
+    return TeamMemberResponseDto.fromDatabase({
+      id: data.id,
+      user_id: targetUser.id,
+      email: targetUser.email,
+      name: targetUser.user_metadata?.name || targetUser.user_metadata?.full_name,
+      role: data.role,
+      created_at: data.created_at,
+    });
+  }
+
+  async updateTeamMember(projectId: string, memberId: string, dto: UpdateTeamMemberDto, userId: string, accessToken: string): Promise<TeamMemberResponseDto> {
+    this.logger.log(`Updating team member ${memberId} in project: ${projectId}`, 'ProjectsService');
+
+    if (!this.isValidUUID(projectId) || !this.isValidUUID(memberId)) {
+      throw new BadRequestException('Invalid ID format');
+    }
+
+    // Verify user owns this project
+    await this.findOne(projectId, userId, accessToken);
+
+    const { data, error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('project_team_members')
+      .update({ role: dto.role })
+      .eq('id', memberId)
+      .eq('project_id', projectId)
+      .select('id, user_id, role, created_at')
+      .single();
+
+    if (error) {
+      this.logger.error(`Error updating team member: ${error.message}`, 'ProjectsService');
+      throw new InternalServerErrorException(`Failed to update team member: ${error.message}`);
+    }
+
+    // Get user details using admin client
+    const adminClient = this.supabaseService.getAdminClient();
+    const { data: userData, error: userError } = await adminClient.auth.admin.getUserById(data.user_id);
+
+    if (userError) {
+      this.logger.warn(`Failed to fetch user ${data.user_id}: ${userError.message}`);
+    }
+
+    return TeamMemberResponseDto.fromDatabase({
+      id: data.id,
+      user_id: data.user_id,
+      email: userData?.user?.email || 'unknown@example.com',
+      name: userData?.user?.user_metadata?.name || userData?.user?.user_metadata?.full_name,
+      role: data.role,
+      created_at: data.created_at,
+    });
+  }
+
+  async removeTeamMember(projectId: string, memberId: string, userId: string, accessToken: string): Promise<{ message: string }> {
+    this.logger.log(`Removing team member ${memberId} from project: ${projectId}`, 'ProjectsService');
+
+    if (!this.isValidUUID(projectId) || !this.isValidUUID(memberId)) {
+      throw new BadRequestException('Invalid ID format');
+    }
+
+    // Verify user owns this project
+    await this.findOne(projectId, userId, accessToken);
+
+    const { error } = await this.supabaseService
+      .getClient(accessToken)
+      .from('project_team_members')
+      .delete()
+      .eq('id', memberId)
+      .eq('project_id', projectId);
+
+    if (error) {
+      this.logger.error(`Error removing team member: ${error.message}`, 'ProjectsService');
+      throw new InternalServerErrorException(`Failed to remove team member: ${error.message}`);
+    }
+
+    return { message: 'Team member removed successfully' };
   }
 }

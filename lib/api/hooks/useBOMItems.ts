@@ -22,6 +22,11 @@ export interface BOMItem {
   file2dPath?: string;
   createdAt: string;
   updatedAt: string;
+  weight?: number;
+  maxLength?: number;
+  maxWidth?: number;
+  maxHeight?: number;
+  surfaceArea?: number;
 }
 
 export interface CreateBOMItemDto {

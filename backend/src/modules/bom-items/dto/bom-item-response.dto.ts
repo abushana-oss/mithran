@@ -48,6 +48,21 @@ export class BOMItemResponseDto {
   @ApiPropertyOptional({ example: 1250.50 })
   unitCost?: number;
 
+  @ApiPropertyOptional({ example: 1.5 })
+  weight?: number;
+
+  @ApiPropertyOptional({ example: 100.0 })
+  maxLength?: number;
+
+  @ApiPropertyOptional({ example: 50.0 })
+  maxWidth?: number;
+
+  @ApiPropertyOptional({ example: 30.0 })
+  maxHeight?: number;
+
+  @ApiPropertyOptional({ example: 5000.0 })
+  surfaceArea?: number;
+
   @ApiProperty({ example: 0 })
   sortOrder: number;
 
@@ -87,6 +102,11 @@ export class BOMItemResponseDto {
     dto.materialGrade = row.material_grade || undefined;
     dto.makeBuy = row.make_buy || undefined;
     dto.unitCost = row.unit_cost !== undefined && row.unit_cost !== null ? Number(row.unit_cost) : undefined;
+    dto.weight = row.weight !== undefined && row.weight !== null ? Number(row.weight) : undefined;
+    dto.maxLength = row.max_length !== undefined && row.max_length !== null ? Number(row.max_length) : undefined;
+    dto.maxWidth = row.max_width !== undefined && row.max_width !== null ? Number(row.max_width) : undefined;
+    dto.maxHeight = row.max_height !== undefined && row.max_height !== null ? Number(row.max_height) : undefined;
+    dto.surfaceArea = row.surface_area !== undefined && row.surface_area !== null ? Number(row.surface_area) : undefined;
     dto.sortOrder = row.sort_order !== undefined ? Number(row.sort_order) : 0;
     dto.file3dPath = row.file_3d_path || undefined;
     dto.file2dPath = row.file_2d_path || undefined;

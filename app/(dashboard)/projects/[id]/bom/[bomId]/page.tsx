@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useProject } from '@/lib/api/hooks/useProjects';
 import { useBOM } from '@/lib/api/hooks/useBOM';
@@ -27,8 +27,8 @@ import { BOMItem } from '@/lib/api/hooks/useBOMItems';
 import { BOMItemType } from '@/lib/types/bom.types';
 import { toast } from 'sonner';
 
-export default function 
-BOMDetailPage() {
+export default function
+  BOMDetailPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
@@ -44,6 +44,16 @@ BOMDetailPage() {
   const [defaultItemType, setDefaultItemType] = useState<BOMItemType>(BOMItemType.ASSEMBLY);
   const [viewingItem, setViewingItem] = useState<BOMItem | null>(null);
   const [preferredView, setPreferredView] = useState<'2d' | '3d'>('3d');
+
+  // Update viewingItem when bomItemsData changes (e.g., after file upload)
+  useEffect(() => {
+    if (viewingItem && bomItemsData?.items) {
+      const updatedItem = bomItemsData.items.find(item => item.id === viewingItem.id);
+      if (updatedItem) {
+        setViewingItem(updatedItem);
+      }
+    }
+  }, [bomItemsData?.items]);
 
   const bom = bomData || {
     id: bomId,
@@ -194,19 +204,18 @@ BOMDetailPage() {
         'Unit',
         'Material',
         'Material Grade',
-        'Weight',
         'Annual Volume',
         'Parent Item'
       ];
 
       // Example data rows
       const exampleRows = [
-        ['ASM-001', 'Main Assembly', 'Top level assembly', 'assembly', '1', 'pcs', 'Aluminum', '6061-T6', '2500', '10000', ''],
-        ['SUB-001', 'Motor Sub-Assembly', 'Electric motor unit', 'sub_assembly', '1', 'pcs', 'Steel', 'AISI 304', '1200', '10000', 'ASM-001'],
-        ['PRT-001', 'Motor Housing', 'Cast aluminum housing', 'child_part', '1', 'pcs', 'Aluminum', 'A356', '800', '10000', 'SUB-001'],
-        ['PRT-002', 'Rotor', 'Steel rotor assembly', 'child_part', '1', 'pcs', 'Steel', '1045', '300', '10000', 'SUB-001'],
-        ['PRT-003', 'Mounting Bracket', 'L-shaped bracket', 'child_part', '4', 'pcs', 'Steel', 'AISI 304', '50', '40000', 'ASM-001'],
-        ['PRT-004', 'Bolt M8x20', 'Hex head bolt', 'child_part', '8', 'pcs', 'Steel', 'Grade 8.8', '15', '80000', 'ASM-001'],
+        ['ASM-001', 'Main Assembly', 'Top level assembly', 'assembly', '1', 'pcs', 'Aluminum', '6061-T6', '10000', ''],
+        ['SUB-001', 'Motor Sub-Assembly', 'Electric motor unit', 'sub_assembly', '1', 'pcs', 'Steel', 'AISI 304', '10000', 'ASM-001'],
+        ['PRT-001', 'Motor Housing', 'Cast aluminum housing', 'child_part', '1', 'pcs', 'Aluminum', 'A356', '10000', 'SUB-001'],
+        ['PRT-002', 'Rotor', 'Steel rotor assembly', 'child_part', '1', 'pcs', 'Steel', '1045', '10000', 'SUB-001'],
+        ['PRT-003', 'Mounting Bracket', 'L-shaped bracket', 'child_part', '4', 'pcs', 'Steel', 'AISI 304', '40000', 'ASM-001'],
+        ['PRT-004', 'Bolt M8x20', 'Hex head bolt', 'child_part', '8', 'pcs', 'Steel', 'Grade 8.8', '80000', 'ASM-001'],
       ];
 
       // Combine headers and example rows
@@ -248,7 +257,6 @@ BOMDetailPage() {
         'Unit',
         'Material',
         'Material Grade',
-        'Weight',
         'Annual Volume',
         'Parent Item'
       ];
@@ -263,7 +271,6 @@ BOMDetailPage() {
         item.unit || '',
         item.material || '',
         item.materialGrade || '',
-        item.weight?.toString() || '',
         item.annualVolume?.toString() || '',
         items.find(i => i.id === item.parentItemId)?.partNumber || ''
       ]);
@@ -312,17 +319,17 @@ BOMDetailPage() {
         }
 
         // Parse CSV (simple parser, might need enhancement for complex CSVs)
-        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+        const headers = lines[0].split(',').map((h: string) => h.trim().replace(/"/g, ''));
         const itemsToImport = [];
 
         for (let i = 1; i < lines.length; i++) {
           if (!lines[i].trim()) continue;
 
           const values = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
-          const cleanedValues = values.map(v => v.trim().replace(/^"|"$/g, ''));
+          const cleanedValues = values.map((v: string) => v.trim().replace(/^"|"$/g, ''));
 
           const item: any = {};
-          headers.forEach((header, index) => {
+          headers.forEach((header: string, index: number) => {
             const value = cleanedValues[index] || '';
 
             switch (header.toLowerCase()) {
@@ -349,9 +356,6 @@ BOMDetailPage() {
                 break;
               case 'material grade':
                 item.materialGrade = value;
-                break;
-              case 'weight':
-                item.weight = value ? parseFloat(value) : undefined;
                 break;
               case 'annual volume':
                 item.annualVolume = value ? parseInt(value) : undefined;

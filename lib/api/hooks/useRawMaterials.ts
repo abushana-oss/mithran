@@ -120,21 +120,15 @@ export function useRawMaterialFilterOptions() {
   return useQuery({
     queryKey: ['raw-materials', 'filter-options'],
     queryFn: async () => {
-      const response = await apiClient.get<RawMaterialListResponse>('/raw-materials');
+      const response = await apiClient.get<{
+        materialGroups: string[];
+        materialTypes: string[];
+        locations: string[];
+        grades: string[];
+        years: number[];
+      }>('/raw-materials/filter-options');
 
-      const materialGroups = [...new Set(response.items.map(m => m.materialGroup))].sort();
-      const materialTypes = [...new Set(response.items.map(m => m.material))].sort();
-      const locations = [...new Set(response.items.map(m => m.location).filter(Boolean))].sort();
-      const grades = [...new Set(response.items.map(m => m.materialGrade).filter(Boolean))].sort();
-      const years = [...new Set(response.items.map(m => m.year).filter(Boolean))].sort();
-
-      return {
-        materialGroups,
-        materialTypes,
-        locations,
-        grades,
-        years,
-      };
+      return response;
     },
     staleTime: 1000 * 60 * 30, // 30 minutes
   });

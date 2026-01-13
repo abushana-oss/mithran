@@ -160,13 +160,46 @@ export function useCreateField() {
 
   return useMutation({
     mutationFn: (data: CreateFieldData) => calculatorsApi.createField(data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: calculatorKeys.fields(variables.calculatorId) });
-      queryClient.invalidateQueries({ queryKey: calculatorKeys.detail(variables.calculatorId) });
+    onMutate: async (newFieldData) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: calculatorKeys.detail(newFieldData.calculatorId!) });
+
+      // Snapshot the previous value
+      const previousCalculator = queryClient.getQueryData<any>(calculatorKeys.detail(newFieldData.calculatorId!));
+
+      // Optimistically update to the new value
+      if (previousCalculator) {
+        queryClient.setQueryData(calculatorKeys.detail(newFieldData.calculatorId!), {
+          ...previousCalculator,
+          fields: [...(previousCalculator.fields || []), { ...newFieldData, id: 'optimistic' }],
+        });
+      }
+
+      return { previousCalculator };
+    },
+    onSuccess: (savedField, variables) => {
+      // Update cache with the real saved field (replaces optimistic one)
+      queryClient.setQueryData(calculatorKeys.detail(variables.calculatorId!), (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          fields: (old.fields || []).map((f: any) => f.id === 'optimistic' ? savedField : f)
+        };
+      });
       toast.success('Field added successfully');
     },
-    onError: (error: ApiError) => {
+    onError: (error: ApiError, variables, context) => {
+      // Rollback to previous state
+      if (context?.previousCalculator) {
+        queryClient.setQueryData(calculatorKeys.detail(variables.calculatorId!), context.previousCalculator);
+      }
       toast.error(error.message || 'Failed to add field');
+    },
+    onSettled: (_, __, variables) => {
+      // Always sync with server at the end
+      if (variables.calculatorId) {
+        queryClient.invalidateQueries({ queryKey: calculatorKeys.detail(variables.calculatorId!) });
+      }
     },
   });
 }
@@ -177,13 +210,40 @@ export function useUpdateField() {
   return useMutation({
     mutationFn: ({ calculatorId, fieldId, data }: { calculatorId: string; fieldId: string; data: UpdateFieldData }) =>
       calculatorsApi.updateField(calculatorId, fieldId, data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: calculatorKeys.fields(variables.calculatorId) });
-      queryClient.invalidateQueries({ queryKey: calculatorKeys.detail(variables.calculatorId) });
+    onMutate: async ({ calculatorId, fieldId, data }) => {
+      await queryClient.cancelQueries({ queryKey: calculatorKeys.detail(calculatorId) });
+      const previousCalculator = queryClient.getQueryData<any>(calculatorKeys.detail(calculatorId));
+
+      if (previousCalculator) {
+        queryClient.setQueryData(calculatorKeys.detail(calculatorId), {
+          ...previousCalculator,
+          fields: (previousCalculator.fields || []).map((f: any) =>
+            f.id === fieldId ? { ...f, ...data } : f
+          ),
+        });
+      }
+
+      return { previousCalculator };
+    },
+    onSuccess: (updatedField, variables) => {
+      // Precise cache update
+      queryClient.setQueryData(calculatorKeys.detail(variables.calculatorId), (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          fields: (old.fields || []).map((f: any) => f.id === variables.fieldId ? updatedField : f)
+        };
+      });
       toast.success('Field updated successfully');
     },
-    onError: (error: ApiError) => {
+    onError: (error: ApiError, variables, context) => {
+      if (context?.previousCalculator) {
+        queryClient.setQueryData(calculatorKeys.detail(variables.calculatorId), context.previousCalculator);
+      }
       toast.error(error.message || 'Failed to update field');
+    },
+    onSettled: (_, __, variables) => {
+      queryClient.invalidateQueries({ queryKey: calculatorKeys.detail(variables.calculatorId) });
     },
   });
 }
@@ -194,13 +254,30 @@ export function useDeleteField() {
   return useMutation({
     mutationFn: ({ calculatorId, fieldId }: { calculatorId: string; fieldId: string }) =>
       calculatorsApi.deleteField(calculatorId, fieldId),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: calculatorKeys.fields(variables.calculatorId) });
-      queryClient.invalidateQueries({ queryKey: calculatorKeys.detail(variables.calculatorId) });
+    onMutate: async ({ calculatorId, fieldId }) => {
+      await queryClient.cancelQueries({ queryKey: calculatorKeys.detail(calculatorId) });
+      const previousCalculator = queryClient.getQueryData<any>(calculatorKeys.detail(calculatorId));
+
+      if (previousCalculator) {
+        queryClient.setQueryData(calculatorKeys.detail(calculatorId), {
+          ...previousCalculator,
+          fields: (previousCalculator.fields || []).filter((f: any) => f.id !== fieldId),
+        });
+      }
+
+      return { previousCalculator };
+    },
+    onSuccess: () => {
       toast.success('Field deleted successfully');
     },
-    onError: (error: ApiError) => {
+    onError: (error: ApiError, variables, context) => {
+      if (context?.previousCalculator) {
+        queryClient.setQueryData(calculatorKeys.detail(variables.calculatorId!), context.previousCalculator);
+      }
       toast.error(error.message || 'Failed to delete field');
+    },
+    onSettled: (_, __, variables) => {
+      queryClient.invalidateQueries({ queryKey: calculatorKeys.detail(variables.calculatorId!) });
     },
   });
 }
@@ -214,13 +291,41 @@ export function useCreateFormula() {
 
   return useMutation({
     mutationFn: (data: CreateFormulaData) => calculatorsApi.createFormula(data),
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: calculatorKeys.formulas(variables.calculatorId) });
-      queryClient.invalidateQueries({ queryKey: calculatorKeys.detail(variables.calculatorId) });
+    onMutate: async ({ calculatorId, ...data }) => {
+      await queryClient.cancelQueries({ queryKey: calculatorKeys.detail(calculatorId!) });
+      const previousCalculator = queryClient.getQueryData<any>(calculatorKeys.detail(calculatorId!));
+
+      if (previousCalculator) {
+        queryClient.setQueryData(calculatorKeys.detail(calculatorId!), {
+          ...previousCalculator,
+          formulas: (previousCalculator.formulas || []).map((f: any) =>
+            f.id === 'temp' ? { ...f, ...data } : f
+          ),
+        });
+      }
+
+      return { previousCalculator };
+    },
+    onSuccess: (savedFormula, variables) => {
+      queryClient.setQueryData(calculatorKeys.detail(variables.calculatorId!), (old: any) => {
+        if (!old) return old;
+        return {
+          ...old,
+          formulas: [...(old.formulas || []), savedFormula]
+        };
+      });
       toast.success('Formula added successfully');
     },
-    onError: (error: ApiError) => {
+    onError: (error: ApiError, variables, context) => {
+      if (context?.previousCalculator) {
+        queryClient.setQueryData(calculatorKeys.detail(variables.calculatorId!), context.previousCalculator);
+      }
       toast.error(error.message || 'Failed to add formula');
+    },
+    onSettled: (_, __, variables) => {
+      if (variables.calculatorId) {
+        queryClient.invalidateQueries({ queryKey: calculatorKeys.detail(variables.calculatorId!) });
+      }
     },
   });
 }
@@ -262,7 +367,6 @@ export function useDeleteFormula() {
 export function useValidateFormula() {
   return useMutation({
     mutationFn: (data: ValidateFormulaData) => calculatorsApi.validateFormula(data),
-    // No toast for validation - handled by UI
   });
 }
 

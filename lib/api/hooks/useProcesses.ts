@@ -320,7 +320,7 @@ export function useUpdateTableRow() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ rowId, tableId, data }: { rowId: string; tableId: string; data: UpdateTableRowData }) => {
+    mutationFn: async ({ rowId, data }: { rowId: string; tableId: string; data: UpdateTableRowData }) => {
       const response = await apiClient.put<TableRow>(
         `/processes/reference-tables/rows/${rowId}`,
         data
@@ -343,7 +343,7 @@ export function useDeleteTableRow() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ rowId, tableId }: { rowId: string; tableId: string }) => {
+    mutationFn: async ({ rowId }: { rowId: string; tableId: string }) => {
       await apiClient.delete(`/processes/reference-tables/rows/${rowId}`);
     },
     onSuccess: (_, variables) => {

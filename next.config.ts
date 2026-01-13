@@ -84,6 +84,67 @@ const nextConfig: NextConfig = {
 
   // Disable x-powered-by header for security
   poweredByHeader: false,
+
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: (() => {
+              const apiGateway = process.env.NEXT_PUBLIC_API_GATEWAY_URL;
+              const cadEngine = process.env.NEXT_PUBLIC_CAD_ENGINE_URL;
+              const connectSrc = [
+                "'self'",
+                'https://*.supabase.co',
+                'wss://*.supabase.co',
+                'http://localhost:4000',
+                'ws://localhost:4000',
+                'http://localhost:5000',
+              ];
+              if (apiGateway) connectSrc.push(apiGateway);
+              if (cadEngine) connectSrc.push(cadEngine);
+
+              return [
+                "default-src 'self'",
+                "base-uri 'self'",
+                "form-action 'self'",
+                "frame-ancestors 'none'",
+                "img-src 'self' data: https: blob:",
+                "style-src 'self' 'unsafe-inline'",
+                "script-src 'self'",
+                `connect-src ${connectSrc.join(' ')}`,
+                "worker-src 'self' blob:",
+                'upgrade-insecure-requests',
+              ].join('; ');
+            })(),
+          },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          {
+            key: 'Permissions-Policy',
+            value: [
+              'camera=()',
+              'microphone=()',
+              'geolocation=()',
+              'fullscreen=(self)',
+              'payment=()',
+            ].join(', '),
+          },
+          ...(process.env.NODE_ENV === 'production'
+            ? [
+                {
+                  key: 'Strict-Transport-Security',
+                  value: 'max-age=63072000; includeSubDomains; preload',
+                },
+              ]
+            : []),
+        ],
+      },
+    ];
+  },
 }
 
 export default nextConfig

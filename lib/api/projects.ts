@@ -8,6 +8,9 @@ export type Project = {
   id: string;
   name: string;
   description?: string;
+  country?: string;
+  state?: string;
+  city?: string;
   status: 'draft' | 'active' | 'completed' | 'on_hold' | 'cancelled';
   quotedCost?: number;
   shouldCost?: number;
@@ -18,6 +21,9 @@ export type Project = {
 export type CreateProjectData = {
   name: string;
   description?: string;
+  country?: string;
+  state?: string;
+  city?: string;
   status?: Project['status'];
   quotedCost?: number;
 };

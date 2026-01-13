@@ -12,7 +12,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 // Only create client if credentials are provided
 let supabaseClient: ReturnType<typeof createBrowserClient> | null = null
 
-if (supabaseUrl && supabaseAnonKey && supabaseAnonKey !== 'your_supabase_anon_key_here') {
+if (supabaseUrl && supabaseAnonKey) {
   supabaseClient = createBrowserClient(supabaseUrl, supabaseAnonKey)
 }
 

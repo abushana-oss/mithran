@@ -16,6 +16,15 @@ export class ProjectResponseDto {
   @ApiProperty({ example: 'Manufacturing cost analysis project', required: false })
   description?: string;
 
+  @ApiProperty({ example: 'United States', required: false })
+  country?: string;
+
+  @ApiProperty({ example: 'California', required: false })
+  state?: string;
+
+  @ApiProperty({ example: 'San Francisco', required: false })
+  city?: string;
+
   @ApiProperty({ enum: ProjectStatus, example: ProjectStatus.ACTIVE })
   status: ProjectStatus;
 
@@ -41,6 +50,9 @@ export class ProjectResponseDto {
     dto.id = row.id;
     dto.name = row.name;
     dto.description = row.description || undefined;
+    dto.country = row.country || undefined;
+    dto.state = row.state || undefined;
+    dto.city = row.city || undefined;
     dto.status = row.status;
     dto.quotedCost = row.quoted_cost ? Number(row.quoted_cost) : undefined;
     dto.createdAt = row.created_at;

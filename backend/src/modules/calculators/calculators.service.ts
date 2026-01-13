@@ -7,6 +7,10 @@ import {
   UpdateCalculatorDto,
   QueryCalculatorDto,
   ExecuteCalculatorDto,
+  CreateFieldDto,
+  UpdateFieldDto,
+  CreateFormulaDto,
+  UpdateFormulaDto,
 } from './dto/calculator.dto';
 
 /**
@@ -24,14 +28,15 @@ export class CalculatorsServiceV2 {
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly logger: Logger,
-  ) {}
+  ) { }
 
   /**
    * GET ALL CALCULATORS
    * Returns calculators with their fields and formulas in one atomic read
+   * SECURITY: Enforces tenant isolation via user_id filter
    */
   async findAll(query: QueryCalculatorDto, userId: string, accessToken: string) {
-    this.logger.log('Fetching all calculators', 'CalculatorsServiceV2');
+    this.logger.log(`Fetching calculators for user: ${userId}`, 'CalculatorsServiceV2');
 
     const page = query.page || 1;
     const limit = Math.min(query.limit || 10, 100);
@@ -40,7 +45,7 @@ export class CalculatorsServiceV2 {
 
     const client = this.supabaseService.getClient(accessToken);
 
-    // Build query
+    // Build query with MANDATORY user_id filter for tenant isolation
     let queryBuilder = client
       .from('calculators')
       .select(
@@ -51,6 +56,7 @@ export class CalculatorsServiceV2 {
       `,
         { count: 'exact' },
       )
+      .eq('user_id', userId) // SECURITY: Tenant isolation enforced at query level
       .order('created_at', { ascending: false })
       .range(from, to);
 
@@ -93,9 +99,10 @@ export class CalculatorsServiceV2 {
   /**
    * GET SINGLE CALCULATOR
    * Returns complete calculator with all fields and formulas
+   * SECURITY: Enforces ownership verification via user_id
    */
   async findOne(id: string, userId: string, accessToken: string) {
-    this.logger.log(`Fetching calculator: ${id}`, 'CalculatorsServiceV2');
+    this.logger.log(`Fetching calculator: ${id} for user: ${userId}`, 'CalculatorsServiceV2');
 
     const client = this.supabaseService.getClient(accessToken);
 
@@ -109,10 +116,11 @@ export class CalculatorsServiceV2 {
       `,
       )
       .eq('id', id)
+      .eq('user_id', userId) // SECURITY: Ownership verification - user can only access their own calculators
       .single();
 
     if (error || !data) {
-      throw new NotFoundException(`Calculator not found: ${id}`);
+      throw new NotFoundException(`Calculator not found or access denied: ${id}`);
     }
 
     // Sort fields and formulas by order
@@ -292,7 +300,7 @@ export class CalculatorsServiceV2 {
 
       // Insert new fields
       if (dto.fields.length > 0) {
-      const fieldsToInsert = dto.fields.map((field: any, index: any) => ({
+        const fieldsToInsert = dto.fields.map((field: any, index: any) => ({
           calculator_id: id,
           field_name: field.fieldName,
           display_label: field.displayLabel,
@@ -334,7 +342,7 @@ export class CalculatorsServiceV2 {
 
       // Insert new formulas
       if (dto.formulas.length > 0) {
-      const formulasToInsert = dto.formulas.map((formula: any, index: any) => ({
+        const formulasToInsert = dto.formulas.map((formula: any, index: any) => ({
           calculator_id: id,
           formula_name: formula.formulaName,
           display_label: formula.displayLabel,
@@ -401,7 +409,7 @@ export class CalculatorsServiceV2 {
 
   /**
    * EXECUTE CALCULATOR
-   * Runs all formulas with given inputs
+   * Runs all formulas and calculated fields with given inputs
    */
   async execute(id: string, dto: ExecuteCalculatorDto, userId: string, accessToken: string) {
     this.logger.log(`Executing calculator: ${id}`, 'CalculatorsServiceV2');
@@ -409,27 +417,140 @@ export class CalculatorsServiceV2 {
     const calculator = await this.findOne(id, userId, accessToken);
     const { formulas = [], fields = [] } = calculator;
 
+    // Helper function to normalize field names for mathjs (replace all non-alphanumeric chars with underscores)
+    const normalizeFieldName = (name: string): string => {
+      return name
+        .trim()
+        .replace(/[^a-zA-Z0-9]+/g, '_') // Replace all non-alphanumeric sequences with single underscore
+        .replace(/^_+|_+$/g, ''); // Remove leading/trailing underscores
+    };
+
     // Create scope with input values
     const scope: Record<string, any> = { ...dto.inputValues };
 
-    // Normalize field values into scope
+    // Normalize field values into scope (non-calculated fields only)
     fields.forEach((field: any) => {
+      if (field.field_type === 'calculated') return; // Skip calculated fields
+
       const val = dto.inputValues[field.id] !== undefined ? dto.inputValues[field.id] : dto.inputValues[field.field_name];
 
       if (val !== undefined && field.field_name) {
-        if (field.field_type === 'number' || !isNaN(Number(val))) {
-          scope[field.field_name] = Number(val);
-        } else {
-          scope[field.field_name] = val;
-        }
+        const numericValue = field.field_type === 'number' || !isNaN(Number(val)) ? Number(val) : val;
+
+        // Store with normalized field name (spaces -> underscores) for mathjs compatibility
+        const normalizedName = normalizeFieldName(field.field_name);
+        scope[normalizedName] = numericValue;
+
+        this.logger.log(`Loaded field: "${field.field_name}" as "${normalizedName}" = ${numericValue}`, 'CalculatorsServiceV2');
+      } else if (field.default_value !== undefined && field.default_value !== null) {
+        // Use default value if no input provided
+        const defaultValue = field.field_type === 'number' || !isNaN(Number(field.default_value))
+          ? Number(field.default_value)
+          : field.default_value;
+
+        const normalizedName = normalizeFieldName(field.field_name);
+        scope[normalizedName] = defaultValue;
+
+        this.logger.log(`Loaded field (default): "${field.field_name}" as "${normalizedName}" = ${defaultValue}`, 'CalculatorsServiceV2');
       }
     });
 
-    // Sort formulas by execution order
-    const sortedFormulas = [...formulas].sort((a: any, b: any) => (a.execution_order || 0) - (b.execution_order || 0));
-
     const results: Record<string, any> = {};
     const startTime = Date.now();
+
+    // Add custom math functions (Excel-compatible)
+    const customFunctions = {
+      IF: (condition: boolean, trueValue: any, falseValue: any) => {
+        return condition ? trueValue : falseValue;
+      },
+    };
+
+    // Create extended scope with custom functions
+    Object.assign(scope, customFunctions);
+
+    // Process calculated fields (sorted by display_order to respect dependencies)
+    const calculatedFields = fields
+      .filter((field: any) => field.field_type === 'calculated')
+      .sort((a: any, b: any) => (a.display_order || 0) - (b.display_order || 0));
+
+    for (const field of calculatedFields) {
+      try {
+        if (!field.default_value) continue; // Skip if no formula
+
+        let expression = field.default_value;
+
+        // STEP 1: Replace {fieldName} with normalized field names
+        const bracedFieldPattern = /\{([^}]+)\}/g;
+        expression = expression.replace(bracedFieldPattern, (match: string, fieldName: string) => {
+          const trimmedName = fieldName.trim();
+          const normalizedName = normalizeFieldName(trimmedName);
+          this.logger.log(`Replacing "{${trimmedName}}" with "${normalizedName}"`, 'CalculatorsServiceV2');
+          return normalizedName;
+        });
+
+        // STEP 2: Build a map of all field names (original -> normalized) for bare name replacement
+        const fieldNameMap = new Map<string, string>();
+        fields.forEach((f: any) => {
+          if (f.field_name) {
+            fieldNameMap.set(f.field_name, normalizeFieldName(f.field_name));
+          }
+        });
+
+        // STEP 3: Replace bare field names (not in braces) with normalized versions
+        // Sort by length (longest first) to avoid partial replacements
+        const sortedFieldNames = Array.from(fieldNameMap.keys()).sort((a, b) => b.length - a.length);
+
+        for (const originalName of sortedFieldNames) {
+          const normalizedName = fieldNameMap.get(originalName)!;
+          // Use word boundaries to ensure we only replace complete field names
+          // Match field names that are not already normalized (contain spaces or special chars)
+          if (originalName !== normalizedName) {
+            const regex = new RegExp(`\\b${originalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
+            const beforeReplace = expression;
+            expression = expression.replace(regex, normalizedName);
+            if (beforeReplace !== expression) {
+              this.logger.log(`Replacing bare "${originalName}" with "${normalizedName}"`, 'CalculatorsServiceV2');
+            }
+          }
+        }
+
+        this.logger.log(`Original formula: "${field.default_value}"`, 'CalculatorsServiceV2');
+        this.logger.log(`Normalized formula: "${expression}"`, 'CalculatorsServiceV2');
+        this.logger.log(`Available variables: ${Object.keys(scope).join(', ')}`, 'CalculatorsServiceV2');
+
+        // Log all scope values for debugging
+        const scopeValues = Object.entries(scope).map(([key, val]) => `${key}=${val}`).join(', ');
+        this.logger.log(`Scope values: ${scopeValues}`, 'CalculatorsServiceV2');
+
+        // Evaluate formula
+        const result = evaluate(expression, scope);
+
+        this.logger.log(`Raw calculation result: ${result}`, 'CalculatorsServiceV2');
+
+        // Store result in scope for subsequent calculations (normalized name)
+        if (field.field_name) {
+          const normalizedName = normalizeFieldName(field.field_name);
+          scope[normalizedName] = result;
+
+          this.logger.log(`Stored result in scope as: "${normalizedName}" = ${result}`, 'CalculatorsServiceV2');
+        }
+
+        // Store result for response
+        results[field.id] = result;
+        if (field.field_name) {
+          results[field.field_name] = result;
+        }
+
+        this.logger.log(`✓ Calculated "${field.field_name}" = ${result}`, 'CalculatorsServiceV2');
+      } catch (e) {
+        this.logger.error(`✗ Error calculating field "${field.field_name}": ${e.message}`, 'CalculatorsServiceV2');
+        this.logger.error(`   Formula was: "${field.default_value}"`, 'CalculatorsServiceV2');
+        results[field.id] = { error: e.message, value: null };
+      }
+    }
+
+    // Process regular formulas (sorted by execution order)
+    const sortedFormulas = [...formulas].sort((a: any, b: any) => (a.execution_order || 0) - (b.execution_order || 0));
 
     for (const formula of sortedFormulas) {
       try {
@@ -461,5 +582,179 @@ export class CalculatorsServiceV2 {
       results,
       durationMs: duration,
     };
+  }
+
+  // ============================================================================
+  // FIELD OPERATIONS (GRANULAR)
+  // ============================================================================
+
+  async getFields(calculatorId: string, userId: string, accessToken: string) {
+    const calculator = await this.findOne(calculatorId, userId, accessToken);
+    return calculator.fields || [];
+  }
+
+  async createField(calculatorId: string, dto: CreateFieldDto, userId: string, accessToken: string) {
+    const client = this.supabaseService.getClient(accessToken);
+    await this.findOne(calculatorId, userId, accessToken); // Verify ownership
+
+    const { data, error } = await client
+      .from('calculator_fields')
+      .insert({
+        calculator_id: calculatorId,
+        field_name: dto.fieldName,
+        display_label: dto.displayLabel,
+        field_type: dto.fieldType,
+        data_source: dto.dataSource,
+        source_table: dto.sourceTable,
+        source_field: dto.sourceField,
+        lookup_config: dto.lookupConfig || {},
+        default_value: dto.defaultValue,
+        unit: dto.unit,
+        min_value: dto.minValue,
+        max_value: dto.maxValue,
+        is_required: dto.isRequired || false,
+        validation_rules: dto.validationRules || {},
+        input_config: dto.inputConfig || {},
+        display_order: dto.displayOrder || 0,
+        field_group: dto.fieldGroup,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async updateField(calculatorId: string, fieldId: string, dto: UpdateFieldDto, userId: string, accessToken: string) {
+    const client = this.supabaseService.getClient(accessToken);
+    await this.findOne(calculatorId, userId, accessToken); // Verify ownership
+
+    const { data, error } = await client
+      .from('calculator_fields')
+      .update({
+        field_name: dto.fieldName,
+        display_label: dto.displayLabel,
+        field_type: dto.fieldType,
+        data_source: dto.dataSource,
+        source_table: dto.sourceTable,
+        source_field: dto.sourceField,
+        lookup_config: dto.lookupConfig,
+        default_value: dto.defaultValue,
+        unit: dto.unit,
+        min_value: dto.minValue,
+        max_value: dto.maxValue,
+        is_required: dto.isRequired,
+        validation_rules: dto.validationRules,
+        input_config: dto.inputConfig,
+        display_order: dto.displayOrder,
+        field_group: dto.fieldGroup,
+      })
+      .eq('id', fieldId)
+      .eq('calculator_id', calculatorId)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async removeField(calculatorId: string, fieldId: string, userId: string, accessToken: string) {
+    const client = this.supabaseService.getClient(accessToken);
+    await this.findOne(calculatorId, userId, accessToken); // Verify ownership
+
+    const { error } = await client
+      .from('calculator_fields')
+      .delete()
+      .eq('id', fieldId)
+      .eq('calculator_id', calculatorId);
+
+    if (error) throw new Error(error.message);
+    return { message: 'Field deleted successfully' };
+  }
+
+  // ============================================================================
+  // FORMULA OPERATIONS (GRANULAR)
+  // ============================================================================
+
+  async getFormulas(calculatorId: string, userId: string, accessToken: string) {
+    const calculator = await this.findOne(calculatorId, userId, accessToken);
+    return calculator.formulas || [];
+  }
+
+  async createFormula(calculatorId: string, dto: CreateFormulaDto, userId: string, accessToken: string) {
+    const client = this.supabaseService.getClient(accessToken);
+    await this.findOne(calculatorId, userId, accessToken); // Verify ownership
+
+    const { data, error } = await client
+      .from('calculator_formulas')
+      .insert({
+        calculator_id: calculatorId,
+        formula_name: dto.formulaName,
+        display_label: dto.displayLabel,
+        description: dto.description,
+        formula_type: dto.formulaType || 'expression',
+        formula_expression: dto.formulaExpression,
+        visual_formula: dto.visualFormula || {},
+        depends_on_fields: dto.dependsOnFields || [],
+        depends_on_formulas: dto.dependsOnFormulas || [],
+        output_unit: dto.outputUnit,
+        decimal_places: dto.decimalPlaces || 2,
+        display_format: dto.displayFormat || 'number',
+        execution_order: dto.executionOrder || 0,
+        display_in_results: dto.displayInResults !== false,
+        is_primary_result: dto.isPrimaryResult || false,
+        result_group: dto.resultGroup,
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async updateFormula(calculatorId: string, formulaId: string, dto: UpdateFormulaDto, userId: string, accessToken: string) {
+    const client = this.supabaseService.getClient(accessToken);
+    await this.findOne(calculatorId, userId, accessToken); // Verify ownership
+
+    const { data, error } = await client
+      .from('calculator_formulas')
+      .update({
+        formula_name: dto.formulaName,
+        display_label: dto.displayLabel,
+        description: dto.description,
+        formula_type: dto.formulaType,
+        formula_expression: dto.formulaExpression,
+        visual_formula: dto.visualFormula,
+        depends_on_fields: dto.dependsOnFields,
+        depends_on_formulas: dto.dependsOnFormulas,
+        output_unit: dto.outputUnit,
+        decimal_places: dto.decimalPlaces,
+        display_format: dto.displayFormat,
+        execution_order: dto.executionOrder,
+        display_in_results: dto.displayInResults,
+        is_primary_result: dto.isPrimaryResult,
+        result_group: dto.resultGroup,
+      })
+      .eq('id', formulaId)
+      .eq('calculator_id', calculatorId)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  }
+
+  async removeFormula(calculatorId: string, formulaId: string, userId: string, accessToken: string) {
+    const client = this.supabaseService.getClient(accessToken);
+    await this.findOne(calculatorId, userId, accessToken); // Verify ownership
+
+    const { error } = await client
+      .from('calculator_formulas')
+      .delete()
+      .eq('id', formulaId)
+      .eq('calculator_id', calculatorId);
+
+    if (error) throw new Error(error.message);
+    return { message: 'Formula deleted successfully' };
   }
 }

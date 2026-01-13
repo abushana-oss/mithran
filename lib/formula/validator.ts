@@ -33,7 +33,9 @@ export function extractFields(formula: string): string[] {
   const fields = new Set<string>();
 
   for (const match of matches) {
-    fields.add(match[1].trim());
+    if (match[1]) {
+      fields.add(match[1].trim());
+    }
   }
 
   return Array.from(fields);
@@ -48,7 +50,9 @@ export function extractFunctions(formula: string): string[] {
   const functions = new Set<string>();
 
   for (const match of matches) {
-    functions.add(match[1]);
+    if (match[1]) {
+      functions.add(match[1]);
+    }
   }
 
   return Array.from(functions);
@@ -344,7 +348,7 @@ export function getAutocompleteSuggestions(
     const wordMatch = beforeCursor.match(/([A-Z_]+)$/);
 
     if (wordMatch) {
-      const partial = wordMatch[1].toLowerCase();
+      const partial = (wordMatch[1] ?? '').toLowerCase();
 
       for (const func of getFunctionNames()) {
         if (func.toLowerCase().startsWith(partial)) {

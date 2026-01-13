@@ -53,6 +53,11 @@ export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess, pare
     materialGrade: '',
     makeBuy: 'make' as 'make' | 'buy',
     unitCost: 0,
+    weight: 0,
+    maxLength: 0,
+    maxWidth: 0,
+    maxHeight: 0,
+    surfaceArea: 0,
     file2d: null as File | null,
     file3d: null as File | null,
   });
@@ -79,6 +84,11 @@ export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess, pare
         materialGrade: item.materialGrade || '',
         makeBuy: item.makeBuy || 'make',
         unitCost: item.unitCost || 0,
+        weight: item.weight || 0,
+        maxLength: item.maxLength || 0,
+        maxWidth: item.maxWidth || 0,
+        maxHeight: item.maxHeight || 0,
+        surfaceArea: item.surfaceArea || 0,
         file2d: null,
         file3d: null,
       });
@@ -95,6 +105,11 @@ export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess, pare
         materialGrade: '',
         makeBuy: 'make',
         unitCost: 0,
+        weight: 0,
+        maxLength: 0,
+        maxWidth: 0,
+        maxHeight: 0,
+        surfaceArea: 0,
         file2d: null,
         file3d: null,
       });
@@ -123,6 +138,11 @@ export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess, pare
         materialGrade: formData.materialGrade || undefined,
         makeBuy: formData.makeBuy,
         unitCost: formData.makeBuy === 'buy' ? formData.unitCost : undefined,
+        weight: formData.weight || undefined,
+        maxLength: formData.maxLength || undefined,
+        maxWidth: formData.maxWidth || undefined,
+        maxHeight: formData.maxHeight || undefined,
+        surfaceArea: formData.surfaceArea || undefined,
       };
 
       let itemId: string;
@@ -336,6 +356,68 @@ export function BOMItemDialog({ bomId, item, open, onOpenChange, onSuccess, pare
                   onChange={(e) => setFormData({ ...formData, annualVolume: parseInt(e.target.value) || 1 })}
                   required
                 />
+              </div>
+            </div>
+
+            {/* Physical Properties */}
+            <div className="border-t pt-4">
+              <h4 className="text-sm font-medium mb-3">Physical Properties (Optional)</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="weight">Weight (kg)</Label>
+                  <Input
+                    id="weight"
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    value={formData.weight || ''}
+                    onChange={(e) => setFormData({ ...formData, weight: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="surfaceArea">Surface Area (mm²)</Label>
+                  <Input
+                    id="surfaceArea"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.surfaceArea || ''}
+                    onChange={(e) => setFormData({ ...formData, surfaceArea: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="maxLength">Max Length (mm)</Label>
+                  <Input
+                    id="maxLength"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.maxLength || ''}
+                    onChange={(e) => setFormData({ ...formData, maxLength: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="maxWidth">Max Width (mm)</Label>
+                  <Input
+                    id="maxWidth"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.maxWidth || ''}
+                    onChange={(e) => setFormData({ ...formData, maxWidth: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="maxHeight">Max Height (mm)</Label>
+                  <Input
+                    id="maxHeight"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={formData.maxHeight || ''}
+                    onChange={(e) => setFormData({ ...formData, maxHeight: parseFloat(e.target.value) || 0 })}
+                  />
+                </div>
               </div>
             </div>
 

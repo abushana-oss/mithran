@@ -22,6 +22,21 @@ export class CreateProjectDto {
   @IsString()
   description?: string;
 
+  @ApiPropertyOptional({ example: 'United States' })
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @ApiPropertyOptional({ example: 'California' })
+  @IsOptional()
+  @IsString()
+  state?: string;
+
+  @ApiPropertyOptional({ example: 'San Francisco' })
+  @IsOptional()
+  @IsString()
+  city?: string;
+
   @ApiPropertyOptional({ example: ProjectStatus.DRAFT, enum: ProjectStatus })
   @IsOptional()
   @IsEnum(ProjectStatus)
