@@ -364,7 +364,7 @@ export class RfqService {
 
     return data.map(item => {
       // Map item_type to process
-      const processMapping = {
+      const processMapping: Record<string, string> = {
         'assembly': 'Assembly',
         'sub_assembly': 'Machining', 
         'child_part': 'Casting'

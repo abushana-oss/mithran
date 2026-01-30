@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, Search, Trash2, Edit2, X, Check } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, X, Check, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
@@ -91,11 +91,16 @@ export default function CalculatorsPage() {
     <div className="flex flex-col gap-8 p-8 max-w-[1400px] mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border pb-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Calculators</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {calculators.length} {calculators.length === 1 ? 'calculator' : 'calculators'}
-          </p>
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => router.push('/')}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-semibold">Calculators</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {calculators.length} {calculators.length === 1 ? 'calculator' : 'calculators'}
+            </p>
+          </div>
         </div>
         <Button
           onClick={handleCreateCalculator}

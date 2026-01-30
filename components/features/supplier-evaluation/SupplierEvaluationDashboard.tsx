@@ -1,14 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState, useMemo } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Package, Users, FileText, Search, Plus, ChevronRight, Edit, Trash2, Loader2 } from 'lucide-react';
-import { useUpdateSupplierEvaluationGroup } from '@/lib/api/hooks/useSupplierEvaluationGroups';
 import { useVendors } from '@/lib/api/hooks/useVendors';
-import { BOMItemDialog } from '@/components/features/bom/BOMItemDialog';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -21,24 +19,16 @@ interface SupplierEvaluationDashboardProps {
 }
 
 export function SupplierEvaluationDashboard({
-  projectId,
   evaluationGroups,
   isLoading = false,
   onNewEvaluation,
   onSelectEvaluationGroup
 }: SupplierEvaluationDashboardProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  
-  // Edit/Delete state
-  const [editingItem, setEditingItem] = useState<any>(null);
-  const [editDialogOpen, setEditDialogOpen] = useState(false);
-  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
 
   // Fetch vendors separately (now optimized)
-  const { data: vendorsData } = useVendors({ status: 'active', limit: 1000 });
-  
-  // Mutations
-  const updateGroupMutation = useUpdateSupplierEvaluationGroup();
+  const vendorsQuery = useMemo(() => ({ status: 'active' as const, limit: 1000 }), []);
+  const { data: vendorsData } = useVendors(vendorsQuery);
 
   const vendors = vendorsData?.vendors || [];
   const totalVendorsInDb = vendorsData?.total || vendors.length;
@@ -87,7 +77,7 @@ export function SupplierEvaluationDashboard({
             <h2 className="text-lg font-semibold text-white">Evaluation Groups</h2>
             <p className="text-sm text-gray-300">Your supplier evaluations</p>
           </div>
-          <Button 
+          <Button
             onClick={onNewEvaluation}
             className="bg-teal-600 hover:bg-teal-700 text-white"
           >
@@ -133,7 +123,7 @@ export function SupplierEvaluationDashboard({
                 </p>
               )}
               {!searchTerm && (
-                <Button 
+                <Button
                   onClick={onNewEvaluation}
                   className="bg-teal-600 hover:bg-teal-700 text-white"
                 >
@@ -172,13 +162,14 @@ function EvaluationCard({ group, onClick }: EvaluationCardProps) {
   const queryClient = useQueryClient();
 
   // Get status info
-  const status = group.status || 'draft';
-  const statusColor = {
+  const status = (group.status || 'draft') as 'draft' | 'active' | 'completed' | 'archived';
+  const statusColor: Record<'draft' | 'active' | 'completed' | 'archived', string> = {
     draft: 'text-yellow-400',
-    active: 'text-green-400', 
+    active: 'text-green-400',
     completed: 'text-blue-400',
     archived: 'text-gray-400'
-  }[status] || 'text-gray-400';
+  };
+  const statusColorClass = statusColor[status] || 'text-gray-400';
 
   const handleEditGroup = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -188,43 +179,43 @@ function EvaluationCard({ group, onClick }: EvaluationCardProps) {
 
   const handleDeleteGroup = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     setDeletingGroup(true);
     try {
       // Import the validation and delete functions
       const { validateSupplierEvaluationGroupDeletion, deleteSupplierEvaluationGroup } = await import('@/lib/api/supplier-evaluation-groups');
-      
+
       // Validate deletion first
       const validation = await validateSupplierEvaluationGroupDeletion(group.id);
-      
+
       // Check if deletion is blocked
       if (!validation.canDelete) {
         toast.error('Cannot delete evaluation group: ' + validation.blockers.join(', '));
         setDeletingGroup(false);
         return;
       }
-      
+
       // Build confirmation message with warnings
       let confirmMessage = `Are you sure you want to delete "${group.name || 'Unnamed Evaluation'}"?\n\nThis action cannot be undone.`;
-      
+
       if (validation.warnings.length > 0) {
         confirmMessage += '\n\nWarnings:\n' + validation.warnings.map(w => `• ${w}`).join('\n');
       }
-      
+
       if (validation.impactSummary.length > 0) {
-        confirmMessage += '\n\nThe following will be permanently deleted:\n' + 
+        confirmMessage += '\n\nThe following will be permanently deleted:\n' +
           validation.impactSummary.map(i => `• ${i.count} ${i.label}`).join('\n');
       }
-      
+
       const confirmed = window.confirm(confirmMessage);
-      
+
       if (!confirmed) {
         setDeletingGroup(false);
         return;
       }
 
       await deleteSupplierEvaluationGroup(group.id);
-      
+
       // Refresh the list
       await queryClient.invalidateQueries({ queryKey: ['supplier-evaluation-groups'] });
       toast.success('Evaluation group deleted successfully');
@@ -268,11 +259,11 @@ function EvaluationCard({ group, onClick }: EvaluationCardProps) {
           <h3 className="font-semibold text-white text-base leading-tight pr-16">
             {group.name || 'Unnamed Evaluation'}
           </h3>
-          
+
           {/* Status Badge */}
-          <Badge 
-            variant="outline" 
-            className={`border-gray-600 ${statusColor} text-xs capitalize`}
+          <Badge
+            variant="outline"
+            className={`border-gray-600 ${statusColorClass} text-xs capitalize`}
           >
             {status}
           </Badge>
@@ -295,13 +286,13 @@ function EvaluationCard({ group, onClick }: EvaluationCardProps) {
           {group.description && (
             <p className="text-xs text-gray-400 line-clamp-2">{group.description}</p>
           )}
-          
+
           {/* Created Date */}
           <div className="text-xs text-gray-500">
             Created: {new Date(group.createdAt).toLocaleDateString()}
           </div>
         </div>
-        
+
         {/* Action Button */}
         <Button
           size="sm"

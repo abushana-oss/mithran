@@ -63,10 +63,11 @@ export function SimpleEvaluationView({ groupId, onBack }: SimpleEvaluationViewPr
     refetch: refetchGroup
   } = useSupplierEvaluationGroup(groupId);
 
+  const vendorsQuery = useMemo(() => ({ status: 'active' as const, limit: 1000 }), []);
   const {
     data: vendorsData,
     error: vendorsError
-  } = useVendors({ status: 'active', limit: 1000 });
+  } = useVendors(vendorsQuery);
 
   // Type-safe data extraction with fallbacks
   const vendors = Array.isArray(vendorsData?.vendors) ? vendorsData.vendors : [];

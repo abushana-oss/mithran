@@ -1,18 +1,15 @@
 'use client';
 
-import React, { useState, useCallback, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { 
-  BomPartsSelectionCard, 
-  VendorSelectionCard, 
+import { Button } from '@/components/ui/button';
+import { ArrowLeft } from 'lucide-react';
+import {
   NewEvaluationDialog,
   SupplierEvaluationDashboard,
-  SimpleEvaluationView,
   EvaluationGroupView
 } from '@/components/features/supplier-evaluation';
-import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
 import { useBOMs } from '@/lib/api/hooks/useBOM';
 import { useBOMItems } from '@/lib/api/hooks/useBOMItems';
 import { useVendors } from '@/lib/api/hooks/useVendors';
@@ -22,6 +19,7 @@ import { type BomItemForEvaluation, type ProcessForEvaluation } from '@/lib/api/
 
 export default function SupplierEvaluationPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const projectId = params?.id || '';
 
   // View state management
@@ -33,7 +31,6 @@ export default function SupplierEvaluationPage() {
   const [selectedItems, setSelectedItems] = useState<string[]>([]); // Fixed: Start empty, no auto-selection
   const [groupName, setGroupName] = useState('');
   const [selectedBomId, setSelectedBomId] = useState<string>('');
-  const [selectedVendorIds, setSelectedVendorIds] = useState<string[]>([]);
 
   // Fetch BOMs and BOM items
   const { data: bomsData } = useBOMs({ projectId });
@@ -45,14 +42,14 @@ export default function SupplierEvaluationPage() {
   const boms = bomsData?.boms || [];
   const bomItems = bomItemsData?.items || [];
   const evaluationGroups = evaluationGroupsData || [];
-  
+
   // Get unique processes from selected BOM items with expanded mapping
   const selectedProcesses = React.useMemo(() => {
     if (selectedItems.length === 0) return [];
     const selectedBomItems = bomItems.filter(item => selectedItems.includes(item.id));
     const processes = selectedBomItems.flatMap(item => {
       // Map item types to multiple related processes for better vendor matching
-      switch(item.itemType) {
+      switch (item.itemType) {
         case 'assembly':
           return ['Assembly', 'Welding', 'Fastening'];
         case 'sub_assembly':
@@ -65,36 +62,34 @@ export default function SupplierEvaluationPage() {
     });
     return [...new Set(processes)];
   }, [bomItems, selectedItems]);
-  
+
   // Fetch ALL vendors - filter on client side for performance
-  const { data: vendorsData, isLoading: isLoadingVendors } = useVendors({
-    status: 'active',
-    limit: 1000 // Get all vendors, no process filtering on backend
-  });
+  const vendorsQuery = useMemo(() => ({ status: 'active' as const, limit: 1000 }), []);
+  const { data: vendorsData } = useVendors(vendorsQuery);
 
   const allVendors = vendorsData?.vendors || [];
-  
+
   // Client-side vendor matching - ANY process match (not ALL)
   const matchedVendors = React.useMemo(() => {
     if (selectedItems.length === 0) return []; // Show empty until parts selected
-    
+
     const selectedBomItems = bomItems.filter(item => selectedItems.includes(item.id));
     if (selectedBomItems.length === 0) return [];
-    
+
     // Get actual processes from BOM items (simplified mapping)
     const requiredProcesses = selectedBomItems.map(item => {
-      switch(item.itemType) {
+      switch (item.itemType) {
         case 'assembly': return 'Assembly';
-        case 'sub_assembly': return 'Machining'; 
+        case 'sub_assembly': return 'Machining';
         case 'child_part': return 'Casting';
         default: return 'Manufacturing';
       }
     });
-    
+
     // Match vendors that support ANY of the required processes
-    return allVendors.filter(vendor => 
-      vendor.process?.some((vendorProcess: string) => 
-        requiredProcesses.some(reqProcess => 
+    return allVendors.filter(vendor =>
+      vendor.process?.some((vendorProcess: string) =>
+        requiredProcesses.some(reqProcess =>
           vendorProcess.toLowerCase().includes(reqProcess.toLowerCase()) ||
           reqProcess.toLowerCase().includes(vendorProcess.toLowerCase()) ||
           // Fallback matches for common processes
@@ -103,7 +98,7 @@ export default function SupplierEvaluationPage() {
           (reqProcess === 'Machining' && (vendorProcess.toLowerCase().includes('machin') || vendorProcess.toLowerCase().includes('cnc'))) ||
           (reqProcess === 'Casting' && vendorProcess.toLowerCase().includes('cast'))
         )
-      ) || 
+      ) ||
       // Always include vendors without specific process data as potential matches
       !vendor.process || vendor.process.length === 0
     );
@@ -235,7 +230,6 @@ export default function SupplierEvaluationPage() {
   const handleEvaluationSuccess = useCallback(() => {
     // Reset forms and go back to dashboard
     setSelectedItems([]);
-    setSelectedVendorIds([]);
     setGroupName('');
     setCurrentView('dashboard');
   }, []);
@@ -255,7 +249,7 @@ export default function SupplierEvaluationPage() {
   // Render based on current view - use clean block engine instead of stepped view
   if (currentView === 'evaluation' && selectedEvaluationGroupId) {
     const selectedEvaluationGroup = evaluationGroups.find(group => group.id === selectedEvaluationGroupId);
-    
+
     return (
       <EvaluationGroupView
         projectId={projectId}
@@ -283,11 +277,16 @@ export default function SupplierEvaluationPage() {
   if (currentView === 'dashboard') {
     return (
       <div className="space-y-6">
-        <PageHeader
-          title="Supplier Evaluation"
-          description="Process-based supplier matching and evaluation groups"
-        />
-        
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => router.push(`/projects/${projectId}`)}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <PageHeader
+            title="Supplier Evaluation"
+            description="Process-based supplier matching and evaluation groups"
+          />
+        </div>
+
         <SupplierEvaluationDashboard
           projectId={projectId}
           evaluationGroups={evaluationGroups}
@@ -297,7 +296,7 @@ export default function SupplierEvaluationPage() {
         />
 
         {/* New Evaluation Dialog */}
-        <NewEvaluationDialog 
+        <NewEvaluationDialog
           open={newEvaluationDialogOpen}
           onOpenChange={setNewEvaluationDialogOpen}
           onSuccess={handleEvaluationSuccess}

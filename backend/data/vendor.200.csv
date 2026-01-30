@@ -1,4 +1,3 @@
-,,,,,,,,,,,,,,,,,,Cost,,,
 MaterialGroup,Material,MaterialAbbreviation,MaterialGrade,StockForm,MatlState,Application,Regrinding,Regrinding%,Clamping Pressure (MPa),Eject Deflection Temp (°C),Melting Temp (°C),Mold Temp (°C),Density (kg / m^3),Specific Heat of Melt (J / g * Â°C),Thermal Conductivity of Melt (Watts / m * Â°C),Location,Year,Q1,Q2,Q3,Q4
 Plastic & Rubber,Acrylonitrile Butadiene Styrene,ABS,ABS,Granules,Base Polymer,"Ext & Int Parts-Automotive, Electronics, Appliances",Yes,10%,49.4,85,240,70,1040,1.8,0.127,Bangalore,2025,125,130,140,150
 Plastic & Rubber,Acrylonitrile Butadiene Styrene,ABS,"ABS, PC-ABS",Granules,Blended,"Automotive, Electrical,Electronics, Construction, Medical",Yes,10%,62,85,240,70,1070,1.8,0.131,Chennai,2025,125,135,146,156

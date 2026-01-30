@@ -48,13 +48,11 @@ export function EvaluationGroupView({ projectId, bomParts, evaluationGroupName, 
   // const [sentRfqs, setSentRfqs] = useState<...>([]);
 
   // Fetch vendors from API
+  const vendorsQuery = useMemo(() => ({ status: 'active' as const, limit: 1000 }), []);
   const { 
     data: vendorsResponse, 
     isLoading: isLoadingVendors 
-  } = useVendors({
-    status: 'active',
-    limit: 1000
-  });
+  } = useVendors(vendorsQuery);
   
   const vendors = vendorsResponse?.vendors || [];
   

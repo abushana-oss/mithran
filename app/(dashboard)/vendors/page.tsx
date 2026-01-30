@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useVendors, useUploadVendorsCsv, useDeleteAllVendors, useCreateVendor } from '@/lib/api/hooks/useVendors';
-import { Plus, Search, Upload, MapPin, Factory, Award, Filter, Trash2, ExternalLink, TrendingUp, X } from 'lucide-react';
+import { Plus, Search, Upload, MapPin, Factory, Award, Filter, Trash2, ExternalLink, TrendingUp, X, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import type { VendorQuery, CreateVendorData } from '@/lib/api/vendors';
 import { IndiaMap } from '@/components/ui/india-map';
@@ -81,7 +81,8 @@ export default function VendorsPage() {
   const total = vendorsData?.total || 0;
 
   // Get all vendors (unfiltered) for filter options
-  const { data: allVendorsData } = useVendors({ limit: 1000 });
+  const allVendorsQuery = useMemo(() => ({ limit: 1000 }), []);
+  const { data: allVendorsData } = useVendors(allVendorsQuery);
   const allVendors = allVendorsData?.vendors || [];
 
   const uploadCsvMutation = useUploadVendorsCsv();
@@ -329,11 +330,16 @@ export default function VendorsPage() {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Supplier Database</h1>
-          <p className="text-muted-foreground mt-1">
-            Comprehensive vendor management and filtering
-          </p>
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={() => router.push('/')}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Supplier Database</h1>
+            <p className="text-muted-foreground mt-1">
+              Comprehensive vendor management and filtering
+            </p>
+          </div>
         </div>
         <div className="flex gap-3">
           <Button
@@ -498,11 +504,10 @@ export default function VendorsPage() {
                   return (
                     <div
                       key={service}
-                      className={`flex justify-between items-center text-sm p-2 rounded-md cursor-pointer transition-all hover:bg-primary/5 border ${
-                        isSelected
-                          ? 'bg-primary/10 border-primary/30'
-                          : 'border-transparent hover:border-primary/20'
-                      }`}
+                      className={`flex justify-between items-center text-sm p-2 rounded-md cursor-pointer transition-all hover:bg-primary/5 border ${isSelected
+                        ? 'bg-primary/10 border-primary/30'
+                        : 'border-transparent hover:border-primary/20'
+                        }`}
                       onClick={() => {
                         if (selectedServices.includes(service)) {
                           setSelectedServices(selectedServices.filter(s => s !== service));
@@ -512,12 +517,10 @@ export default function VendorsPage() {
                       }}
                     >
                       <div className="flex items-center gap-2 flex-1">
-                        <div className={`w-1.5 h-1.5 rounded-full ${
-                          isSelected ? 'bg-primary' : 'bg-muted-foreground/30'
-                        }`} />
-                        <span className={`text-sm ${
-                          isSelected ? 'font-medium text-foreground' : 'text-muted-foreground'
-                        }`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-primary' : 'bg-muted-foreground/30'
+                          }`} />
+                        <span className={`text-sm ${isSelected ? 'font-medium text-foreground' : 'text-muted-foreground'
+                          }`}>
                           {service}
                         </span>
                       </div>
@@ -951,7 +954,7 @@ export default function VendorsPage() {
                               size="sm"
                               onClick={(e) => {
                                 e.stopPropagation();
-        router.push(`/vendors/${vendor.id}`);
+                                router.push(`/vendors/${vendor.id}`);
                               }}
                               className="gap-1"
                             >

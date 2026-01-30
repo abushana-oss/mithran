@@ -48,8 +48,24 @@ export default function ProcessPlanningPage() {
     partNumber: '',
     name: '',
     description: '',
-    itemType: '',
+    itemType: 'child_part',
     material: '',
+    quantity: '',
+    unit: '',
+    annualVolume: '',
+    unitWeight: '',
+    unitCost: '',
+    length: '',
+    width: '',
+    height: '',
+    toleranceGrade: 'IT8',
+    surfaceFinish: 'Ra 3.2 μm',
+    heatTreatment: 'As Required',
+    hardness: '',
+    leadTime: '15-20',
+    revision: 'Rev A',
+    qualityStandard: 'ISO 9001:2015',
+    inspectionLevel: 'Level II',
   });
 
 
@@ -70,11 +86,52 @@ export default function ProcessPlanningPage() {
     // Clear measurements/cache when item changes
     if (selectedItem) {
       setEditablePartData({
-        partNumber: selectedItem.partNumber || selectedItem.id,
-        name: selectedItem.name || '',
-        description: selectedItem.description || '',
-        itemType: selectedItem.itemType || 'child_part',
-        material: selectedItem.material || '',
+        partNumber: String(selectedItem.partNumber || selectedItem.id || ''),
+        name: String(selectedItem.name || ''),
+        description: String(selectedItem.description || ''),
+        itemType: String(selectedItem.itemType || 'child_part'),
+        material: String(selectedItem.material || selectedItem.materialGrade || ''),
+        quantity: String(selectedItem.quantity || ''),
+        unit: String(selectedItem.unit || ''),
+        annualVolume: String(selectedItem.annualVolume || ''),
+        unitWeight: String(selectedItem.unitWeight || ''),
+        unitCost: String(selectedItem.unitCost || ''),
+        length: String(selectedItem.length || ''),
+        width: String(selectedItem.width || ''),
+        height: String(selectedItem.height || ''),
+        toleranceGrade: String(selectedItem.toleranceGrade || 'IT8'),
+        surfaceFinish: String(selectedItem.surfaceFinish || 'Ra 3.2 μm'),
+        heatTreatment: String(selectedItem.heatTreatment || 'As Required'),
+        hardness: String(selectedItem.hardness || ''),
+        leadTime: String(selectedItem.leadTime || '15-20'),
+        revision: String(selectedItem.revision || 'Rev A'),
+        qualityStandard: String(selectedItem.qualityStandard || 'ISO 9001:2015'),
+        inspectionLevel: String(selectedItem.inspectionLevel || 'Level II'),
+      });
+    } else {
+      // Initialize with empty strings if no item is selected
+      setEditablePartData({
+        partNumber: '',
+        name: '',
+        description: '',
+        itemType: 'child_part',
+        material: '',
+        quantity: '',
+        unit: '',
+        annualVolume: '',
+        unitWeight: '',
+        unitCost: '',
+        length: '',
+        width: '',
+        height: '',
+        toleranceGrade: 'IT8',
+        surfaceFinish: 'Ra 3.2 μm',
+        heatTreatment: 'As Required',
+        hardness: '',
+        leadTime: '15-20',
+        revision: 'Rev A',
+        qualityStandard: 'ISO 9001:2015',
+        inspectionLevel: 'Level II',
       });
     }
   }, [selectedItem?.id]);
@@ -124,11 +181,27 @@ export default function ProcessPlanningPage() {
   const handleCancelEdit = () => {
     if (selectedItem) {
       setEditablePartData({
-        partNumber: selectedItem.partNumber || selectedItem.id,
-        name: selectedItem.name || '',
-        description: selectedItem.description || '',
-        itemType: selectedItem.itemType || 'child_part',
-        material: selectedItem.material || '',
+        partNumber: String(selectedItem.partNumber || selectedItem.id || ''),
+        name: String(selectedItem.name || ''),
+        description: String(selectedItem.description || ''),
+        itemType: String(selectedItem.itemType || 'child_part'),
+        material: String(selectedItem.material || selectedItem.materialGrade || ''),
+        quantity: String(selectedItem.quantity || ''),
+        unit: String(selectedItem.unit || ''),
+        annualVolume: String(selectedItem.annualVolume || ''),
+        unitWeight: String(selectedItem.unitWeight || ''),
+        unitCost: String(selectedItem.unitCost || ''),
+        length: String(selectedItem.length || ''),
+        width: String(selectedItem.width || ''),
+        height: String(selectedItem.height || ''),
+        toleranceGrade: String(selectedItem.toleranceGrade || 'IT8'),
+        surfaceFinish: String(selectedItem.surfaceFinish || 'Ra 3.2 μm'),
+        heatTreatment: String(selectedItem.heatTreatment || 'As Required'),
+        hardness: String(selectedItem.hardness || ''),
+        leadTime: String(selectedItem.leadTime || '15-20'),
+        revision: String(selectedItem.revision || 'Rev A'),
+        qualityStandard: String(selectedItem.qualityStandard || 'ISO 9001:2015'),
+        inspectionLevel: String(selectedItem.inspectionLevel || 'Level II'),
       });
     }
     setIsEditingPartDetails(false);
@@ -333,29 +406,6 @@ export default function ProcessPlanningPage() {
                     </CardContent>
                   </Card>
 
-                  {selectedBomId && (
-                    <Card>
-                      <CardHeader className="pb-2">
-                        <CardTitle className="text-sm">Selected BOM</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-1 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Total Parts:</span>
-                            <span className="font-medium">{bomItems.length}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Completed:</span>
-                            <span className="font-medium text-green-600">0</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">Pending:</span>
-                            <span className="font-medium text-yellow-600">{bomItems.length}</span>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
                 </div>
               </div>
             )}
@@ -373,18 +423,147 @@ export default function ProcessPlanningPage() {
                 <p className="text-destructive">Error loading BOM items: {bomItemsError.message}</p>
               </div>
             )}
+
+            {/* DETAILED BOM INFORMATION SECTION */}
+            {selectedBomId && !bomItemsLoading && !bomItemsError && bomItems.length > 0 && (
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle className="text-lg">BOM Details - {boms.find(b => b.id === selectedBomId)?.name}</CardTitle>
+                  <p className="text-sm text-muted-foreground">
+                    Complete breakdown of all parts and components in this BOM
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {bomItems.map((item, index) => (
+                      <div
+                        key={item.id}
+                        className={`rounded-lg border bg-card text-card-foreground shadow-sm border-l-4 ${
+                          item.itemType === 'assembly' ? 'border-l-emerald-500' :
+                          item.itemType === 'sub_assembly' ? 'border-l-blue-500' : 'border-l-amber-500'
+                        }`}
+                      >
+                        <div className="p-4">
+                          <div className="flex flex-col md:flex-row items-start justify-between gap-4">
+                            <div className="flex items-start gap-4 flex-1 w-full">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex flex-wrap items-center gap-2 mb-2">
+                                  <span className="text-sm font-bold text-muted-foreground">#{index + 1}</span>
+                                  <h3 className="text-lg font-semibold text-foreground truncate">
+                                    {item.name || item.partNumber || `Item ${index + 1}`}
+                                  </h3>
+                                  <Badge
+                                    variant="outline"
+                                    className={`text-xs ${
+                                      item.itemType === 'assembly' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20' :
+                                      item.itemType === 'sub_assembly' ? 'bg-blue-500/10 text-blue-700 border-blue-500/20' :
+                                      'bg-amber-500/10 text-amber-700 border-amber-500/20'
+                                    }`}
+                                  >
+                                    {item.itemType === 'assembly' ? 'Assembly' :
+                                     item.itemType === 'sub_assembly' ? 'Sub-Assembly' : 'Child Part'}
+                                  </Badge>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-3">
+                                  <div className="text-sm">
+                                    <p className="text-muted-foreground text-xs mb-1">Part Number</p>
+                                    <p className="font-medium text-foreground">{item.partNumber || '—'}</p>
+                                  </div>
+                                  <div className="text-sm">
+                                    <p className="text-muted-foreground text-xs mb-1">Quantity</p>
+                                    <p className="font-medium text-foreground">{item.quantity} {item.unit}</p>
+                                  </div>
+                                  <div className="text-sm">
+                                    <p className="text-muted-foreground text-xs mb-1">Annual Volume</p>
+                                    <p className="font-medium text-foreground">{item.annualVolume?.toLocaleString() || '—'}</p>
+                                  </div>
+                                  <div className="text-sm">
+                                    <p className="text-muted-foreground text-xs mb-1">Material</p>
+                                    <p className="font-medium text-foreground" title={item.materialGrade || '—'}>
+                                      {item.materialGrade || item.material || '—'}
+                                    </p>
+                                  </div>
+                                  <div className="text-sm">
+                                    <p className="text-muted-foreground text-xs mb-1">Status</p>
+                                    <Badge variant="secondary" className="text-xs">
+                                      Pending
+                                    </Badge>
+                                  </div>
+                                </div>
+
+                                {item.description && (
+                                  <div className="text-sm mt-3">
+                                    <p className="text-muted-foreground text-xs mb-1">Description</p>
+                                    <p className="font-medium text-foreground">{item.description}</p>
+                                  </div>
+                                )}
+
+                                {/* Additional Technical Details */}
+                                <div className="mt-3 pt-3 border-t border-border">
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                                    <div>
+                                      <p className="text-muted-foreground mb-1">3D Model</p>
+                                      <p className="font-medium text-foreground">
+                                        {item.file3dPath ? '✓ Available' : '— Not Available'}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-muted-foreground mb-1">2D Drawing</p>
+                                      <p className="font-medium text-foreground">
+                                        {item.file2dPath ? '✓ Available' : '— Not Available'}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-muted-foreground mb-1">Procurement</p>
+                                      <p className="font-medium text-foreground">
+                                        {item.itemType === 'child_part' ? 'Manufacturing' : 'Assembly'}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-muted-foreground mb-1">Priority</p>
+                                      <Badge variant="outline" className="text-xs">
+                                        {item.itemType === 'assembly' ? 'High' : 'Medium'}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedPartNumber(item.partNumber || item.id);
+                                  setActiveTab('process');
+                                }}
+                                className={`${selectedPartNumber === (item.partNumber || item.id) ? 'bg-primary text-primary-foreground' : ''}`}
+                              >
+                                {selectedPartNumber === (item.partNumber || item.id) ? 'Selected' : 'Select'}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* TAB 2: PROCESS PLANNING - For Process Engineers */}
           <TabsContent value="process" className="space-y-4">
             {selectedPartNumber && selectedItem ? (
               <>
-                {/* Selected Part Details Card - Compact */}
+                {/* Selected Part Details Card - Compact & Editable */}
                 <Card className="border-l-4 border-l-green-500">
                   <CardHeader className="bg-green-500 py-2 px-3">
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-white text-sm font-semibold">
-                        Creating Process Plan For
+                        Complete BOM Details & Process Planning
                       </CardTitle>
                       {!isEditingPartDetails ? (
                         <Button
@@ -393,7 +572,7 @@ export default function ProcessPlanningPage() {
                           onClick={handleEditPartDetails}
                           className="h-6 px-2 text-xs text-white hover:bg-white/20"
                         >
-                          Edit
+                          Edit All
                         </Button>
                       ) : (
                         <div className="flex items-center gap-1">
@@ -417,88 +596,346 @@ export default function ProcessPlanningPage() {
                       )}
                     </div>
                   </CardHeader>
-                  <CardContent className="p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      {/* Part Number */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-muted-foreground">Part Number</label>
-                        {isEditingPartDetails ? (
-                          <Input
-                            value={editablePartData.partNumber}
-                            onChange={(e) => setEditablePartData(prev => ({ ...prev, partNumber: e.target.value }))}
-                            className="h-9 text-sm font-semibold"
-                            placeholder="Enter part number"
-                          />
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <p className="text-sm font-semibold">{editablePartData.partNumber}</p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Name/Description */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-muted-foreground">Part Name</label>
-                        {isEditingPartDetails ? (
-                          <Input
-                            value={editablePartData.name}
-                            onChange={(e) => setEditablePartData(prev => ({ ...prev, name: e.target.value }))}
-                            className="h-9 text-sm font-semibold"
-                            placeholder="Enter part name"
-                          />
-                        ) : (
-                          <p className="text-sm font-semibold">{editablePartData.name || 'No name specified'}</p>
-                        )}
-                      </div>
-
-                      {/* Type */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-muted-foreground">Item Type</label>
-                        {isEditingPartDetails ? (
-                          <select
-                            value={editablePartData.itemType}
-                            onChange={(e) => setEditablePartData(prev => ({ ...prev, itemType: e.target.value }))}
-                            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm font-semibold shadow-sm transition-colors"
-                          >
-                            <option value="child_part">Child Part</option>
-                            <option value="sub_assembly">Sub Assembly</option>
-                            <option value="assembly">Assembly</option>
-                          </select>
-                        ) : (
-                          <Badge variant="outline" className="text-xs">
-                            {editablePartData.itemType.replace('_', ' ').toUpperCase()}
-                          </Badge>
-                        )}
-                      </div>
-
-                      {/* Material */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-medium text-muted-foreground">Material</label>
-                        {isEditingPartDetails ? (
-                          <Input
-                            value={editablePartData.material}
-                            onChange={(e) => setEditablePartData(prev => ({ ...prev, material: e.target.value }))}
-                            className="h-9 text-sm font-semibold"
-                            placeholder="Enter material type"
-                          />
-                        ) : (
-                          <p className="text-sm font-semibold">{editablePartData.material || 'N/A'}</p>
-                        )}
+                  <CardContent className="p-3">
+                    
+                    {/* Basic Information */}
+                    <div className="mb-3">
+                      <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Basic Information</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div>
+                          <label className="text-xs text-muted-foreground">Part Number</label>
+                          {isEditingPartDetails ? (
+                            <Input
+                              value={editablePartData.partNumber}
+                              onChange={(e) => setEditablePartData(prev => ({ ...prev, partNumber: e.target.value }))}
+                              className="h-7 text-xs"
+                            />
+                          ) : (
+                            <p className="text-xs font-medium">{editablePartData.partNumber}</p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">Part Name</label>
+                          {isEditingPartDetails ? (
+                            <Input
+                              value={editablePartData.name}
+                              onChange={(e) => setEditablePartData(prev => ({ ...prev, name: e.target.value }))}
+                              className="h-7 text-xs"
+                            />
+                          ) : (
+                            <p className="text-xs font-medium">{editablePartData.name || '—'}</p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">Item Type</label>
+                          {isEditingPartDetails ? (
+                            <select
+                              value={editablePartData.itemType}
+                              onChange={(e) => setEditablePartData(prev => ({ ...prev, itemType: e.target.value }))}
+                              className="h-7 w-full text-xs border rounded px-2"
+                            >
+                              <option value="child_part">Child Part</option>
+                              <option value="sub_assembly">Sub Assembly</option>
+                              <option value="assembly">Assembly</option>
+                            </select>
+                          ) : (
+                            <Badge variant="outline" className="text-xs h-5">
+                              {editablePartData.itemType.replace('_', ' ').toUpperCase()}
+                            </Badge>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">Material</label>
+                          {isEditingPartDetails ? (
+                            <Input
+                              value={editablePartData.material}
+                              onChange={(e) => setEditablePartData(prev => ({ ...prev, material: e.target.value }))}
+                              className="h-7 text-xs"
+                            />
+                          ) : (
+                            <p className="text-xs font-medium">{editablePartData.material || '—'}</p>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    {/* Description Field - Full Width */}
-                    {isEditingPartDetails && (
-                      <div className="mt-4 space-y-2">
+                    {/* Technical Specifications */}
+                    <div className="mb-3">
+                      <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Technical Specs</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div>
+                          <label className="text-xs text-muted-foreground">Quantity</label>
+                          {isEditingPartDetails ? (
+                            <Input
+                              value={editablePartData.quantity}
+                              onChange={(e) => setEditablePartData(prev => ({ ...prev, quantity: e.target.value }))}
+                              className="h-7 text-xs"
+                            />
+                          ) : (
+                            <p className="text-xs font-medium">{editablePartData.quantity || '—'}</p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">Unit</label>
+                          {isEditingPartDetails ? (
+                            <Input
+                              value={editablePartData.unit}
+                              onChange={(e) => setEditablePartData(prev => ({ ...prev, unit: e.target.value }))}
+                              className="h-7 text-xs"
+                            />
+                          ) : (
+                            <p className="text-xs font-medium">{editablePartData.unit || '—'}</p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">Annual Volume</label>
+                          {isEditingPartDetails ? (
+                            <Input
+                              value={editablePartData.annualVolume}
+                              onChange={(e) => setEditablePartData(prev => ({ ...prev, annualVolume: e.target.value }))}
+                              className="h-7 text-xs"
+                            />
+                          ) : (
+                            <p className="text-xs font-medium">{editablePartData.annualVolume ? Number(editablePartData.annualVolume).toLocaleString() : '—'}</p>
+                          )}
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground">Unit Weight (kg)</label>
+                          {isEditingPartDetails ? (
+                            <Input
+                              value={editablePartData.unitWeight}
+                              onChange={(e) => setEditablePartData(prev => ({ ...prev, unitWeight: e.target.value }))}
+                              className="h-7 text-xs"
+                            />
+                          ) : (
+                            <p className="text-xs font-medium">{editablePartData.unitWeight || '—'}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {/* Dimensions */}
+                      <div>
+                        <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Dimensions (mm)</h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs text-muted-foreground">Length</label>
+                            {isEditingPartDetails ? (
+                              <Input
+                                value={editablePartData.length}
+                                onChange={(e) => setEditablePartData(prev => ({ ...prev, length: e.target.value }))}
+                                className="h-7 text-xs"
+                              />
+                            ) : (
+                              <p className="text-xs font-medium">{editablePartData.length || '—'}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Width</label>
+                            {isEditingPartDetails ? (
+                              <Input
+                                value={editablePartData.width}
+                                onChange={(e) => setEditablePartData(prev => ({ ...prev, width: e.target.value }))}
+                                className="h-7 text-xs"
+                              />
+                            ) : (
+                              <p className="text-xs font-medium">{editablePartData.width || '—'}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Height</label>
+                            {isEditingPartDetails ? (
+                              <Input
+                                value={editablePartData.height}
+                                onChange={(e) => setEditablePartData(prev => ({ ...prev, height: e.target.value }))}
+                                className="h-7 text-xs"
+                              />
+                            ) : (
+                              <p className="text-xs font-medium">{editablePartData.height || '—'}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Tolerance</label>
+                            {isEditingPartDetails ? (
+                              <Input
+                                value={editablePartData.toleranceGrade}
+                                onChange={(e) => setEditablePartData(prev => ({ ...prev, toleranceGrade: e.target.value }))}
+                                className="h-7 text-xs"
+                              />
+                            ) : (
+                              <p className="text-xs font-medium">{editablePartData.toleranceGrade}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Manufacturing */}
+                      <div>
+                        <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Manufacturing</h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs text-muted-foreground">Surface Finish</label>
+                            {isEditingPartDetails ? (
+                              <Input
+                                value={editablePartData.surfaceFinish}
+                                onChange={(e) => setEditablePartData(prev => ({ ...prev, surfaceFinish: e.target.value }))}
+                                className="h-7 text-xs"
+                              />
+                            ) : (
+                              <p className="text-xs font-medium">{editablePartData.surfaceFinish}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Heat Treatment</label>
+                            {isEditingPartDetails ? (
+                              <Input
+                                value={editablePartData.heatTreatment}
+                                onChange={(e) => setEditablePartData(prev => ({ ...prev, heatTreatment: e.target.value }))}
+                                className="h-7 text-xs"
+                              />
+                            ) : (
+                              <p className="text-xs font-medium">{editablePartData.heatTreatment}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Hardness (HRC)</label>
+                            {isEditingPartDetails ? (
+                              <Input
+                                value={editablePartData.hardness}
+                                onChange={(e) => setEditablePartData(prev => ({ ...prev, hardness: e.target.value }))}
+                                className="h-7 text-xs"
+                              />
+                            ) : (
+                              <p className="text-xs font-medium">{editablePartData.hardness || '—'}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Lead Time</label>
+                            {isEditingPartDetails ? (
+                              <Input
+                                value={editablePartData.leadTime}
+                                onChange={(e) => setEditablePartData(prev => ({ ...prev, leadTime: e.target.value }))}
+                                className="h-7 text-xs"
+                              />
+                            ) : (
+                              <p className="text-xs font-medium">{editablePartData.leadTime}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bottom Row - Cost, Quality, Files */}
+                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Cost & Quality</h4>
+                        <div className="space-y-1">
+                          <div>
+                            <label className="text-xs text-muted-foreground">Unit Cost (₹)</label>
+                            {isEditingPartDetails ? (
+                              <Input
+                                value={editablePartData.unitCost}
+                                onChange={(e) => setEditablePartData(prev => ({ ...prev, unitCost: e.target.value }))}
+                                className="h-7 text-xs"
+                              />
+                            ) : (
+                              <p className="text-xs font-medium">₹{editablePartData.unitCost || '—'}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Quality Standard</label>
+                            {isEditingPartDetails ? (
+                              <Input
+                                value={editablePartData.qualityStandard}
+                                onChange={(e) => setEditablePartData(prev => ({ ...prev, qualityStandard: e.target.value }))}
+                                className="h-7 text-xs"
+                              />
+                            ) : (
+                              <p className="text-xs font-medium">{editablePartData.qualityStandard}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Documentation</h4>
+                        <div className="space-y-1">
+                          <div>
+                            <label className="text-xs text-muted-foreground">Revision</label>
+                            {isEditingPartDetails ? (
+                              <Input
+                                value={editablePartData.revision}
+                                onChange={(e) => setEditablePartData(prev => ({ ...prev, revision: e.target.value }))}
+                                className="h-7 text-xs"
+                              />
+                            ) : (
+                              <p className="text-xs font-medium">{editablePartData.revision}</p>
+                            )}
+                          </div>
+                          <div>
+                            <label className="text-xs text-muted-foreground">Inspection Level</label>
+                            {isEditingPartDetails ? (
+                              <Input
+                                value={editablePartData.inspectionLevel}
+                                onChange={(e) => setEditablePartData(prev => ({ ...prev, inspectionLevel: e.target.value }))}
+                                className="h-7 text-xs"
+                              />
+                            ) : (
+                              <Badge variant="outline" className="text-xs h-5">
+                                {editablePartData.inspectionLevel}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Files</h4>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1">
+                            <Badge variant={selectedItem?.file3dPath ? "default" : "secondary"} className="text-xs h-5">
+                              3D {selectedItem?.file3dPath ? '✓' : '✗'}
+                            </Badge>
+                            {selectedItem?.file3dPath && (
+                              <span className="text-xs text-muted-foreground">
+                                {selectedItem.file3dPath.split('.').pop()?.toUpperCase()}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Badge variant={selectedItem?.file2dPath ? "default" : "secondary"} className="text-xs h-5">
+                              2D {selectedItem?.file2dPath ? '✓' : '✗'}
+                            </Badge>
+                            {selectedItem?.file2dPath && (
+                              <span className="text-xs text-muted-foreground">
+                                {selectedItem.file2dPath.split('.').pop()?.toUpperCase()}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Description - Full Width */}
+                    {(selectedItem?.description || isEditingPartDetails) && (
+                      <div className="mt-3">
                         <label className="text-xs font-medium text-muted-foreground">Description</label>
-                        <Input
-                          value={editablePartData.description}
-                          onChange={(e) => setEditablePartData(prev => ({ ...prev, description: e.target.value }))}
-                          className="h-9 text-sm"
-                          placeholder="Enter part description"
-                        />
+                        {isEditingPartDetails ? (
+                          <Input
+                            value={editablePartData.description}
+                            onChange={(e) => setEditablePartData(prev => ({ ...prev, description: e.target.value }))}
+                            className="h-7 text-xs mt-1"
+                            placeholder="Enter part description"
+                          />
+                        ) : (
+                          <p className="text-xs text-foreground bg-muted/30 p-2 rounded mt-1">
+                            {editablePartData.description || 'No description available'}
+                          </p>
+                        )}
                       </div>
                     )}
+
                   </CardContent>
                 </Card>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -130,11 +130,12 @@ export function NewEvaluationDialog({
   );
 
   // Fetch process costs for all selected BOM items
-  const { data: processCostsData, isLoading: processCostsLoading, error: processCostsError } = useProcessCosts({
+  const processCostsQuery = useMemo(() => ({
     bomItemIds: selectedBomItemIds.length > 0 ? selectedBomItemIds : undefined,
     isActive: true,
     enabled: selectedBomItemIds.length > 0,
-  });
+  }), [selectedBomItemIds]);
+  const { data: processCostsData, isLoading: processCostsLoading, error: processCostsError } = useProcessCosts(processCostsQuery);
 
   // Production: Handle circuit breaker errors gracefully
   React.useEffect(() => {

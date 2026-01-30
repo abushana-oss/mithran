@@ -42,7 +42,7 @@ export class SupplierEvaluationGroupsService {
         .single();
 
       if (groupError) {
-        this.logger.error('Error creating evaluation group:', groupError);
+        this.logger.error('Error creating evaluation group:', groupError.message);
         throw new Error(`Failed to create evaluation group: ${groupError.message}`);
       }
 
@@ -64,7 +64,7 @@ export class SupplierEvaluationGroupsService {
           .insert(bomItemsData);
 
         if (bomError) {
-          this.logger.error('Error creating BOM items:', bomError);
+          this.logger.error('Error creating BOM items:', bomError.message);
           throw new Error(`Failed to create BOM items: ${bomError.message}`);
         }
       }
@@ -85,7 +85,7 @@ export class SupplierEvaluationGroupsService {
           .insert(processesData);
 
         if (processError) {
-          this.logger.error('Error creating processes:', processError);
+          this.logger.error('Error creating processes:', processError.message);
           throw new Error(`Failed to create processes: ${processError.message}`);
         }
       }
@@ -116,11 +116,11 @@ export class SupplierEvaluationGroupsService {
       );
 
       if (error) {
-        this.logger.error('Error fetching evaluation groups:', error);
+        this.logger.error('Error fetching evaluation groups:', error.message);
         throw new Error(`Failed to fetch evaluation groups: ${error.message}`);
       }
 
-      return (data || []).map(group => ({
+      return (data || []).map((group: any) => ({
         id: group.id,
         projectId: group.project_id,
         name: group.name,
@@ -152,7 +152,7 @@ export class SupplierEvaluationGroupsService {
       );
 
       if (error) {
-        this.logger.error('Error fetching evaluation group:', error);
+        this.logger.error('Error fetching evaluation group:', error.message);
         throw new Error(`Failed to fetch evaluation group: ${error.message}`);
       }
 
@@ -203,7 +203,7 @@ export class SupplierEvaluationGroupsService {
         .eq('user_id', userId);
 
       if (error) {
-        this.logger.error('Error updating evaluation group:', error);
+        this.logger.error('Error updating evaluation group:', error.message);
         throw new Error(`Failed to update evaluation group: ${error.message}`);
       }
 
@@ -352,7 +352,7 @@ export class SupplierEvaluationGroupsService {
         .eq('user_id', userId);
 
       if (error) {
-        this.logger.error('Error removing evaluation group:', error);
+        this.logger.error('Error removing evaluation group:', error.message);
         throw new BadRequestException(`Failed to remove evaluation group: ${error.message}`);
       }
 

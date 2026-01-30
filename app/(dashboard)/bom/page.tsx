@@ -23,6 +23,7 @@ import {
   Calendar,
   FolderKanban,
   ArrowUpDown,
+  ArrowLeft,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -35,9 +36,9 @@ export default function BOMManagementPage() {
 
   const filteredBoms = searchQuery
     ? boms.filter((bom) =>
-        bom.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (bom.version && bom.version.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
+      bom.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (bom.version && bom.version.toLowerCase().includes(searchQuery.toLowerCase()))
+    )
     : boms;
 
   const stats = {
@@ -49,15 +50,20 @@ export default function BOMManagementPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="BOM Management"
-        description="Manage Bills of Materials across all projects"
-      >
-        <Button onClick={() => router.push('/projects')} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Create BOM
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" onClick={() => router.push('/')}>
+          <ArrowLeft className="h-4 w-4" />
         </Button>
-      </PageHeader>
+        <PageHeader
+          title="BOM Management"
+          description="Manage Bills of Materials across all projects"
+        >
+          <Button onClick={() => router.push('/projects')} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Create BOM
+          </Button>
+        </PageHeader>
+      </div>
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
