@@ -98,6 +98,56 @@ export class SupplierEvaluationGroupsService {
     }
   }
 
+  async findAll(
+    userId: string,
+    accessToken: string,
+  ): Promise<SupplierEvaluationGroupSummaryDto[]> {
+    this.logger.log(`Finding all evaluation groups for user ${userId}`);
+
+    try {
+      const supabase = this.supabaseService.getClient(accessToken);
+      const { data, error } = await supabase
+        .from('supplier_evaluation_groups')
+        .select(`
+          id,
+          project_id,
+          name,
+          description,
+          notes,
+          status,
+          created_at,
+          updated_at,
+          projects!inner(name),
+          supplier_evaluation_group_bom_items(count),
+          supplier_evaluation_group_processes(count)
+        `)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        this.logger.error('Error fetching all evaluation groups:', error.message);
+        throw new Error(`Failed to fetch evaluation groups: ${error.message}`);
+      }
+
+      return (data || []).map((group: any) => ({
+        id: group.id,
+        projectId: group.project_id,
+        projectName: group.projects?.name,
+        name: group.name,
+        description: group.description,
+        notes: group.notes,
+        status: group.status,
+        createdAt: new Date(group.created_at),
+        updatedAt: new Date(group.updated_at),
+        bomItemsCount: group.supplier_evaluation_group_bom_items?.length || 0,
+        processesCount: group.supplier_evaluation_group_processes?.length || 0,
+      }));
+    } catch (error) {
+      this.logger.error('Failed to find all evaluation groups:', error);
+      throw error;
+    }
+  }
+
   async findByProject(
     userId: string,
     projectId: string,

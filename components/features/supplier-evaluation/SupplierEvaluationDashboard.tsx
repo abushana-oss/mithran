@@ -9,6 +9,7 @@ import { Package, Users, FileText, Search, Plus, ChevronRight, Edit, Trash2, Loa
 import { useVendors } from '@/lib/api/hooks/useVendors';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import { EditSupplierEvaluationDialog } from './EditSupplierEvaluationDialog';
 
 interface SupplierEvaluationDashboardProps {
   projectId: string;
@@ -25,6 +26,8 @@ export function SupplierEvaluationDashboard({
   onSelectEvaluationGroup
 }: SupplierEvaluationDashboardProps) {
   const [searchTerm, setSearchTerm] = useState('');
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [groupToEdit, setGroupToEdit] = useState<any>(null);
 
   // Fetch vendors separately (now optimized)
   const vendorsQuery = useMemo(() => ({ status: 'active' as const, limit: 1000 }), []);
@@ -140,11 +143,26 @@ export function SupplierEvaluationDashboard({
                 key={group.id}
                 group={group}
                 onClick={() => onSelectEvaluationGroup(group.id)}
+                onEdit={(group) => {
+                  setGroupToEdit(group);
+                  setEditDialogOpen(true);
+                }}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Edit Dialog */}
+      <EditSupplierEvaluationDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        group={groupToEdit}
+        onSuccess={() => {
+          setGroupToEdit(null);
+          // The dialog will close automatically via onOpenChange
+        }}
+      />
     </div>
   );
 }
@@ -152,9 +170,10 @@ export function SupplierEvaluationDashboard({
 interface EvaluationCardProps {
   group: any;
   onClick: () => void;
+  onEdit: (group: any) => void;
 }
 
-function EvaluationCard({ group, onClick }: EvaluationCardProps) {
+function EvaluationCard({ group, onClick, onEdit }: EvaluationCardProps) {
   // Use real data from API - the hook returns summary data with counts
   const partsCount = group.bomItemsCount || group.bomItems?.length || 0;
   const processesCount = group.processesCount || group.processes?.length || 0;
@@ -173,8 +192,7 @@ function EvaluationCard({ group, onClick }: EvaluationCardProps) {
 
   const handleEditGroup = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // TODO: Implement edit group functionality
-    toast.info('Edit functionality coming soon');
+    onEdit(group);
   };
 
   const handleDeleteGroup = async (e: React.MouseEvent) => {
@@ -185,26 +203,41 @@ function EvaluationCard({ group, onClick }: EvaluationCardProps) {
       // Import the validation and delete functions
       const { validateSupplierEvaluationGroupDeletion, deleteSupplierEvaluationGroup } = await import('@/lib/api/supplier-evaluation-groups');
 
-      // Validate deletion first
-      const validation = await validateSupplierEvaluationGroupDeletion(group.id);
-
-      // Check if deletion is blocked
-      if (!validation.canDelete) {
-        toast.error('Cannot delete evaluation group: ' + validation.blockers.join(', '));
-        setDeletingGroup(false);
-        return;
-      }
-
-      // Build confirmation message with warnings
+      let validation: any = null;
       let confirmMessage = `Are you sure you want to delete "${group.name || 'Unnamed Evaluation'}"?\n\nThis action cannot be undone.`;
 
-      if (validation.warnings.length > 0) {
-        confirmMessage += '\n\nWarnings:\n' + validation.warnings.map(w => `• ${w}`).join('\n');
-      }
+      try {
+        // Attempt to validate deletion first
+        validation = await validateSupplierEvaluationGroupDeletion(group.id);
+        console.log('Validation response:', validation);
 
-      if (validation.impactSummary.length > 0) {
-        confirmMessage += '\n\nThe following will be permanently deleted:\n' +
-          validation.impactSummary.map(i => `• ${i.count} ${i.label}`).join('\n');
+        // Check if validation response is valid
+        if (!validation || typeof validation.canDelete === 'undefined') {
+          console.warn('Invalid validation response, proceeding with simple confirmation:', validation);
+          // Continue with simple confirmation if validation fails
+        } else {
+          // Check if deletion is blocked by validation
+          if (!validation.canDelete) {
+            const blockersMessage = (validation.blockers || []).join(', ');
+            toast.error('Cannot delete evaluation group: ' + blockersMessage);
+            console.log('Deletion blocked by validation:', validation.blockers);
+            setDeletingGroup(false);
+            return;
+          }
+
+          // Add validation details to confirmation message
+          if (validation.warnings && validation.warnings.length > 0) {
+            confirmMessage += '\n\nWarnings:\n' + validation.warnings.map((w: string) => `• ${w}`).join('\n');
+          }
+
+          if (validation.impactSummary && validation.impactSummary.length > 0) {
+            confirmMessage += '\n\nThe following will be permanently deleted:\n' +
+              validation.impactSummary.map((i: { count: number, label: string }) => `• ${i.count} ${i.label}`).join('\n');
+          }
+        }
+      } catch (validationError) {
+        console.warn('Validation failed, proceeding with simple confirmation:', validationError);
+        // Continue with basic deletion if validation endpoint fails
       }
 
       const confirmed = window.confirm(confirmMessage);
@@ -221,7 +254,19 @@ function EvaluationCard({ group, onClick }: EvaluationCardProps) {
       toast.success('Evaluation group deleted successfully');
     } catch (error) {
       console.error('Failed to delete group:', error);
-      toast.error('Failed to delete evaluation group');
+
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes('validation')) {
+          toast.error('Failed to validate deletion. Please try again.');
+        } else if (error.message.includes('not found')) {
+          toast.error('Evaluation group not found.');
+        } else {
+          toast.error(`Failed to delete evaluation group: ${error.message}`);
+        }
+      } else {
+        toast.error('Failed to delete evaluation group');
+      }
     } finally {
       setDeletingGroup(false);
     }

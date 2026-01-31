@@ -64,12 +64,13 @@ export class BOMItemsService {
 
     let query = client
       .from('bom_items')
-      .select('*, bom:bom_id!inner(name, description)')
+      .select('*, bom:bom_id(name, description)')
       .order('created_at', { ascending: false });
 
     // Apply filters
     if (bomId) {
       query = query.eq('bom_id', bomId);
+      this.logger.log(`Filtering BOM items for BOM ID: ${bomId}`, 'BOMItemsService');
     }
     if (search) {
       query = query.or(`part_number.ilike.%${search}%,description.ilike.%${search}%`);
@@ -95,6 +96,18 @@ export class BOMItemsService {
 
     const { data, error } = await query;
 
+    this.logger.log(`Query results: Found ${data?.length || 0} BOM items for BOM ID: ${bomId}`, 'BOMItemsService');
+    
+    // Additional debug: Check if the BOM exists but has no items
+    if (bomId && (!data || data.length === 0)) {
+      const { data: bomCheck } = await client.from('boms').select('id, name').eq('id', bomId).single();
+      if (bomCheck) {
+        this.logger.log(`BOM exists but has no items: ${bomCheck.name} (${bomCheck.id})`, 'BOMItemsService');
+      } else {
+        this.logger.log(`BOM not found with ID: ${bomId}`, 'BOMItemsService');
+      }
+    }
+    
     if (error) {
       this.logger.error(`Error fetching BOM items: ${error.message}`, 'BOMItemsService');
       throw new InternalServerErrorException(`Failed to fetch BOM items: ${error.message}`);
@@ -122,7 +135,7 @@ export class BOMItemsService {
 
     const { data, error } = await client
       .from('bom_items')
-      .select('*, bom:bom_id!inner(name, description)')
+      .select('*, bom:bom_id(name, description)')
       .eq('id', id)
       .single();
 
@@ -159,7 +172,7 @@ export class BOMItemsService {
         ...dbData,
         user_id: userId,
       })
-      .select('*, bom:bom_id!inner(name, description)')
+      .select('*, bom:bom_id(name, description)')
       .single();
 
     if (error) {
@@ -190,7 +203,7 @@ export class BOMItemsService {
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
-      .select('*, bom:bom_id!inner(name, description)')
+      .select('*, bom:bom_id(name, description)')
       .single();
 
     if (error) {

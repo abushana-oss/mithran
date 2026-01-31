@@ -1,18 +1,21 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, Star, MapPin, Clock, Building2, Send, Package, Users, FileText, TrendingUp, Award, Mail, Globe, Phone, Box, Eye, ArrowLeft, X, Check, UserCheck, Trash2 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Search, Star, MapPin, Clock, Building2, Send, Package, Users, FileText, TrendingUp, Award, Mail, Globe, Phone, Box, Eye, ArrowLeft, X, Check, UserCheck, Trash2, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { useVendors, Vendor } from '@/lib/api/hooks/useVendors';
 import { useCreateRfq, useSendRfq } from '@/lib/api/hooks/useRfq';
 import { useRfqTrackingRecords, useRfqTrackingStats, useInvalidateRfqTracking, useUpdateRfqTrackingStatus, useDeleteRfqTracking } from '@/lib/api/hooks/useRfqTracking';
 import { getRfqSummaryText, formatResponseTime, getStatusText, getStatusColor } from '@/lib/api/rfq-tracking';
 import { analyzeTrackingFeature, getFeatureStatusMessage, TrackingFeatureState } from '@/lib/api/features/tracking-feature';
+import { useProcessCosts } from '@/lib/api/hooks/useProcessCosts';
+import { useProcesses } from '@/lib/api/hooks/useProcesses';
 
 interface BOMPart {
   id: string;
@@ -37,13 +40,16 @@ interface EvaluationGroupViewProps {
 }
 
 export function EvaluationGroupView({ projectId, bomParts, evaluationGroupName, onViewFile, onBack }: EvaluationGroupViewProps) {
+
   // State declarations first
   const [selectedParts, setSelectedParts] = useState<string[]>([]);
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
   const [partsSearchTerm, setPartsSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [approveModalOpen, setApproveModalOpen] = useState<string | null>(null);
   const [selectedApproveVendors, setSelectedApproveVendors] = useState<string[]>([]);
+  const [activeBomTab, setActiveBomTab] = useState('overview');
+  const [partProcesses, setPartProcesses] = useState<Record<string, string[]>>({});
+  const [isSubmittingRfq, setIsSubmittingRfq] = useState(false);
   // Remove local state - use database-backed tracking
   // const [sentRfqs, setSentRfqs] = useState<...>([]);
 
@@ -55,6 +61,13 @@ export function EvaluationGroupView({ projectId, bomParts, evaluationGroupName, 
   } = useVendors(vendorsQuery);
   
   const vendors = vendorsResponse?.vendors || [];
+  
+  // Fetch existing processes from process planning for all BOM items
+  const bomItemIds = bomParts.map(part => part.id);
+  const { data: processData } = useProcessCosts({
+    bomItemIds,
+    enabled: bomItemIds.length > 0,
+  });
   
   // Production-ready RFQ tracking with graceful degradation
   const { 
@@ -88,6 +101,41 @@ export function EvaluationGroupView({ projectId, bomParts, evaluationGroupName, 
   const deleteTrackingMutation = useDeleteRfqTracking(projectId);
   const invalidateRfqTracking = useInvalidateRfqTracking();
   
+  // Pre-populate part processes from existing process planning data
+  useEffect(() => {
+    if (processData?.records) {
+      const processMap: Record<string, string[]> = {};
+      
+      processData.records.forEach((processRecord: any) => {
+        const bomItemId = processRecord.bomItemId;
+        const processName = processRecord.description || processRecord.operation || processRecord.processGroup || 'Unknown Process';
+        
+        if (bomItemId && processName && processName !== 'Unknown Process') {
+          if (!processMap[bomItemId]) {
+            processMap[bomItemId] = [];
+          }
+          // Only add if not already exists
+          if (!processMap[bomItemId].includes(processName)) {
+            processMap[bomItemId].push(processName);
+          }
+        }
+      });
+      
+      // Update partProcesses state only if different
+      setPartProcesses(prev => {
+        const newProcesses = { ...prev, ...processMap };
+        // Check if actually different before updating
+        const isDifferent = Object.keys(processMap).some(key => {
+          const existing = prev[key] || [];
+          const newProc = newProcesses[key] || [];
+          return JSON.stringify(existing.sort()) !== JSON.stringify(newProc.sort());
+        });
+        
+        return isDifferent ? newProcesses : prev;
+      });
+    }
+  }, [processData]);
+
   // Removed vendor rating functionality - can be added later in supplier nomination
 
   // Overview stats
@@ -104,75 +152,106 @@ export function EvaluationGroupView({ projectId, bomParts, evaluationGroupName, 
     
     if (partsSearchTerm) {
       const search = partsSearchTerm.toLowerCase();
-      filtered = filtered.filter(part =>
-        part.partNumber.toLowerCase().includes(search) ||
-        part.description.toLowerCase().includes(search) ||
-        part.category.toLowerCase().includes(search) ||
-        part.process.toLowerCase().includes(search)
-      );
-    }
-
-    if (selectedCategory !== 'All') {
-      filtered = filtered.filter(part => part.category === selectedCategory);
+      filtered = filtered.filter(part => {
+        const partProcessesList = partProcesses[part.id] || [];
+        const processMatch = partProcessesList.some(process => 
+          process.toLowerCase().includes(search)
+        );
+        
+        return part.partNumber.toLowerCase().includes(search) ||
+               part.description.toLowerCase().includes(search) ||
+               processMatch;
+      });
     }
 
     return filtered;
-  }, [bomParts, partsSearchTerm, selectedCategory]);
+  }, [bomParts, partsSearchTerm, partProcesses]);
 
-  // Get unique categories for filtering
-  const categories = useMemo(() => {
-    const cats = new Set(bomParts.map(part => part.category));
-    return ['All', ...Array.from(cats)];
-  }, [bomParts]);
 
-  // Filter vendors based on selected parts - CLIENT-SIDE ANY MATCHING using real API data
+  // Filter vendors based on selected parts and their processes
   const matchedVendors = useMemo(() => {
-    if (selectedParts.length === 0) return [];
-
-    const selectedPartsData = bomParts.filter(part => selectedParts.includes(part.id));
-    const requiredProcesses = selectedPartsData.map(part => part.process.toLowerCase()).filter(p => p && p !== 'no process');
-
-    // If no processes or all are "no process", show all active vendors
-    if (requiredProcesses.length === 0) {
-      return vendors; // All vendors are already filtered as active by API
+    if (selectedParts.length === 0) {
+      return [];
     }
 
-    return vendors.filter(vendor => {
-      // Handle real API vendor structure - vendor.process might be array or string
+    // Get all processes from selected parts
+    const allRequiredProcesses = selectedParts.reduce<string[]>((acc, partId) => {
+      const partProcessesList = partProcesses[partId] || [];
+      return [...acc, ...partProcessesList];
+    }, []);
+
+    // Remove duplicates and convert to lowercase for matching
+    const uniqueProcesses = [...new Set(allRequiredProcesses.map(p => p.toLowerCase()))];
+
+    // If no processes are defined for any selected parts, return empty array
+    if (uniqueProcesses.length === 0) {
+      return [];
+    }
+
+    // Filter vendors that support ANY of the required processes
+    const filteredVendors = vendors.filter(vendor => {
+      // Handle vendor.process as array or string
       const vendorProcesses = Array.isArray(vendor.process) 
         ? vendor.process 
-        : vendor.process ? [vendor.process] : [];
+        : typeof vendor.process === 'string' 
+          ? [vendor.process] 
+          : [];
 
       if (vendorProcesses.length === 0) {
-        return true; // Include vendors without process data as potential matches
+        // Don't include vendors without process data
+        return false;
       }
 
-      return vendorProcesses.some((vendorProcess: string) => {
+      // Check if vendor supports any of the required processes
+      const matches = vendorProcesses.some((vendorProcess: string) => {
         if (!vendorProcess || typeof vendorProcess !== 'string') return false;
         
-        const vp = vendorProcess.toLowerCase();
-        return requiredProcesses.some(reqProcess => {
-          // Direct match or contains match
-          if (vp.includes(reqProcess) || reqProcess.includes(vp)) return true;
+        const vp = vendorProcess.toLowerCase().trim();
+        return uniqueProcesses.some(reqProcess => {
+          const reqProc = reqProcess.toLowerCase().trim();
           
-          // Fallback matches for common process variations
-          if (reqProcess === 'manufacturing' && (vp.includes('manufactur') || vp.includes('fabricat'))) return true;
-          if (reqProcess === 'assembly' && vp.includes('assembly')) return true;
-          if (reqProcess === 'machining' && (vp.includes('machin') || vp.includes('cnc') || vp.includes('turning') || vp.includes('milling'))) return true;
-          if (reqProcess === 'casting' && (vp.includes('cast') || vp.includes('foundry'))) return true;
+          // Very strict matching - only exact matches and close equivalents
           
+          // 1. Exact match
+          if (vp === reqProc) return true;
+          
+          // 2. Handle specific equivalents only
+          const processEquivalents: Record<string, string[]> = {
+            'cnc milling': ['cnc machining', 'milling'],
+            'cnc machining': ['cnc milling', 'milling'],
+            'milling': ['cnc milling', 'cnc machining'],
+            'drilling': ['cnc drilling', 'hole drilling'],
+            'cnc drilling': ['drilling'],
+            'forging': ['hot forging', 'cold forging'],
+            'hot forging': ['forging'],
+            'cold forging': ['forging'],
+            'deep drawing': ['sheet metal forming', 'metal forming'],
+            'sheet metal forming': ['deep drawing'],
+            'metal forming': ['deep drawing'],
+            'turning': ['cnc turning', 'lathe turning'],
+            'cnc turning': ['turning'],
+            'lathe turning': ['turning']
+          };
+          
+          // Check if required process has specific equivalents that match vendor process
+          const reqEquivalents = processEquivalents[reqProc] || [];
+          if (reqEquivalents.includes(vp)) return true;
+          
+          // Check if vendor process has specific equivalents that match required process
+          const vendorEquivalents = processEquivalents[vp] || [];
+          if (vendorEquivalents.includes(reqProc)) return true;
+          
+          // No partial matching - must be exact or defined equivalent
           return false;
         });
       });
-    });
-  }, [selectedParts, bomParts, vendors]);
 
-  // Get category filter buttons
-  const categoryButtons = categories.map(cat => ({
-    label: cat,
-    count: cat === 'All' ? bomParts.length : bomParts.filter(p => p.category === cat).length,
-    isActive: selectedCategory === cat
-  }));
+      return matches;
+    });
+
+    return filteredVendors;
+  }, [selectedParts, partProcesses, vendors]);
+
 
   const handlePartToggle = (partId: string, checked: boolean) => {
     setSelectedParts(prev =>
@@ -241,7 +320,14 @@ export function EvaluationGroupView({ projectId, bomParts, evaluationGroupName, 
 
   // RFQ sending functionality
   const handleSendRfq = async () => {
+    // Prevent multiple submissions
+    if (isSubmittingRfq || createRfqMutation.isPending || sendRfqMutation.isPending) {
+      return;
+    }
+
     try {
+      setIsSubmittingRfq(true);
+
       // Ensure arrays are properly formatted
       const bomItemIds = Array.isArray(selectedParts) ? selectedParts : [];
       const vendorIds = Array.isArray(selectedVendors) ? selectedVendors : [];
@@ -249,11 +335,13 @@ export function EvaluationGroupView({ projectId, bomParts, evaluationGroupName, 
       // Validation
       if (bomItemIds.length === 0) {
         alert('Please select at least one BOM part');
+        setIsSubmittingRfq(false);
         return;
       }
       
       if (vendorIds.length === 0) {
         alert('Please select at least one vendor');
+        setIsSubmittingRfq(false);
         return;
       }
 
@@ -297,11 +385,14 @@ We look forward to your competitive proposal and establishing a successful partn
       setSelectedParts([]);
       setSelectedVendors([]);
       
+      // Automatically switch to RFQ Tracking tab
+      setActiveBomTab('rfq');
+      
     } catch (error) {
       toast.error('Failed to send RFQ. Please try again.');
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to send RFQ:', error);
-      }
+      console.error('Failed to send RFQ:', error);
+    } finally {
+      setIsSubmittingRfq(false);
     }
   };
 
@@ -429,30 +520,56 @@ We look forward to your competitive proposal and establishing a successful partn
         <Card className="bg-gray-800 border-gray-700">
           <CardContent className="p-0">
             <div className="p-6 border-b border-gray-700">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-white">BOM Parts</h2>
-                <Badge variant="outline" className="text-teal-400 border-teal-400/50">
-                  {selectedParts.length} selected
-                </Badge>
+                <div className="flex items-center gap-3">
+                  <Badge variant="outline" className="text-teal-400 border-teal-400/50">
+                    {selectedParts.length} selected
+                  </Badge>
+                  {selectedParts.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedParts([]);
+                        setSelectedVendors([]);
+                      }}
+                      className="h-7 text-xs border-gray-600 text-gray-300 hover:border-red-500 hover:text-red-400"
+                    >
+                      Clear Selection
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
-
-            {/* Category Filters */}
-            <div className="p-6 border-b border-gray-700 bg-gray-900/50">
-              <div className="flex flex-wrap gap-2">
-                {categoryButtons.map(cat => (
-                  <Button
-                    key={cat.label}
-                    variant={cat.isActive ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setSelectedCategory(cat.label)}
-                    className={cat.isActive ? "bg-teal-600 hover:bg-teal-700 text-white" : "border-gray-600 text-gray-300 hover:bg-gray-700"}
+              
+              <Tabs value={activeBomTab} onValueChange={setActiveBomTab} className="w-full">
+                <TabsList className="grid w-full grid-cols-4 bg-muted rounded-lg p-1 h-10">
+                  <TabsTrigger 
+                    value="overview" 
+                    className="text-xs data-[state=active]:bg-background data-[state=active]:text-foreground"
                   >
-                    {cat.label} ({cat.count})
-                  </Button>
-                ))}
-              </div>
-            </div>
+                    BOM & Vendor
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="rfq" 
+                    className="text-xs data-[state=active]:bg-background data-[state=active]:text-foreground"
+                  >
+                    RFQ Tracking
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="evaluation" 
+                    className="text-xs data-[state=active]:bg-background data-[state=active]:text-foreground"
+                  >
+                    Supplier Analysis
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="reports" 
+                    className="text-xs data-[state=active]:bg-background data-[state=active]:text-foreground"
+                  >
+                    Reports & Export
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="overview" className="mt-0">
 
             {/* Parts Table */}
             <div className="overflow-x-auto">
@@ -462,14 +579,34 @@ We look forward to your competitive proposal and establishing a successful partn
                     <th className="text-left p-4 text-sm font-medium text-gray-400"></th>
                     <th className="text-left p-4 text-sm font-medium text-gray-400">PART NO.</th>
                     <th className="text-left p-4 text-sm font-medium text-gray-400">DESCRIPTION</th>
-                    <th className="text-left p-4 text-sm font-medium text-gray-400">CATEGORY</th>
                     <th className="text-left p-4 text-sm font-medium text-gray-400">PROCESS</th>
                     <th className="text-left p-4 text-sm font-medium text-gray-400">QTY</th>
                     <th className="text-left p-4 text-sm font-medium text-gray-400">FILES</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredParts.map((part, index) => (
+                  {filteredParts.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-12 text-center">
+                        <div className="text-gray-400">
+                          <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                          <h3 className="font-medium mb-2 text-white">No BOM Parts Found</h3>
+                          <p className="text-sm">
+                            {bomParts.length === 0 
+                              ? 'No BOM parts loaded for this project'
+                              : `No parts match your current search "${partsSearchTerm}" or category "${selectedCategory}"`
+                            }
+                          </p>
+                          {bomParts.length === 0 && (
+                            <p className="text-xs mt-2 text-teal-400">
+                              Check if BOM data is properly loaded from the project
+                            </p>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredParts.map((part, index) => (
                     <tr key={part.id} className={index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-800/50'}>
                       <td className="p-4">
                         <Checkbox
@@ -488,12 +625,17 @@ We look forward to your competitive proposal and establishing a successful partn
                         )}
                       </td>
                       <td className="p-4">
-                        <Badge variant="outline" className="border-gray-600 text-gray-300">{part.category}</Badge>
-                      </td>
-                      <td className="p-4">
-                        <div className="text-white">
-                          {part.process || <span className="text-gray-500">No process</span>}
-                        </div>
+                        <ProcessEditor
+                          partId={part.id}
+                          processes={partProcesses[part.id] || []}
+                          processData={processData}
+                          onProcessesChange={(processes) => {
+                            setPartProcesses(prev => ({
+                              ...prev,
+                              [part.id]: processes
+                            }));
+                          }}
+                        />
                       </td>
                       <td className="p-4">
                         <div className="text-white">{part.quantity} pcs</div>
@@ -532,7 +674,8 @@ We look forward to your competitive proposal and establishing a successful partn
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -540,161 +683,420 @@ We look forward to your competitive proposal and establishing a successful partn
             <div className="p-4 border-t border-gray-700 bg-gray-900/30 text-sm text-gray-400">
               Showing {filteredParts.length} of {bomParts.length} parts
             </div>
+
+            {/* Vendor Selection - Only show when parts are selected */}
+            {selectedParts.length > 0 && (
+              <div className="mt-6">
+                <div className="p-6 border-b border-gray-700">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-lg font-semibold text-white">Matched Vendors</h2>
+                    <div className="flex items-center gap-3">
+                      <Badge variant="outline" className="text-teal-400 border-teal-400/50">
+                        {matchedVendors.length} available
+                      </Badge>
+                      <Badge variant="outline" className="text-purple-400 border-purple-400/50">
+                        {selectedVendors.length} selected
+                      </Badge>
+                    </div>
+                  </div>
+                  
+                  {/* Show what processes we're searching for */}
+                  {(() => {
+                    const selectedProcesses = selectedParts.reduce<string[]>((acc, partId) => {
+                      const processes = partProcesses[partId] || [];
+                      return [...acc, ...processes];
+                    }, []);
+                    const uniqueProcesses = [...new Set(selectedProcesses)];
+                    return uniqueProcesses.length > 0 ? (
+                      <div className="mt-4">
+                        <p className="text-xs text-gray-400 mb-2">
+                          Searching for vendors with processes from {selectedParts.length} selected part{selectedParts.length !== 1 ? 's' : ''}:
+                        </p>
+                        <div className="flex flex-wrap gap-1">
+                          {uniqueProcesses.map(process => (
+                            <Badge key={process} variant="outline" className="text-xs border-yellow-500 text-yellow-400">
+                              {process}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+
+                <div className="p-6">
+                  {isLoadingVendors ? (
+                    <div className="text-center py-8 text-gray-400">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-400 mx-auto mb-4"></div>
+                      <h3 className="font-medium mb-2 text-white">Loading vendors...</h3>
+                      <p className="text-sm">Fetching vendor database</p>
+                    </div>
+                  ) : matchedVendors.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">
+                      <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <h3 className="font-medium mb-2 text-white">No vendors matched</h3>
+                      <p className="text-sm">
+                        {vendors.length === 0 
+                          ? 'No vendors found in database'
+                          : (() => {
+                              const selectedProcesses = selectedParts.reduce<string[]>((acc, partId) => {
+                                return [...acc, ...(partProcesses[partId] || [])];
+                              }, []);
+                              const uniqueProcesses = [...new Set(selectedProcesses)];
+                              
+                              return uniqueProcesses.length === 0 
+                                ? 'Selected parts have no processes defined. Please add processes to match vendors.'
+                                : `No vendors found for processes: ${uniqueProcesses.join(', ')}. Try different processes or contact support to add vendors.`;
+                            })()
+                        }
+                      </p>
+                      {selectedParts.length > 0 && (
+                        <p className="text-xs mt-2 text-teal-400">
+                          Selected parts: {selectedParts.length} | Available vendors: {vendors.length}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {matchedVendors.map((vendor) => (
+                          <div
+                            key={vendor.id}
+                            className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                              selectedVendors.includes(vendor.id)
+                                ? 'border-teal-500 bg-teal-600/10 shadow-md shadow-teal-500/20'
+                                : 'border-gray-700 hover:border-teal-500/50 hover:shadow-sm bg-gray-900/50 hover:bg-gray-900'
+                            }`}
+                            onClick={() => handleVendorToggle(vendor.id, !selectedVendors.includes(vendor.id))}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <h3 className="font-semibold text-white mb-1">{vendor.name || vendor.companyName}</h3>
+                                <Badge 
+                                  variant={vendor.status === 'active' ? "default" : "secondary"}
+                                  className={`text-xs ${vendor.status === 'active' ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-300'}`}
+                                >
+                                  {vendor.status}
+                                </Badge>
+                              </div>
+                              <div className="ml-2">
+                                <Checkbox
+                                  checked={selectedVendors.includes(vendor.id)}
+                                  onChange={() => {}}
+                                  className="border-gray-600 data-[state=checked]:bg-teal-600"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="mt-3 space-y-2 text-sm text-gray-300">
+                              <div className="flex items-center gap-2">
+                                <Clock className="h-4 w-4 text-teal-400" />
+                                <span>{vendor.leadTime || 'Contact for details'}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <MapPin className="h-4 w-4 text-teal-400" />
+                                <span>{vendor.location || (vendor.city && vendor.state ? `${vendor.city}, ${vendor.state}` : 'Location TBD')}</span>
+                              </div>
+                            </div>
+
+                            <div className="mt-3">
+                              <div className="flex flex-wrap gap-1">
+                                {vendor.process?.map((cap) => {
+                                  // Check if this process is a match
+                                  const selectedProcesses = selectedParts.reduce<string[]>((acc, partId) => {
+                                    return [...acc, ...(partProcesses[partId] || [])];
+                                  }, []);
+                                  const uniqueProcesses = [...new Set(selectedProcesses.map(p => p.toLowerCase()))];
+                                  
+                                  const isMatch = uniqueProcesses.some(reqProcess => {
+                                    const vp = cap.toLowerCase().trim();
+                                    const reqProc = reqProcess.toLowerCase().trim();
+                                    
+                                    if (vp === reqProc) return true;
+                                    
+                                    const processEquivalents: Record<string, string[]> = {
+                                      'cnc milling': ['cnc machining', 'milling'],
+                                      'cnc machining': ['cnc milling', 'milling'],
+                                      'milling': ['cnc milling', 'cnc machining'],
+                                      'drilling': ['cnc drilling', 'hole drilling'],
+                                      'cnc drilling': ['drilling'],
+                                      'forging': ['hot forging', 'cold forging'],
+                                      'hot forging': ['forging'],
+                                      'cold forging': ['forging'],
+                                      'deep drawing': ['sheet metal forming', 'metal forming'],
+                                      'sheet metal forming': ['deep drawing'],
+                                      'metal forming': ['deep drawing'],
+                                      'turning': ['cnc turning', 'lathe turning'],
+                                      'cnc turning': ['turning'],
+                                      'lathe turning': ['turning']
+                                    };
+                                    
+                                    const reqEquivalents = processEquivalents[reqProc] || [];
+                                    if (reqEquivalents.includes(vp)) return true;
+                                    
+                                    const vendorEquivalents = processEquivalents[vp] || [];
+                                    if (vendorEquivalents.includes(reqProc)) return true;
+                                    
+                                    return false;
+                                  });
+                                  
+                                  return (
+                                    <Badge
+                                      key={cap}
+                                      variant="outline"
+                                      className={`text-xs ${isMatch 
+                                        ? 'border-green-500 text-green-400 bg-green-500/10' 
+                                        : 'border-gray-600 text-gray-300'
+                                      }`}
+                                    >
+                                      {cap}
+                                    </Badge>
+                                  );
+                                }) || <span className="text-xs text-gray-500">No processes</span>}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+                </TabsContent>
+
+                <TabsContent value="rfq" className="mt-0">
+                  {/* RFQ Tracking Summary */}
+                  {shouldShowTracking ? (
+                    <div className="p-6">
+                      <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-xl font-semibold text-white">RFQ Tracking</h3>
+                        <div className="flex gap-4 text-sm">
+                          {rfqStats && (
+                            <>
+                              <div className="text-center">
+                                <div className="text-lg font-bold text-teal-400">{rfqStats.totalSent}</div>
+                                <div className="text-xs text-gray-400">Total Sent</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-lg font-bold text-green-400">{rfqStats.totalResponded}</div>
+                                <div className="text-xs text-gray-400">Responded</div>
+                              </div>
+                              <div className="text-center">
+                                <div className="text-lg font-bold text-blue-400">{formatResponseTime(rfqStats.avgResponseTime)}</div>
+                                <div className="text-xs text-gray-400">Avg Response</div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        {rfqTrackingRecords.length === 0 && !isLoadingTracking ? (
+                          <div className="text-center py-8 text-gray-400">
+                            <div className="text-sm">No RFQ tracking records yet</div>
+                            <div className="text-xs mt-1">Send your first RFQ to see tracking information here</div>
+                          </div>
+                        ) : (
+                          rfqTrackingRecords.map((tracking) => (
+                            <div key={tracking.id} className="bg-gray-800 rounded-lg p-4 border border-gray-600">
+                            <div className="flex justify-between items-start mb-4">
+                              <div>
+                                <h4 className="font-medium text-white">{tracking.rfqName}</h4>
+                                <p className="text-sm text-gray-400 mt-1">
+                                  {getRfqSummaryText(tracking)}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-2">
+                                  RFQ #{tracking.rfqNumber} • Sent {new Date(tracking.sentAt).toLocaleString()}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <Badge 
+                                  className={`bg-${getStatusColor(tracking.status)}-600 text-white`}
+                                >
+                                  {getStatusText(tracking.status)}
+                                </Badge>
+                                
+                                {/* Action Buttons */}
+                                {tracking.status === 'sent' && (
+                                  <div className="flex gap-2">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleCancelRfq(tracking.id)}
+                                      disabled={deleteTrackingMutation.isPending}
+                                      className="border-red-600 text-red-400 hover:bg-red-600/10 hover:text-red-300"
+                                    >
+                                      <X className="h-3 w-3 mr-1" />
+                                      Cancel
+                                    </Button>
+                                    <Button
+                                      variant="outline" 
+                                      size="sm"
+                                      onClick={() => handleApproveRfq(tracking.id, tracking.vendors)}
+                                      disabled={updateTrackingStatusMutation.isPending}
+                                      className="border-green-600 text-green-400 hover:bg-green-600/10 hover:text-green-300"
+                                    >
+                                      <Check className="h-3 w-3 mr-1" />
+                                      Approve
+                                    </Button>
+                                  </div>
+                                )}
+                                
+                                {/* Delete button for RFQs under evaluation */}
+                                {tracking.status === 'evaluated' && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleDeleteEvaluationRfq(tracking.id)}
+                                    disabled={deleteTrackingMutation.isPending}
+                                    className="border-red-600 text-red-400 hover:bg-red-600/10 hover:text-red-300"
+                                  >
+                                    <Trash2 className="h-3 w-3 mr-1" />
+                                    Delete
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Detailed Information */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {/* Vendors */}
+                              <div>
+                                <h5 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-1">
+                                  <Building2 className="h-4 w-4" />
+                                  Vendors ({tracking.vendorCount})
+                                </h5>
+                                <div className="space-y-2">
+                                  {tracking.vendors.map((vendor) => (
+                                    <div key={vendor.id} className="bg-gray-700 rounded p-2 text-xs">
+                                      <div className="flex justify-between items-start">
+                                        <div className="flex-1">
+                                          <div className="text-white font-medium">{vendor.name}</div>
+                                          {vendor.email && (
+                                            <div className="text-gray-400 flex items-center gap-1 mt-1">
+                                              <Mail className="h-3 w-3" />
+                                              {vendor.email}
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="ml-2">
+                                          {vendor.responded ? (
+                                            <div className="text-green-400 text-xs">
+                                              <div>✓ Responded</div>
+                                              {vendor.quoteAmount && (
+                                                <div>₹{vendor.quoteAmount}</div>
+                                              )}
+                                              {vendor.leadTimeDays && (
+                                                <div>{vendor.leadTimeDays} days</div>
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <div className="text-gray-400 text-xs">Pending</div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                              
+                              {/* Parts */}
+                              <div>
+                                <h5 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-1">
+                                  <Package className="h-4 w-4" />
+                                  Parts ({tracking.partCount})
+                                </h5>
+                                <div className="space-y-2">
+                                  {tracking.parts.map((part) => (
+                                    <div key={part.id} className="bg-gray-700 rounded p-2 text-xs">
+                                      <div className="text-white font-medium">{part.partNumber}</div>
+                                      <div className="text-gray-400 mt-1">{part.description}</div>
+                                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                        <span className="text-xs text-gray-500">Qty: {part.quantity}</span>
+                                        {(partProcesses[part.id] || []).map((process, index) => (
+                                          <Badge key={index} variant="outline" className="text-xs border-blue-500 text-blue-400">
+                                            {process}
+                                          </Badge>
+                                        ))}
+                                        {part.has2dFile && (
+                                          <Badge variant="outline" className="text-xs border-green-500 text-green-400">
+                                            2D
+                                          </Badge>
+                                        )}
+                                        {part.has3dFile && (
+                                          <Badge variant="outline" className="text-xs border-purple-500 text-purple-400">
+                                            3D
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Response Summary */}
+                            {tracking.responseCount > 0 && (
+                              <div className="mt-4 pt-4 border-t border-gray-700">
+                                <div className="flex justify-between text-sm">
+                                  <div className="text-gray-300">
+                                    Response Rate: <span className="text-green-400 font-medium">{Math.round((tracking.responseCount / tracking.vendorCount) * 100)}%</span>
+                                  </div>
+                                  {tracking.firstResponseAt && (
+                                    <div className="text-gray-400">
+                                      First response: {new Date(tracking.firstResponseAt).toLocaleDateString()}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      
+                      {isLoadingTracking && (
+                        <div className="text-center py-4">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-400 mx-auto"></div>
+                          <p className="text-gray-400 text-sm mt-2">Loading RFQ tracking data...</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-6">
+                      <div className="text-center py-8 text-gray-400">
+                        <Send className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                        <div className="text-sm">No RFQ tracking available</div>
+                        <div className="text-xs mt-1">Send an RFQ from the BOM & Vendor tab to start tracking</div>
+                      </div>
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="evaluation" className="mt-0">
+                  <div className="p-6">
+                    <div className="text-center py-8 text-gray-400">
+                      <div className="text-sm">Supplier Analysis content</div>
+                      <div className="text-xs mt-1">Advanced evaluation metrics and comparisons</div>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="reports" className="mt-0">
+                  <div className="p-6">
+                    <div className="text-center py-8 text-gray-400">
+                      <div className="text-sm">Reports & Export content</div>
+                      <div className="text-xs mt-1">Generate reports and export data</div>
+                    </div>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Block 2: SELECT VENDOR - Only show when parts are selected */}
-        {selectedParts.length > 0 && (
-          <Card className="bg-gray-800 border-gray-700">
-            <CardContent className="p-0">
-              <div className="p-6 border-b border-gray-700">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-white">Matched Vendors</h2>
-                  <div className="flex items-center gap-3">
-                    <Badge variant="outline" className="text-teal-400 border-teal-400/50">
-                      {matchedVendors.length} available
-                    </Badge>
-                    <Badge variant="outline" className="text-purple-400 border-purple-400/50">
-                      {selectedVendors.length} selected
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-6">
-                {isLoadingVendors ? (
-                  <div className="text-center py-8 text-gray-400">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-400 mx-auto mb-4"></div>
-                    <h3 className="font-medium mb-2 text-white">Loading vendors...</h3>
-                    <p className="text-sm">Fetching vendor database</p>
-                  </div>
-                ) : matchedVendors.length === 0 ? (
-                  <div className="text-center py-8 text-gray-400">
-                    <Building2 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                    <h3 className="font-medium mb-2 text-white">No vendors matched</h3>
-                    <p className="text-sm">
-                      {vendors.length === 0 
-                        ? 'No vendors found in database'
-                        : 'Try selecting different BOM parts or processes'
-                      }
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {matchedVendors.map((vendor) => (
-                      <div
-                        key={vendor.id}
-                        className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                          selectedVendors.includes(vendor.id)
-                            ? 'border-teal-500 bg-teal-600/10 shadow-md shadow-teal-500/20'
-                            : 'border-gray-700 hover:border-teal-500/50 hover:shadow-sm bg-gray-900/50 hover:bg-gray-900'
-                        }`}
-                        onClick={() => handleVendorToggle(vendor.id, !selectedVendors.includes(vendor.id))}
-                      >
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-white mb-1">{vendor.name || vendor.companyName}</h3>
-                            <Badge 
-                              variant={vendor.status === 'active' ? "default" : "secondary"}
-                              className={`text-xs ${vendor.status === 'active' ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-300'}`}
-                            >
-                              {vendor.status || 'active'}
-                            </Badge>
-                            {vendor.supplierCode && (
-                              <Badge variant="outline" className="text-xs ml-2 border-gray-600 text-gray-400">
-                                {vendor.supplierCode}
-                              </Badge>
-                            )}
-                          </div>
-                          {selectedVendors.includes(vendor.id) && (
-                            <div className="w-5 h-5 rounded-full bg-teal-600 flex items-center justify-center">
-                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="space-y-2 text-sm text-gray-300">
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-teal-400" />
-                            <span>{vendor.leadTime || 'Contact for details'}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-teal-400" />
-                            <span>{vendor.location || (vendor.city && vendor.state ? `${vendor.city}, ${vendor.state}` : 'Location TBD')}</span>
-                          </div>
-                        </div>
-
-                        <div className="mt-3">
-                          <div className="flex flex-wrap gap-1">
-                            {vendor.process?.slice(0, 3).map((cap) => (
-                              <Badge
-                                key={cap}
-                                variant="outline"
-                                className="text-xs border-gray-600 text-gray-300"
-                              >
-                                {cap}
-                              </Badge>
-                            )) || <span className="text-xs text-gray-500">No processes</span>}
-                            {vendor.process && vendor.process.length > 3 && (
-                              <Badge variant="outline" className="text-xs border-gray-600 text-gray-300">
-                                +{vendor.process.length - 3}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Contact Information */}
-                        <div className="mt-3 pt-3 border-t border-gray-700">
-                          <div className="flex flex-wrap gap-3 text-xs">
-                            {vendor.primaryContacts?.[0]?.email && (
-                              <a
-                                href={`mailto:${vendor.primaryContacts[0].email}`}
-                                className="flex items-center gap-1 text-teal-400 hover:text-teal-300 transition-colors"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Mail className="h-3 w-3" />
-                                <span className="truncate max-w-[120px]">{vendor.primaryContacts[0].email}</span>
-                              </a>
-                            )}
-                            {vendor.website && (
-                              <a
-                                href={vendor.website.startsWith('http') ? vendor.website : `https://${vendor.website}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-1 text-teal-400 hover:text-teal-300 transition-colors"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Globe className="h-3 w-3" />
-                                <span className="truncate max-w-[120px]">Website</span>
-                              </a>
-                            )}
-                            {(vendor.primaryContacts?.[0]?.phone || vendor.companyPhone) && (
-                              <div className="flex items-center gap-1 text-gray-400">
-                                <Phone className="h-3 w-3" />
-                                <span className="truncate max-w-[120px]">
-                                  {vendor.primaryContacts?.[0]?.phone || vendor.companyPhone}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {vendor.certifications && vendor.certifications.length > 0 && (
-                          <div className="mt-2 text-xs text-gray-400">
-                            {vendor.certifications.slice(0, 3).join(', ')}
-                            {vendor.certifications.length > 3 && '...'}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Block 3: REVIEW & SEND RFQ - Only show when vendors are selected */}
         {selectedVendors.length > 0 && (
@@ -788,14 +1190,14 @@ We look forward to your competitive proposal and establishing a successful partn
                   <Button 
                     className="bg-teal-600 hover:bg-teal-700 text-white px-8"
                     onClick={handleSendRfq}
-                    disabled={createRfqMutation.isPending || sendRfqMutation.isPending}
+                    disabled={isSubmittingRfq || createRfqMutation.isPending || sendRfqMutation.isPending}
                   >
-                    {(createRfqMutation.isPending || sendRfqMutation.isPending) ? (
+                    {(isSubmittingRfq || createRfqMutation.isPending || sendRfqMutation.isPending) ? (
                       <div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" />
                     ) : (
                       <Send className="h-4 w-4 mr-2" />
                     )}
-                    {(createRfqMutation.isPending || sendRfqMutation.isPending) ? 'Sending RFQ...' : 'Send RFQ'}
+                    {(isSubmittingRfq || createRfqMutation.isPending || sendRfqMutation.isPending) ? 'Sending RFQ...' : 'Send RFQ'}
                   </Button>
                 </div>
               </div>
@@ -876,205 +1278,6 @@ We look forward to your competitive proposal and establishing a successful partn
                   </Button>
                 )}
               </div>
-            </CardContent>
-          </Card>
-        )}
-        
-        {/* RFQ Tracking Summary - Database-backed */}
-        {shouldShowTracking && (
-          <Card className="bg-gray-900 border-gray-700 mt-6">
-            <CardContent className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-semibold text-white">RFQ Tracking</h3>
-                <div className="flex gap-4 text-sm">
-                  {rfqStats && (
-                    <>
-                      <div className="text-center">
-                        <div className="text-lg font-bold text-teal-400">{rfqStats.totalSent}</div>
-                        <div className="text-xs text-gray-400">Total Sent</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-lg font-bold text-green-400">{rfqStats.totalResponded}</div>
-                        <div className="text-xs text-gray-400">Responded</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-lg font-bold text-blue-400">{formatResponseTime(rfqStats.avgResponseTime)}</div>
-                        <div className="text-xs text-gray-400">Avg Response</div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-              
-              <div className="space-y-4">
-                {rfqTrackingRecords.length === 0 && !isLoadingTracking ? (
-                  <div className="text-center py-8 text-gray-400">
-                    <div className="text-sm">No RFQ tracking records yet</div>
-                    <div className="text-xs mt-1">Send your first RFQ to see tracking information here</div>
-                  </div>
-                ) : (
-                  rfqTrackingRecords.map((tracking) => (
-                    <div key={tracking.id} className="bg-gray-800 rounded-lg p-4 border border-gray-600">
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h4 className="font-medium text-white">{tracking.rfqName}</h4>
-                        <p className="text-sm text-gray-400 mt-1">
-                          {getRfqSummaryText(tracking)}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-2">
-                          RFQ #{tracking.rfqNumber} • Sent {new Date(tracking.sentAt).toLocaleString()}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <Badge 
-                          className={`bg-${getStatusColor(tracking.status)}-600 text-white`}
-                        >
-                          {getStatusText(tracking.status)}
-                        </Badge>
-                        
-                        {/* Action Buttons */}
-                        {tracking.status === 'sent' && (
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleCancelRfq(tracking.id)}
-                              disabled={deleteTrackingMutation.isPending}
-                              className="border-red-600 text-red-400 hover:bg-red-600/10 hover:text-red-300"
-                            >
-                              <X className="h-3 w-3 mr-1" />
-                              Cancel
-                            </Button>
-                            <Button
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => handleApproveRfq(tracking.id, tracking.vendors)}
-                              disabled={updateTrackingStatusMutation.isPending}
-                              className="border-green-600 text-green-400 hover:bg-green-600/10 hover:text-green-300"
-                            >
-                              <Check className="h-3 w-3 mr-1" />
-                              Approve
-                            </Button>
-                          </div>
-                        )}
-                        
-                        {/* Delete button for RFQs under evaluation */}
-                        {tracking.status === 'evaluated' && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleDeleteEvaluationRfq(tracking.id)}
-                            disabled={deleteTrackingMutation.isPending}
-                            className="border-red-600 text-red-400 hover:bg-red-600/10 hover:text-red-300"
-                          >
-                            <Trash2 className="h-3 w-3 mr-1" />
-                            Delete
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                    
-                    {/* Detailed Information */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Vendors */}
-                      <div>
-                        <h5 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-1">
-                          <Building2 className="h-4 w-4" />
-                          Vendors ({tracking.vendorCount})
-                        </h5>
-                        <div className="space-y-2">
-                          {tracking.vendors.map((vendor) => (
-                            <div key={vendor.id} className="bg-gray-700 rounded p-2 text-xs">
-                              <div className="flex justify-between items-start">
-                                <div className="flex-1">
-                                  <div className="text-white font-medium">{vendor.name}</div>
-                                  {vendor.email && (
-                                    <div className="text-gray-400 flex items-center gap-1 mt-1">
-                                      <Mail className="h-3 w-3" />
-                                      {vendor.email}
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="ml-2">
-                                  {vendor.responded ? (
-                                    <div className="text-green-400 text-xs">
-                                      <div>✓ Responded</div>
-                                      {vendor.quoteAmount && (
-                                        <div>₹{vendor.quoteAmount}</div>
-                                      )}
-                                      {vendor.leadTimeDays && (
-                                        <div>{vendor.leadTimeDays} days</div>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <div className="text-gray-400 text-xs">Pending</div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      {/* Parts */}
-                      <div>
-                        <h5 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-1">
-                          <Package className="h-4 w-4" />
-                          Parts ({tracking.partCount})
-                        </h5>
-                        <div className="space-y-2">
-                          {tracking.parts.map((part) => (
-                            <div key={part.id} className="bg-gray-700 rounded p-2 text-xs">
-                              <div className="text-white font-medium">{part.partNumber}</div>
-                              <div className="text-gray-400 mt-1">{part.description}</div>
-                              <div className="flex items-center gap-2 mt-2">
-                                <Badge variant="outline" className="text-xs border-blue-500 text-blue-400">
-                                  {part.process}
-                                </Badge>
-                                <span className="text-xs text-gray-500">Qty: {part.quantity}</span>
-                                {part.has2dFile && (
-                                  <Badge variant="outline" className="text-xs border-green-500 text-green-400">
-                                    2D
-                                  </Badge>
-                                )}
-                                {part.has3dFile && (
-                                  <Badge variant="outline" className="text-xs border-purple-500 text-purple-400">
-                                    3D
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    {/* Response Summary */}
-                    {tracking.responseCount > 0 && (
-                      <div className="mt-4 pt-4 border-t border-gray-700">
-                        <div className="flex justify-between text-sm">
-                          <div className="text-gray-300">
-                            Response Rate: <span className="text-green-400 font-medium">{Math.round((tracking.responseCount / tracking.vendorCount) * 100)}%</span>
-                          </div>
-                          {tracking.firstResponseAt && (
-                            <div className="text-gray-400">
-                              First response: {new Date(tracking.firstResponseAt).toLocaleDateString()}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    </div>
-                  ))
-                )}
-              </div>
-              
-              {isLoadingTracking && (
-                <div className="text-center py-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-400 mx-auto"></div>
-                  <p className="text-gray-400 text-sm mt-2">Loading RFQ tracking data...</p>
-                </div>
-              )}
             </CardContent>
           </Card>
         )}
@@ -1222,6 +1425,243 @@ We look forward to your competitive proposal and establishing a successful partn
         )}
       </div>
 
+    </div>
+  );
+}
+
+// Process Editor Component for editable multi-process selection
+interface ProcessEditorProps {
+  partId: string;
+  processes: string[];
+  onProcessesChange: (processes: string[]) => void;
+  processData?: any; // Process planning data from useProcessCosts
+}
+
+function ProcessEditor({ partId, processes, onProcessesChange, processData }: ProcessEditorProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [inputValue, setInputValue] = useState('');
+
+  // Fetch processes from API
+  const { data: processesResponse, isLoading: isLoadingProcesses } = useProcesses();
+  const apiProcesses = processesResponse?.processes || [];
+
+  // Get process planning data from parent component via props
+  // We'll get the processData that was already fetched at the parent level
+
+  // Get existing processes for this specific part
+  const partSpecificProcesses = React.useMemo(() => {
+    if (!processData?.records) return [];
+    
+    const partRecords = processData.records.filter((record: any) => record.bomItemId === partId);
+    const processNames = partRecords.map((record: any) => 
+      record.description || record.operation || record.processGroup
+    ).filter((name: string) => name && name !== 'Unknown Process');
+    
+    return [...new Set(processNames)];
+  }, [processData, partId]);
+
+  // Combine all available processes from both sources
+  const allAvailableProcesses = React.useMemo(() => {
+    const processSet = new Set<string>();
+    
+    // Add processes from API
+    apiProcesses.forEach(process => {
+      if (process.processName) {
+        processSet.add(process.processName);
+      }
+    });
+    
+    // Add processes from existing process planning data (all parts)
+    if (processData?.records) {
+      processData.records.forEach((record: any) => {
+        const processName = record.description || record.operation || record.processGroup;
+        if (processName && processName !== 'Unknown Process') {
+          processSet.add(processName);
+        }
+      });
+    }
+    
+    return Array.from(processSet).sort();
+  }, [apiProcesses, processData]);
+
+  // Filter suggestions based on input with fuzzy matching
+  const getSuggestions = (input: string) => {
+    // If no input, show first 8 processes
+    if (!input.trim()) return allAvailableProcesses.slice(0, 8);
+    
+    const searchTerm = input.toLowerCase();
+    
+    // First try to find matches for the search term
+    const matches = allAvailableProcesses.filter(process => {
+      const processLower = process.toLowerCase();
+      // Exact match, starts with, or contains
+      return processLower === searchTerm || 
+             processLower.startsWith(searchTerm) || 
+             processLower.includes(searchTerm);
+    });
+    
+    // If we have matches, return them sorted by relevance
+    if (matches.length > 0) {
+      return matches.sort((a, b) => {
+        const aLower = a.toLowerCase();
+        const bLower = b.toLowerCase();
+        
+        if (aLower === searchTerm) return -1;
+        if (bLower === searchTerm) return 1;
+        if (aLower.startsWith(searchTerm)) return -1;
+        if (bLower.startsWith(searchTerm)) return 1;
+        return a.localeCompare(b);
+      }).slice(0, 8);
+    }
+    
+    // If no matches found, show all processes so user can see what's available
+    return allAvailableProcesses.slice(0, 12);
+  };
+
+  const addProcess = (process: string) => {
+    if (process.trim() && !processes.includes(process.trim())) {
+      onProcessesChange([...processes, process.trim()]);
+    }
+    setInputValue('');
+  };
+
+  const removeProcess = (processToRemove: string) => {
+    onProcessesChange(processes.filter(p => p !== processToRemove));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && inputValue.trim()) {
+      e.preventDefault();
+      addProcess(inputValue);
+    }
+  };
+
+  return (
+    <div className="min-w-[200px]">
+      {/* Display processes */}
+      <div className="flex flex-wrap gap-1 mb-2">
+        {processes.map((process, index) => (
+          <Badge
+            key={index}
+            variant="outline"
+            className="border-blue-500 text-blue-400 text-xs px-2 py-1 cursor-pointer hover:bg-blue-500/10"
+            onClick={() => removeProcess(process)}
+          >
+            {process}
+            <X className="h-3 w-3 ml-1" />
+          </Badge>
+        ))}
+        
+        {processes.length === 0 && (
+          <span className="text-gray-500 text-xs">No processes</span>
+        )}
+      </div>
+
+      {/* Add process section */}
+      {isEditing ? (
+        <div className="space-y-2">
+          <Input
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Type process name..."
+            className="h-7 text-xs bg-gray-800 border-gray-600 text-white"
+            autoFocus
+          />
+          
+          {/* Quick select from intelligent suggestions */}
+          <div className="space-y-2 max-h-32 overflow-y-auto">
+            {isLoadingProcesses ? (
+              <span className="text-xs text-gray-500">Loading processes...</span>
+            ) : (
+              <>
+                {/* Show part-specific processes first if available */}
+                {partSpecificProcesses.length > 0 && (
+                  <div>
+                    <p className="text-xs text-blue-400 mb-1">From this part's process planning:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {partSpecificProcesses
+                        .filter(p => !processes.includes(p))
+                        .filter(p => !inputValue || p.toLowerCase().includes(inputValue.toLowerCase()))
+                        .map((process) => (
+                          <Badge
+                            key={process}
+                            variant="outline"
+                            className="border-blue-500 text-blue-300 text-xs cursor-pointer bg-blue-500/10"
+                            onClick={() => addProcess(process)}
+                          >
+                            {process}
+                          </Badge>
+                        ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Show other available processes */}
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">
+                    {partSpecificProcesses.length > 0 ? 'Other available processes:' : 'Available processes:'}
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {getSuggestions(inputValue)
+                      .filter(p => !processes.includes(p))
+                      .filter(p => !partSpecificProcesses.includes(p)) // Don't duplicate part-specific processes
+                      .slice(0, 12)
+                      .map((process) => (
+                        <Badge
+                          key={process}
+                          variant="outline"
+                          className="border-gray-500 text-gray-300 text-xs cursor-pointer"
+                          onClick={() => addProcess(process)}
+                        >
+                          {process}
+                        </Badge>
+                      ))}
+                  </div>
+                </div>
+              </>
+            )}
+            {!isLoadingProcesses && allAvailableProcesses.length === 0 && (
+              <span className="text-xs text-gray-500">No processes available</span>
+            )}
+          </div>
+
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 text-xs"
+              onClick={() => {
+                if (inputValue.trim()) addProcess(inputValue);
+                setIsEditing(false);
+              }}
+            >
+              Save
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 text-xs"
+              onClick={() => {
+                setIsEditing(false);
+                setInputValue('');
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 text-xs border-gray-600 text-gray-300 hover:border-blue-500 hover:text-blue-400"
+          onClick={() => setIsEditing(true)}
+        >
+          <Plus className="h-3 w-3 mr-1" />
+          Add Process
+        </Button>
+      )}
     </div>
   );
 }

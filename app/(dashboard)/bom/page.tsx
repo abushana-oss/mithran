@@ -2,12 +2,30 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useBOMs } from '@/lib/api/hooks/useBOM';
+import { useBOMs, useCreateBOM } from '@/lib/api/hooks/useBOM';
+import { useProjects } from '@/lib/api/hooks/useProjects';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -24,13 +42,51 @@ import {
   FolderKanban,
   ArrowUpDown,
   ArrowLeft,
+  FileText,
+  Upload,
+  Download,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function BOMManagementPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [bomFormData, setBomFormData] = useState({
+    name: '',
+    description: '',
+    projectId: '',
+    version: '1.0',
+  });
+
   const { data } = useBOMs({ search: searchQuery });
+  const { data: projectsData } = useProjects();
+  const createBOMMutation = useCreateBOM();
+
+  const handleCreateBOM = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!bomFormData.name || !bomFormData.projectId) return;
+    
+    try {
+      await createBOMMutation.mutateAsync({
+        name: bomFormData.name,
+        description: bomFormData.description,
+        projectId: bomFormData.projectId,
+        version: bomFormData.version,
+      });
+      
+      setIsCreateDialogOpen(false);
+      setBomFormData({
+        name: '',
+        description: '',
+        projectId: '',
+        version: '1.0',
+      });
+    } catch (error) {
+      console.error('Failed to create BOM:', error);
+    }
+  };
 
   const boms = data?.boms || [];
 
@@ -51,17 +107,32 @@ export default function BOMManagementPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/')}>
+        <Button variant="outline" onClick={() => router.push('/projects')} className="gap-2">
           <ArrowLeft className="h-4 w-4" />
+          Back to Project
         </Button>
         <PageHeader
           title="BOM Management"
           description="Manage Bills of Materials across all projects"
         >
-          <Button onClick={() => router.push('/projects')} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Create BOM
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" className="gap-2">
+              <FileText className="h-4 w-4" />
+              Template
+            </Button>
+            <Button variant="outline" className="gap-2">
+              <Upload className="h-4 w-4" />
+              Import
+            </Button>
+            <Button variant="outline" className="gap-2">
+              <Download className="h-4 w-4" />
+              Export
+            </Button>
+            <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Create BOM
+            </Button>
+          </div>
         </PageHeader>
       </div>
 
@@ -106,7 +177,7 @@ export default function BOMManagementPage() {
             <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${stats.totalValue.toLocaleString()}</div>
+            <div className="text-2xl font-bold">₹{stats.totalValue.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">Combined cost estimate</p>
           </CardContent>
         </Card>
@@ -197,7 +268,7 @@ export default function BOMManagementPage() {
                       </TableCell>
                       <TableCell className="text-right">{bom.totalItems}</TableCell>
                       <TableCell className="text-right">
-                        ${(bom.totalCost || 0).toLocaleString()}
+                        ₹{(bom.totalCost || 0).toLocaleString()}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -225,6 +296,85 @@ export default function BOMManagementPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Create BOM Dialog */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <form onSubmit={handleCreateBOM}>
+            <DialogHeader>
+              <DialogTitle>Create New BOM</DialogTitle>
+              <DialogDescription>
+                Create a new Bill of Materials for your project.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="name">BOM Name*</Label>
+                <Input
+                  id="name"
+                  value={bomFormData.name}
+                  onChange={(e) => setBomFormData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Enter BOM name"
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="project">Project*</Label>
+                <Select 
+                  value={bomFormData.projectId} 
+                  onValueChange={(value) => setBomFormData(prev => ({ ...prev, projectId: value }))}
+                  required
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projectsData?.projects?.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="version">Version</Label>
+                <Input
+                  id="version"
+                  value={bomFormData.version}
+                  onChange={(e) => setBomFormData(prev => ({ ...prev, version: e.target.value }))}
+                  placeholder="1.0"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={bomFormData.description}
+                  onChange={(e) => setBomFormData(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Enter BOM description (optional)"
+                  rows={3}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => setIsCreateDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={!bomFormData.name || !bomFormData.projectId || createBOMMutation.isPending}
+              >
+                {createBOMMutation.isPending ? 'Creating...' : 'Create BOM'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

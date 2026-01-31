@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +16,8 @@ import {
   Factory,
   Zap,
   Edit2,
-  Trash2
+  Trash2,
+  ArrowLeft
 } from 'lucide-react';
 import { useSupplierNominations, useDeleteSupplierNomination } from '@/lib/api/hooks/useSupplierNominations';
 import {
@@ -40,6 +42,7 @@ export function SupplierNominationsDashboard({
   evaluationGroupId,
   onSelectNomination,
 }: SupplierNominationsDashboardProps) {
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [selectedType, setSelectedType] = useState<NominationType | 'all'>('all');
@@ -124,11 +127,22 @@ export function SupplierNominationsDashboard({
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-3xl font-bold text-white">Supplier Nominations</h1>
-            <p className="text-gray-300 mt-1">
-              Evaluate and nominate suppliers for OEM and manufacturing partnerships
-            </p>
+          <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push(`/projects/${projectId}`)}
+              className="border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold text-white">Supplier Nominations</h1>
+              <p className="text-gray-300 mt-1">
+                Evaluate and nominate suppliers for OEM and manufacturing partnerships
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">

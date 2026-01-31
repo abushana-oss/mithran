@@ -42,6 +42,20 @@ export class SupplierEvaluationGroupsController {
     return this.supplierEvaluationGroupsService.create(userId, createDto, token);
   }
 
+  @Get()
+  @ApiOperation({ summary: 'Get all evaluation groups for user' })
+  @ApiResponse({
+    status: 200,
+    description: 'All evaluation groups retrieved successfully',
+    type: [SupplierEvaluationGroupSummaryDto],
+  })
+  findAll(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+  ): Promise<SupplierEvaluationGroupSummaryDto[]> {
+    return this.supplierEvaluationGroupsService.findAll(userId, token);
+  }
+
   @Get('project/:projectId')
   @ApiOperation({ summary: 'Get all evaluation groups for a project' })
   @ApiResponse({

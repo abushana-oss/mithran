@@ -42,6 +42,7 @@ export type SupplierEvaluationGroup = {
 export type SupplierEvaluationGroupSummary = {
   id: string;
   projectId: string;
+  projectName?: string;
   name: string;
   description?: string;
   notes?: string;
@@ -85,6 +86,16 @@ export async function createSupplierEvaluationGroup(
     data
   );
   return response;
+}
+
+/**
+ * Get all supplier evaluation groups for current user
+ */
+export async function getAllSupplierEvaluationGroups(): Promise<SupplierEvaluationGroupSummary[]> {
+  const response = await apiClient.get<SupplierEvaluationGroupSummary[]>(
+    '/supplier-evaluation-groups'
+  );
+  return response || [];
 }
 
 /**
@@ -147,7 +158,7 @@ export async function validateSupplierEvaluationGroupDeletion(groupId: string): 
   impactSummary: Array<{ label: string; count: number }>;
 }> {
   const response = await apiClient.get(`/supplier-evaluation-groups/${groupId}/validate-deletion`);
-  return response.data;
+  return response;
 }
 
 /**

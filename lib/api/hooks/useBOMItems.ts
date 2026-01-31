@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../client';
-import { useAuthReady } from '@/lib/providers/auth';
+import { useAuthEnabledWith } from './useAuthEnabled';
 
 export interface BOMItem {
   id: string;
@@ -24,10 +24,22 @@ export interface BOMItem {
   createdAt: string;
   updatedAt: string;
   weight?: number;
+  unitWeight?: number;
   maxLength?: number;
+  length?: number;
   maxWidth?: number;
+  width?: number;
   maxHeight?: number;
+  height?: number;
   surfaceArea?: number;
+  toleranceGrade?: string;
+  surfaceFinish?: string;
+  heatTreatment?: string;
+  hardness?: string;
+  leadTime?: string;
+  revision?: string;
+  qualityStandard?: string;
+  inspectionLevel?: string;
 }
 
 export interface CreateBOMItemDto {
@@ -75,15 +87,13 @@ const bomItemKeys = {
  * Hook to fetch BOM items for a specific BOM
  */
 export function useBOMItems(bomId?: string) {
-  const authReady = useAuthReady();
-
   return useQuery({
     queryKey: bomItemKeys.list(bomId),
     queryFn: async () => {
       if (!bomId) return { items: [] };
       return apiClient.get<{ items: BOMItem[] }>(`/bom-items?bomId=${bomId}`);
     },
-    enabled: authReady && !!bomId,
+    enabled: useAuthEnabledWith(!!bomId),
     staleTime: 2 * 60 * 1000, // Fresh for 2 minutes - medium-changing data
     refetchOnWindowFocus: false,
     refetchOnMount: false,
@@ -94,14 +104,12 @@ export function useBOMItems(bomId?: string) {
  * Hook to fetch a single BOM item
  */
 export function useBOMItem(itemId?: string) {
-  const authReady = useAuthReady();
-
   return useQuery({
     queryKey: bomItemKeys.detail(itemId!),
     queryFn: async () => {
       return apiClient.get<BOMItem>(`/bom-items/${itemId}`);
     },
-    enabled: authReady && !!itemId,
+    enabled: useAuthEnabledWith(!!itemId),
     staleTime: 1000 * 60 * 2,
   });
 }

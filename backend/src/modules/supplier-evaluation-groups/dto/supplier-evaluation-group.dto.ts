@@ -160,6 +160,9 @@ export class SupplierEvaluationGroupSummaryDto {
   @ApiProperty()
   projectId: string;
 
+  @ApiProperty({ required: false })
+  projectName?: string;
+
   @ApiProperty()
   name: string;
 

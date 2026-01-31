@@ -2,7 +2,7 @@
 
 // Updated: Fixed functional navigation and Quick Actions - Version 3.0
 import { useState, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +13,7 @@ import { ModelViewer } from '@/components/ui/model-viewer';
 import { Viewer2D } from '@/components/ui/viewer-2d';
 import { apiClient } from '@/lib/api/client';
 import { Badge } from '@/components/ui/badge';
+import { ArrowLeft } from 'lucide-react';
 
 // Reset circuit breaker on page load if it's stuck
 if (typeof window !== 'undefined') {
@@ -32,6 +33,7 @@ import { ProjectBomCostSummary } from '@/components/features/process-planning/Pr
 
 export default function ProcessPlanningPage() {
   const params = useParams();
+  const router = useRouter();
   const projectId = params.id as string;
   const [selectedBomId, setSelectedBomId] = useState<string>('');
   const [selectedPartNumber, setSelectedPartNumber] = useState<string>('');
@@ -265,11 +267,22 @@ export default function ProcessPlanningPage() {
       <div className="max-w-[1800px] mx-auto space-y-6">
         {/* PAGE HEADER */}
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Manufacturing Engineering Platform</h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Integrated workflow for process planning, costing, and project management
-            </p>
+          <div className="flex items-center gap-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push(`/projects/${projectId}`)}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Manufacturing Engineering Platform</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Integrated workflow for process planning, costing, and project management
+              </p>
+            </div>
           </div>
           {selectedPartNumber && (
             <div className="flex items-center gap-2">
@@ -438,10 +451,9 @@ export default function ProcessPlanningPage() {
                     {bomItems.map((item, index) => (
                       <div
                         key={item.id}
-                        className={`rounded-lg border bg-card text-card-foreground shadow-sm border-l-4 ${
-                          item.itemType === 'assembly' ? 'border-l-emerald-500' :
-                          item.itemType === 'sub_assembly' ? 'border-l-blue-500' : 'border-l-amber-500'
-                        }`}
+                        className={`rounded-lg border bg-card text-card-foreground shadow-sm border-l-4 ${item.itemType === 'assembly' ? 'border-l-emerald-500' :
+                            item.itemType === 'sub_assembly' ? 'border-l-blue-500' : 'border-l-amber-500'
+                          }`}
                       >
                         <div className="p-4">
                           <div className="flex flex-col md:flex-row items-start justify-between gap-4">
@@ -454,17 +466,16 @@ export default function ProcessPlanningPage() {
                                   </h3>
                                   <Badge
                                     variant="outline"
-                                    className={`text-xs ${
-                                      item.itemType === 'assembly' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20' :
-                                      item.itemType === 'sub_assembly' ? 'bg-blue-500/10 text-blue-700 border-blue-500/20' :
-                                      'bg-amber-500/10 text-amber-700 border-amber-500/20'
-                                    }`}
+                                    className={`text-xs ${item.itemType === 'assembly' ? 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20' :
+                                        item.itemType === 'sub_assembly' ? 'bg-blue-500/10 text-blue-700 border-blue-500/20' :
+                                          'bg-amber-500/10 text-amber-700 border-amber-500/20'
+                                      }`}
                                   >
                                     {item.itemType === 'assembly' ? 'Assembly' :
-                                     item.itemType === 'sub_assembly' ? 'Sub-Assembly' : 'Child Part'}
+                                      item.itemType === 'sub_assembly' ? 'Sub-Assembly' : 'Child Part'}
                                   </Badge>
                                 </div>
-                                
+
                                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-3">
                                   <div className="text-sm">
                                     <p className="text-muted-foreground text-xs mb-1">Part Number</p>
@@ -530,7 +541,7 @@ export default function ProcessPlanningPage() {
                                 </div>
                               </div>
                             </div>
-                            
+
                             <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                               <Button
                                 variant="outline"
@@ -597,7 +608,7 @@ export default function ProcessPlanningPage() {
                     </div>
                   </CardHeader>
                   <CardContent className="p-3">
-                    
+
                     {/* Basic Information */}
                     <div className="mb-3">
                       <h4 className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Basic Information</h4>

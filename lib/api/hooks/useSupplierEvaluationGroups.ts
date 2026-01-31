@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   createSupplierEvaluationGroup,
+  getAllSupplierEvaluationGroups,
   getSupplierEvaluationGroupsByProject,
   getLatestSupplierEvaluationGroup,
   getSupplierEvaluationGroup,
@@ -16,6 +17,17 @@ import {
 // ============================================================================
 // QUERY HOOKS
 // ============================================================================
+
+/**
+ * Get all supplier evaluation groups for current user
+ */
+export function useAllSupplierEvaluationGroups() {
+  return useQuery({
+    queryKey: ['supplier-evaluation-groups', 'all'],
+    queryFn: () => getAllSupplierEvaluationGroups(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+}
 
 /**
  * Get all supplier evaluation groups for a project

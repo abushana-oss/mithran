@@ -11,6 +11,7 @@ import {
   Table,
   Sigma,
   FileSpreadsheet,
+  ShieldCheck,
 } from 'lucide-react';
 import { NavLink } from '@/components/common/nav-link';
 import { useAuth } from '@/lib/providers/auth';
@@ -116,6 +117,20 @@ export function AppSidebar() {
                   >
                     <FolderKanban className={`h-4 w-4 shrink-0 transition-colors ${isActive('/projects') ? 'text-primary' : 'text-sidebar-foreground/60 group-hover:text-sidebar-foreground'}`} />
                     {!collapsed && <span className="text-sm">Projects</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* Supplier Evaluation */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={isActive('/supplier-evaluation')}>
+                  <NavLink
+                    to="/supplier-evaluation"
+                    className={`sidebar-item group ${isActive('/supplier-evaluation') ? 'sidebar-item-active' : ''}`}
+                    activeClassName="sidebar-item-active"
+                  >
+                    <ShieldCheck className={`h-4 w-4 shrink-0 transition-colors ${isActive('/supplier-evaluation') ? 'text-primary' : 'text-sidebar-foreground/60 group-hover:text-sidebar-foreground'}`} />
+                    {!collapsed && <span className="text-sm">Supplier Evaluation</span>}
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>

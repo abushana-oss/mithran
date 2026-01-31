@@ -46,12 +46,9 @@ import {
   useBOMs,
   useBOMItems
 } from '@/lib/api/hooks';
-import { useProcesses } from '@/lib/api/hooks/useProcesses';
 import { ErrorBoundary } from '@/components/error-boundary';
-import { useProcessCosts, useCreateProcessCost } from '@/lib/api/hooks/useProcessCosts';
 import { useCreateSupplierEvaluationGroup } from '@/lib/api/hooks/useSupplierEvaluationGroups';
 import { uuidValidator } from '@/lib/utils/uuid-validator';
-import { ProcessCostDialog } from '@/components/features/process-planning/ProcessCostDialog';
 import { toast } from 'sonner';
 
 const evaluationFormSchema = z.object({
@@ -64,14 +61,6 @@ const evaluationFormSchema = z.object({
     const validation = uuidValidator.validateArray(arr, 'BOM Item IDs');
     return validation.errors.length === 0;
   }, 'All BOM Item IDs must be valid UUIDs'),
-  processSelections: z.array(z.object({
-    processGroup: z.string(),
-    processRouteId: z.string().refine((val) => {
-      // Validate as UUID (both global processes and process costs use UUIDs)
-      const validation = uuidValidator.validate(val, 'Process Route ID');
-      return validation.isValid;
-    }, 'Process Route ID must be a valid UUID'),
-  })).min(1, 'Please select at least one process'),
   notes: z.string().optional(),
 });
 
@@ -98,7 +87,6 @@ export function NewEvaluationDialog({
       supplierGroupName: '',
       bomId: '',
       bomItemIds: [],
-      processSelections: [],
       notes: '',
     },
     mode: 'onChange',
@@ -107,18 +95,10 @@ export function NewEvaluationDialog({
   // Watch form values for dependent queries
   const selectedBomId = form.watch('bomId');
   const selectedBomItemIds = form.watch('bomItemIds');
-  const processSelections = form.watch('processSelections');
 
   // Search states
   const [bomSearch, setBomSearch] = React.useState('');
-  const [processSearch, setProcessSearch] = React.useState('');
 
-  // Process Cost Dialog state
-  const [processDialogOpen, setProcessDialogOpen] = React.useState(false);
-
-  // Fetch real processes from database
-  const { data: processesData } = useProcesses();
-  const availableProcesses = processesData?.processes || [];
 
   // Fetch data
   const { data: bomsData, isLoading: bomsLoading } = useBOMs({
@@ -129,34 +109,16 @@ export function NewEvaluationDialog({
     selectedBomId || undefined
   );
 
-  // Fetch process costs for all selected BOM items
-  const processCostsQuery = useMemo(() => ({
-    bomItemIds: selectedBomItemIds.length > 0 ? selectedBomItemIds : undefined,
-    isActive: true,
-    enabled: selectedBomItemIds.length > 0,
-  }), [selectedBomItemIds]);
-  const { data: processCostsData, isLoading: processCostsLoading, error: processCostsError } = useProcessCosts(processCostsQuery);
-
-  // Production: Handle circuit breaker errors gracefully
-  React.useEffect(() => {
-    if (processCostsError?.message?.includes('Circuit breaker is OPEN')) {
-      // Circuit breaker will reset automatically after timeout
-      // No action needed in production
-    }
-  }, [processCostsError]);
-
 
 
 
 
 
   // Mutations
-  const createProcessCostMutation = useCreateProcessCost();
   const createEvaluationGroupMutation = useCreateSupplierEvaluationGroup();
 
   const boms = bomsData?.boms || [];
   const bomItems = bomItemsData?.items || [];
-  const processCosts = processCostsData?.records || [];
 
   // Filter BOM items based on search
   const filteredBomItems = bomItems.filter(item => {
@@ -169,32 +131,6 @@ export function NewEvaluationDialog({
     );
   });
 
-  // Filter process costs based on search
-  const filteredProcessCosts = processCosts.filter(process => {
-    if (!processSearch) return true;
-    const searchLower = processSearch.toLowerCase();
-    return (
-      process.processRoute?.toLowerCase().includes(searchLower) ||
-      process.operation?.toLowerCase().includes(searchLower) ||
-      process.processGroup?.toLowerCase().includes(searchLower) ||
-      process.description?.toLowerCase().includes(searchLower)
-    );
-  });
-
-  // Get all available process groups and routes
-  const allProcessGroups = Array.from(new Set(
-    filteredProcessCosts.map(process => process.processGroup).filter((group): group is string => !!group)
-  ));
-
-  const allProcessRoutes = filteredProcessCosts.reduce((acc, process) => {
-    const group = process.processGroup || 'unassigned';
-    if (!acc[group]) {
-      acc[group] = [];
-    }
-    acc[group].push(process);
-    return acc;
-  }, {} as Record<string, typeof processCosts>);
-
 
 
 
@@ -204,10 +140,6 @@ export function NewEvaluationDialog({
       // Sanitize all UUIDs before sending to API
       uuidValidator.assert(data.bomId, 'BOM ID');
       const sanitizedBomItemIds = uuidValidator.assertArray(data.bomItemIds, 'BOM Item IDs');
-      const sanitizedProcessSelections = data.processSelections.map(selection => ({
-        ...selection,
-        processRouteId: uuidValidator.assert(selection.processRouteId, 'Process Route ID')
-      }));
 
       // Prepare evaluation group data for database
       const evaluationGroupData = {
@@ -225,27 +157,6 @@ export function NewEvaluationDialog({
             quantity: item?.quantity || 1
           };
         }),
-        processes: sanitizedProcessSelections.map(process => {
-          const globalProcess = availableProcesses.find((p: any) => p.id === process.processRouteId);
-          if (globalProcess) {
-            return {
-              id: process.processRouteId,
-              processGroup: globalProcess.processName,
-              name: globalProcess.processName,
-              isPredefined: true,
-              type: 'service' as const // Predefined global processes are treated as services
-            };
-          }
-
-          const proc = processCosts.find(p => p.id === process.processRouteId);
-          return {
-            id: process.processRouteId,
-            processGroup: process.processGroup,
-            name: proc?.processRoute || proc?.operation || 'Unknown Process',
-            isPredefined: false,
-            type: 'manufacturing' as const
-          };
-        }),
       };
 
       // Create evaluation group in database
@@ -259,7 +170,6 @@ export function NewEvaluationDialog({
         supplierGroupName: '',
         bomId: '',
         bomItemIds: [],
-        processSelections: [],
         notes: '',
       });
       onOpenChange(false);
@@ -286,7 +196,6 @@ export function NewEvaluationDialog({
     form.setValue('bomId', bomId);
     // Reset dependent fields
     form.setValue('bomItemIds', []);
-    form.setValue('processSelections', []);
   };
 
   const toggleBomItem = (bomItemId: string) => {
@@ -295,59 +204,6 @@ export function NewEvaluationDialog({
       form.setValue('bomItemIds', currentItems.filter(id => id !== bomItemId));
     } else {
       form.setValue('bomItemIds', [...currentItems, bomItemId]);
-    }
-  };
-
-  const addProcessSelection = (processGroup: string, processRouteId: string) => {
-    const currentSelections = form.getValues('processSelections');
-    const exists = currentSelections.some(s => s.processGroup === processGroup && s.processRouteId === processRouteId);
-
-    if (!exists) {
-      form.setValue('processSelections', [...currentSelections, { processGroup, processRouteId }]);
-    }
-  };
-
-  const removeProcessSelection = (index: number) => {
-    const currentSelections = form.getValues('processSelections');
-    form.setValue('processSelections', currentSelections.filter((_, i) => i !== index));
-  };
-
-  const addGlobalProcess = (process: any) => {
-    const currentSelections = form.getValues('processSelections');
-
-    // Check if process already exists
-    const exists = currentSelections.some(s => s.processRouteId === process.id);
-
-    if (!exists) {
-      const newSelection = {
-        processGroup: process.processName,
-        processRouteId: process.id // Use real process ID
-      };
-
-      form.setValue('processSelections', [...currentSelections, newSelection]);
-    }
-  };
-
-
-  const handleProcessCostSubmit = async (processData: any) => {
-    try {
-      // Link the process cost to the selected BOM items if any are selected
-      const bomItemId = selectedBomItemIds.length > 0 ? selectedBomItemIds[0] : undefined;
-
-      await createProcessCostMutation.mutateAsync({
-        ...processData,
-        bomItemId,
-        isActive: true,
-      });
-
-      // Close the dialog
-      setProcessDialogOpen(false);
-
-      // The useProcessCosts hook should automatically refresh and show the new process
-    } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Error creating process cost:', error);
-      }
     }
   };
 
@@ -365,7 +221,7 @@ export function NewEvaluationDialog({
           <DialogHeader className="flex-shrink-0">
             <DialogTitle>New Supplier Evaluation</DialogTitle>
             <DialogDescription>
-              Create a new supplier evaluation by selecting BOM parts and processes. You'll select vendors on the next page.
+              Create a new supplier evaluation by selecting BOM parts. You'll manage processes and select vendors on the next page.
             </DialogDescription>
           </DialogHeader>
 
@@ -394,13 +250,9 @@ export function NewEvaluationDialog({
                   )}
                 />
 
-                {/* Grid Layout for Multi-Selection */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-                  {/* Left Column: BOM Selection */}
-                  <div className="space-y-4">
+                {/* BOM Selection */}
+                <div className="space-y-4">
                     <div className="flex items-center gap-2 pb-2 border-b">
-                      <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-sm flex items-center justify-center font-semibold">1</div>
                       <h3 className="text-lg font-semibold">BOM Selection</h3>
                     </div>
 
@@ -527,167 +379,6 @@ export function NewEvaluationDialog({
                         )}
                       />
                     )}
-                  </div>
-
-                  {/* Right Column: Process Selection */}
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 pb-2 border-b">
-                      <div className="w-6 h-6 rounded-full bg-primary text-primary-foreground text-sm flex items-center justify-center font-semibold">2</div>
-                      <h3 className="text-lg font-semibold">Process Selection</h3>
-                    </div>
-
-                    {selectedBomItemIds.length > 0 && (
-                      <Card>
-                        <CardHeader className="pb-3">
-                          <CardDescription>
-                            Select processes for supplier evaluation
-                            {processCosts.length > 0 && (
-                              <span className="ml-2 text-xs bg-muted px-2 py-0.5 rounded">
-                                {processCosts.length} total processes
-                              </span>
-                            )}
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          {/* Search Bar and Add Process Button */}
-                          <div className="mb-3 space-y-2">
-                            <div className="relative">
-                              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                              <Input
-                                placeholder="Search processes by name, operation, or group..."
-                                value={processSearch}
-                                onChange={(e) => setProcessSearch(e.target.value)}
-                                className="pl-8"
-                              />
-                            </div>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 rounded-md px-3 w-full"
-                                >
-                                  <Plus className="h-4 w-4" />
-                                  Add New Process
-                                  <ChevronDown className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent className="w-56" align="start" sideOffset={4}>
-                                <div className="px-2 py-2">
-                                  <div className="text-sm font-medium text-muted-foreground pb-2 border-b">Services</div>
-                                  <div className="py-2 space-y-1 max-h-48 overflow-y-auto">
-                                    {availableProcesses.filter((p: any) => p.type === 'service' || !p.type).map((process: any) => (
-                                      <DropdownMenuItem
-                                        key={process.id}
-                                        onClick={() => addGlobalProcess(process)}
-                                        className="cursor-pointer text-sm px-2 py-2 rounded hover:bg-accent focus:bg-accent transition-colors"
-                                      >
-                                        <span className="text-sm">{process.processName}</span>
-                                        <span className="text-xs text-muted-foreground ml-auto">
-                                          {process.processCategory || 'service'}
-                                        </span>
-                                      </DropdownMenuItem>
-                                    ))}
-                                  </div>
-                                </div>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                          <div className="h-80 overflow-y-auto pr-2">
-                            {processCostsLoading ? (
-                              <div className="text-sm text-muted-foreground p-4 text-center">
-                                Loading processes...
-                              </div>
-                            ) : processCostsError ? (
-                              <div className="text-sm text-destructive p-4 text-center">
-                                Error loading processes: {processCostsError.message}
-                              </div>
-                            ) : allProcessGroups.length === 0 ? (
-                              <div className="text-sm text-muted-foreground p-4 text-center">
-                                {processSearch
-                                  ? 'No processes found matching search criteria'
-                                  : processCosts.length === 0
-                                    ? 'No processes planned for selected parts. Click "Add New Process" to create one.'
-                                    : 'No processes match the current filter'
-                                }
-                              </div>
-                            ) : (
-                              <div className="space-y-4">
-                                {allProcessGroups.map((group) => (
-                                  <div key={group} className="space-y-2">
-                                    <h4 className="font-medium text-sm capitalize border-b pb-1">
-                                      {group.replace('_', ' ')}
-                                    </h4>
-                                    <div className="space-y-1 ml-2">
-                                      {(allProcessRoutes[group] || []).map((process) => (
-                                        <div key={process.id} className="flex items-center justify-between p-2 hover:bg-muted/50 rounded">
-                                          <div className="flex-1 min-w-0">
-                                            <div className="text-sm font-medium">
-                                              {process.processRoute || process.operation}
-                                            </div>
-                                            <div className="text-xs text-muted-foreground">
-                                              {process.operation && `${process.operation} • `}
-                                              {process.totalCostPerPart && `₹${process.totalCostPerPart.toFixed(2)}`}
-                                            </div>
-                                          </div>
-                                          <Button
-                                            type="button"
-                                            size="sm"
-                                            variant="outline"
-                                            onClick={() => addProcessSelection(group, process.id)}
-                                            disabled={processSelections.some(s => s.processGroup === group && s.processRouteId === process.id)}
-                                          >
-                                            <Plus className="h-3 w-3" />
-                                          </Button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Selected Processes Display */}
-                          {processSelections.length > 0 && (
-                            <div className="mt-4 pt-4 border-t">
-                              <div className="text-xs font-medium text-muted-foreground mb-2">
-                                Selected Processes ({processSelections.length}):
-                              </div>
-                              <div className="space-y-2">
-                                {processSelections.map((selection, index) => {
-                                  const process = processCosts.find(p => p.id === selection.processRouteId);
-                                  const globalProcess = availableProcesses.find((p: any) => p.id === selection.processRouteId);
-
-                                  return (
-                                    <div key={index} className="flex items-center justify-between bg-muted/30 p-2 rounded">
-                                      <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-medium">
-                                          {globalProcess ? globalProcess.processName : (process?.processRoute || process?.operation)}
-                                        </div>
-                                        <div className="text-xs text-muted-foreground">
-                                          {globalProcess ? `Global ${globalProcess.processCategory || 'service'}` : `${selection.processGroup} • ${process?.totalCostPerPart && `₹${process.totalCostPerPart.toFixed(2)}`}`}
-                                        </div>
-                                      </div>
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="ghost"
-                                        onClick={() => removeProcessSelection(index)}
-                                      >
-                                        <X className="h-3 w-3" />
-                                      </Button>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    )}
-                  </div>
                 </div>
 
 
@@ -733,12 +424,6 @@ export function NewEvaluationDialog({
         </ErrorBoundary>
       </DialogContent>
 
-      {/* Process Cost Creation Dialog */}
-      <ProcessCostDialog
-        open={processDialogOpen}
-        onOpenChange={setProcessDialogOpen}
-        onSubmit={handleProcessCostSubmit}
-      />
     </Dialog>
   );
 }
