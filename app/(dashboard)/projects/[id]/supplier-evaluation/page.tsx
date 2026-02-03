@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,7 @@ export default function SupplierEvaluationPage() {
 
   // Fetch specific evaluation group data when in evaluation view
   const { data: selectedEvaluationGroupData, isLoading: isLoadingEvaluationGroup } = useSupplierEvaluationGroup(
-    currentView === 'evaluation' ? selectedEvaluationGroupId : undefined
+    currentView === 'evaluation' ? selectedEvaluationGroupId || undefined : undefined
   );
 
 
@@ -63,9 +63,6 @@ export default function SupplierEvaluationPage() {
     }
   }, []);
 
-  const handleBackToSupplierDashboard = useCallback(() => {
-    setCurrentView('dashboard');
-  }, []);
 
   // Render based on current view
   if (currentView === 'evaluation' && selectedEvaluationGroupId) {

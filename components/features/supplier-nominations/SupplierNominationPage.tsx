@@ -13,7 +13,9 @@ import {
   XCircle,
   Clock,
   DollarSign,
-  Save
+  Save,
+  Plus,
+  Users
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
@@ -21,7 +23,8 @@ import {
   useSupplierNominations,
   useUpdateVendorEvaluation,
   useUpdateEvaluationScores,
-  useCompleteSupplierNomination
+  useCompleteSupplierNomination,
+  useAddVendorsToNomination
 } from '@/lib/api/hooks/useSupplierNominations';
 import { useVendors } from '@/lib/api/hooks/useVendors';
 import {
@@ -44,7 +47,7 @@ const getCostScore = (evaluation: VendorEvaluation): number => {
     score.criteriaId.toLowerCase().includes('budget')
   );
   
-  if (costCriteria.length === 0) return evaluation.capabilityPercentage || 0;
+  if (costCriteria.length === 0) return 0;
   
   const totalCostScore = costCriteria.reduce((sum, score) => 
     sum + (score.score / score.maxPossibleScore) * 100, 0
@@ -60,7 +63,7 @@ const getVendorRatingScore = (evaluation: VendorEvaluation): number => {
     score.criteriaId.toLowerCase().includes('rating')
   );
   
-  if (vendorCriteria.length === 0) return evaluation.riskMitigationPercentage || 0;
+  if (vendorCriteria.length === 0) return 0;
   
   const totalVendorScore = vendorCriteria.reduce((sum, score) => 
     sum + (score.score / score.maxPossibleScore) * 100, 0
@@ -76,7 +79,7 @@ const getCapabilityScore = (evaluation: VendorEvaluation): number => {
     score.criteriaId.toLowerCase().includes('feasibility')
   );
   
-  if (capabilityCriteria.length === 0) return evaluation.technicalFeasibilityScore || 0;
+  if (capabilityCriteria.length === 0) return 0;
   
   const totalCapabilityScore = capabilityCriteria.reduce((sum, score) => 
     sum + (score.score / score.maxPossibleScore) * 100, 0
@@ -217,7 +220,7 @@ function SupplierCard({
             </div>
             <div>
               <CardTitle className="text-lg text-white">
-                {vendor?.name || `Supplier ${rank}`}
+                {vendor?.name || evaluation.vendorName || 'Unknown Vendor'}
               </CardTitle>
               <div className="flex items-center gap-2 mt-1">
                 <Badge 
@@ -379,6 +382,8 @@ export function SupplierNominationPage({
   onSelectEvaluation
 }: SupplierNominationPageProps) {
   const { data: nomination, isLoading, error } = useSupplierNomination(nominationId);
+  
+  // State
   const vendorsQuery = useMemo(() => ({ status: 'active' as const, limit: 1000 }), []);
   const { data: vendorsResponse } = useVendors(vendorsQuery);
   
@@ -477,6 +482,7 @@ export function SupplierNominationPage({
     }
   };
 
+
   const handleExportResults = () => {
     // Export functionality - can be enhanced
     toast.info('Export functionality will be available soon');
@@ -507,7 +513,7 @@ export function SupplierNominationPage({
             </div>
             <div className="text-gray-400 text-center max-w-md">
               The supplier nomination with ID "{nominationId}" could not be found. 
-              It may have been deleted or you may not have permission to view it.
+              Please create a new nomination or select an existing one from the project dashboard.
             </div>
             {onBack && (
               <Button
@@ -516,11 +522,11 @@ export function SupplierNominationPage({
                 className="mt-4 border-gray-600 text-gray-300 hover:bg-gray-800"
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Go Back
+                Back to Project
               </Button>
             )}
             <div className="text-sm text-gray-500 mt-2">
-              Error: {error?.message || 'Unknown error occurred'}
+              Tip: Create nominations through the project dashboard with proper vendor selection.
             </div>
           </div>
         </div>
@@ -757,21 +763,33 @@ export function SupplierNominationPage({
         {/* Supplier Evaluation Cards */}
         <div>
           <h2 className="text-xl font-semibold text-white mb-4">Supplier Evaluations</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            {sortedEvaluations.map((evaluation, index) => (
-              <SupplierCard
-                key={evaluation.id}
-                evaluation={evaluation}
-                criteria={nomination.criteria}
-                vendor={vendorMap.get(evaluation.vendorId)}
-                rank={index + 1}
-                onUpdate={handleUpdateEvaluation}
-                onUpdateScores={handleUpdateScores}
-                onSelectEvaluation={onSelectEvaluation}
-                weights={weights}
-              />
-            ))}
-          </div>
+          {sortedEvaluations.length === 0 ? (
+            <Card className="bg-gray-800 border-gray-700">
+              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                <Users className="h-12 w-12 text-gray-600 mb-4" />
+                <h3 className="text-lg font-medium text-white mb-2">No Vendor Evaluations</h3>
+                <p className="text-gray-400 max-w-md">
+                  This nomination currently has no vendor evaluations. Vendors should be added during nomination creation.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {sortedEvaluations.map((evaluation, index) => (
+                <SupplierCard
+                  key={evaluation.id}
+                  evaluation={evaluation}
+                  criteria={nomination.criteria}
+                  vendor={vendorMap.get(evaluation.vendorId)}
+                  rank={index + 1}
+                  onUpdate={handleUpdateEvaluation}
+                  onUpdateScores={handleUpdateScores}
+                  onSelectEvaluation={onSelectEvaluation}
+                  weights={weights}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

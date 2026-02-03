@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,32 +24,33 @@ import {
 import {
   ArrowLeft,
   Save,
-  Calculator,
   TrendingUp,
-  AlertTriangle,
   FileText,
   BarChart3,
   Zap,
   DollarSign,
-  Edit,
-  Info
+  Edit
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   useUpdateVendorEvaluation,
-  useUpdateEvaluationScores,
   useSupplierNomination
 } from '@/lib/api/hooks/useSupplierNominations';
-import { useVendors } from '@/lib/api/hooks/useVendors';
+// import { useVendors } from '@/lib/api/hooks/useVendors';
 import {
-  VendorType,
-  RiskLevel,
+  getCapabilityScores,
+  initializeCapabilityScores,
+  batchUpdateCapabilityScores,
+  transformCapabilityDataToTable,
+  type CapabilityCriteria,
+  type BatchCapabilityUpdate
+} from '@/lib/api/capability-scoring';
+import {
   Recommendation,
   getRiskLevelColor,
   getRecommendationColor,
   type VendorEvaluation,
-  type NominationCriteria,
-  type CreateEvaluationScoreData
+  type NominationCriteria
 } from '@/lib/api/supplier-nominations';
 import { VendorRatingEngine } from './VendorRatingEngine';
 import { CostCompetencyAnalysis } from './CostCompetencyAnalysis';
@@ -63,15 +64,25 @@ interface DetailedEvaluationViewProps {
   onBack: () => void;
 }
 
+interface CapabilityTabCriteria {
+  id: string;
+  name: string;
+  maxScore: number;
+  scores: number[];
+}
+
+interface CapabilityTabState {
+  criteria: CapabilityTabCriteria[];
+  suppliers: string[];
+}
+
 export function DetailedEvaluationView({
   evaluation,
-  criteria,
   vendor,
   nominationId,
   onBack
 }: DetailedEvaluationViewProps) {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'capability' | 'technical' | 'rating' | 'cost'>('dashboard');
-  const [editingScores, setEditingScores] = useState<Record<string, number>>({});
   const [evaluationData, setEvaluationData] = useState({
     vendorType: evaluation.vendorType,
     recommendation: evaluation.recommendation,
@@ -85,110 +96,133 @@ export function DetailedEvaluationView({
     technicalDiscussion: evaluation.technicalDiscussion || ''
   });
 
-  // Audit scores state - dynamically populated from nomination data
-  const [auditScores, setAuditScores] = useState(() => {
-    return {
-      criteria: [], // Will be populated from actual nomination criteria
-      suppliers: [], // Will be populated from API data
-      evaluationMethod: 'EMusk'
-    };
+  // Capability scores state - populated from API
+  const [capabilityScores, setCapabilityScores] = useState<CapabilityTabState>({
+    criteria: [],
+    suppliers: []
   });
 
-  const [isEditingAudit, setIsEditingAudit] = useState(false);
+  const [capabilityData, setCapabilityData] = useState<CapabilityCriteria[]>([]);
+  const [isLoadingCapability, setIsLoadingCapability] = useState(false);
+  const [isEditingCapability, setIsEditingCapability] = useState(false);
+  const [editingCapabilityScores, setEditingCapabilityScores] = useState<Record<string, Record<string, number>>>({});
+  const [isSavingCapability, setIsSavingCapability] = useState(false);
 
   const updateEvaluationMutation = useUpdateVendorEvaluation(nominationId);
-  const updateScoresMutation = useUpdateEvaluationScores(nominationId);
-  
+
   // Fetch full nomination data to get all vendors
   const { data: fullNomination } = useSupplierNomination(nominationId);
-  
+
   // Fetch all vendors to get names
-  const { data: allVendors } = useVendors();
+  // const { data: allVendors } = useVendors();
 
   // Create scores map for easy access
-  const scoresMap = useMemo(() => {
-    const map = new Map();
-    evaluation.scores.forEach(score => {
-      map.set(score.criteriaId, score);
-    });
-    return map;
-  }, [evaluation.scores]);
+  // const scoresMap = useMemo(() => {
+  //   const map = new Map();
+  //   evaluation.scores.forEach(score => {
+  //     map.set(score.criteriaId, score);
+  //   });
+  //   return map;
+  // }, [evaluation.scores]);
 
-  // Update audit scores when nomination data and vendor data load
+  // ENTERPRISE OPTIMIZATION: Load capability scores only once with efficient caching
   useEffect(() => {
-    if (fullNomination?.vendorEvaluations && fullNomination.vendorEvaluations.length > 0 && allVendors?.vendors && criteria) {
-      const vendors = fullNomination.vendorEvaluations;
-      
-      setAuditScores(prev => ({
-        ...prev,
-        suppliers: vendors.map((v) => {
-          // Find the vendor name from the vendors list
-          const vendorDetails = allVendors.vendors.find(vendor => vendor.id === v.vendorId);
-          return vendorDetails?.name || `Vendor ${v.vendorId.slice(-4)}`;
-        }),
-        criteria: criteria.slice(0, 6).map(criteriaItem => ({ // Use first 6 criteria to match table layout
-          name: criteriaItem.criteriaName,
-          maxScore: criteriaItem.maxScore,
-          scores: vendors.map(vendor => {
-            // Try to find actual scores for this vendor and criteria
-            const actualScore = vendor.scores.find(s => s.criteriaId === criteriaItem.id);
-            if (actualScore) {
-              return actualScore.score;
-            }
-            
-            // Generate realistic scores based on vendor's overall performance
-            const baseScore = vendor.overallScore > 0 
-              ? Math.round((vendor.overallScore / 100) * criteriaItem.maxScore)
-              : Math.floor(Math.random() * criteriaItem.maxScore * 0.8) + Math.floor(criteriaItem.maxScore * 0.2);
-            
-            // Add some realistic variation
-            const variation = Math.floor(Math.random() * 3) - 1; // -1, 0, or 1
-            return Math.max(0, Math.min(criteriaItem.maxScore, baseScore + variation));
-          })
-        }))
-      }));
-    }
-  }, [fullNomination, allVendors, criteria]);
+    const loadCapabilityScores = async () => {
+      if (!fullNomination?.vendorEvaluations || fullNomination.vendorEvaluations.length === 0 || !nominationId) {
+        return;
+      }
+
+      // Prevent duplicate calls - only load if we don't have data
+      if (capabilityData.length > 0) {
+        return;
+      }
+
+      setIsLoadingCapability(true);
+      try {
+        // Single optimized call - get existing capability data
+        let data = await getCapabilityScores(nominationId);
+
+        // Only initialize if truly no data exists
+        if (!data || data.length === 0) {
+          await initializeCapabilityScores(nominationId);
+          data = await getCapabilityScores(nominationId);
+        }
+
+        setCapabilityData(data);
+
+        // Transform data for table display efficiently
+        const vendors = fullNomination.vendorEvaluations.map((v, index) => ({
+          id: v.vendorId,
+          name: v.vendorName || `Supplier -${index + 1}`
+        }));
+
+        if (data && data.length > 0) {
+          const tableData = transformCapabilityDataToTable(data, vendors);
+          setCapabilityScores(tableData as CapabilityTabState);
+        } else {
+          setCapabilityScores({
+            suppliers: vendors.map(v => v.name),
+            criteria: []
+          });
+        }
+
+
+      } catch (error) {
+        console.error('Failed to load capability scores:', error);
+        // Fallback to empty state if API fails
+        setCapabilityScores({
+          suppliers: fullNomination.vendorEvaluations.map((v, index) =>
+            v.vendorName || `Supplier -${index + 1}`
+          ),
+          criteria: []
+        });
+      } finally {
+        setIsLoadingCapability(false);
+      }
+    };
+
+    loadCapabilityScores();
+  }, [fullNomination, nominationId]);
 
   // Group criteria by category
-  const categorizedCriteria = useMemo(() => {
-    const categories = new Map<string, NominationCriteria[]>();
-    criteria.forEach(criterion => {
-      const category = criterion.criteriaCategory;
-      if (!categories.has(category)) {
-        categories.set(category, []);
-      }
-      categories.get(category)?.push(criterion);
-    });
-    return categories;
-  }, [criteria]);
+  // const categorizedCriteria = useMemo(() => {
+  //   const categories = new Map<string, NominationCriteria[]>();
+  //   criteria.forEach(criterion => {
+  //     const category = criterion.criteriaCategory;
+  //     if (!categories.has(category)) {
+  //       categories.set(category, []);
+  //     }
+  //     categories.get(category)?.push(criterion);
+  //   });
+  //   return categories;
+  // }, [criteria]);
 
-  const handleScoreChange = (criteriaId: string, score: number) => {
-    setEditingScores(prev => ({
-      ...prev,
-      [criteriaId]: score
-    }));
-  };
+  // const handleScoreChange = (criteriaId: string, score: number) => {
+  //   setEditingScores(prev => ({
+  //     ...prev,
+  //     [criteriaId]: score
+  //   }));
+  // };
 
-  const handleSaveScores = async () => {
-    const scores: CreateEvaluationScoreData[] = Object.entries(editingScores).map(([criteriaId, score]) => ({
-      criteriaId,
-      score,
-      evidenceText: '',
-      assessorNotes: ''
-    }));
+  // const handleSaveScores = async () => {
+  //   const scores: CreateEvaluationScoreData[] = Object.entries(editingScores).map(([criteriaId, score]) => ({
+  //     criteriaId,
+  //     score,
+  //     evidenceText: '',
+  //     assessorNotes: ''
+  //   }));
 
-    try {
-      await updateScoresMutation.mutateAsync({
-        evaluationId: evaluation.id,
-        scores
-      });
-      setEditingScores({});
-      toast.success('Scores updated successfully');
-    } catch (error) {
-      console.error('Save scores error:', error);
-    }
-  };
+  //   try {
+  //     await updateScoresMutation.mutateAsync({
+  //       evaluationId: evaluation.id,
+  //       scores
+  //     });
+  //     setEditingScores({});
+  //     toast.success('Scores updated successfully');
+  //   } catch (error) {
+  //     console.error('Save scores error:', error);
+  //   }
+  // };
 
   const handleSaveEvaluation = async () => {
     try {
@@ -202,145 +236,319 @@ export function DetailedEvaluationView({
     }
   };
 
-  const hasUnsavedScores = Object.keys(editingScores).length > 0;
+  // const hasUnsavedScores = Object.keys(editingScores).length > 0;
 
-  // Handle audit score updates
-  const updateAuditScore = (criteriaIndex: number, supplierIndex: number, newScore: number) => {
-    setAuditScores(prev => ({
+  // Handle capability score local updates (no API call)
+  const updateCapabilityScoreLocal = (criteriaIndex: number, supplierIndex: number, newScore: number) => {
+    if (!fullNomination?.vendorEvaluations || !capabilityData[criteriaIndex]) {
+      return;
+    }
+
+    const criteria = capabilityData[criteriaIndex];
+    const vendor = fullNomination.vendorEvaluations[supplierIndex];
+    const criteriaId = criteria.criteria_id;
+
+    if (!criteriaId || !vendor?.vendorId) {
+      return;
+    }
+
+    const validScore = Math.min(Math.max(0, newScore), criteria.max_score || 100);
+
+    // Update editing state
+    setEditingCapabilityScores(prev => ({
       ...prev,
-      criteria: prev.criteria.map((criteria, idx) => 
-        idx === criteriaIndex 
-          ? { ...criteria, scores: criteria.scores.map((score, sIdx) => 
-              sIdx === supplierIndex ? Math.min(Math.max(0, newScore), criteria.maxScore) : score
-            )}
-          : criteria
-      )
+      [criteriaId]: {
+        ...prev[criteriaId],
+        [vendor.vendorId]: validScore
+      }
     }));
   };
 
-  const handleSaveAuditScores = () => {
-    setIsEditingAudit(false);
-    // Here you would typically save to backend
-    toast.success('Audit scores saved successfully');
+  // Save all capability score changes in batch - ENTERPRISE BEST PRACTICE
+  const saveCapabilityScores = async () => {
+    if (!fullNomination?.vendorEvaluations) {
+      toast.error('No vendor data available');
+      return;
+    }
+
+    setIsSavingCapability(true);
+
+    try {
+      const updates: BatchCapabilityUpdate[] = [];
+
+      // Prepare batch updates
+      for (const [criteriaId, vendorScores] of Object.entries(editingCapabilityScores)) {
+        for (const [vendorId, score] of Object.entries(vendorScores)) {
+          updates.push({
+            criteriaId,
+            vendorId,
+            score
+          });
+        }
+      }
+
+      // Single API call for all updates (with fallback) - ENTERPRISE BEST PRACTICE
+      await batchUpdateCapabilityScores(nominationId, updates);
+
+      // Update local state with saved values
+      setCapabilityScores(prev => ({
+        ...prev,
+        criteria: prev.criteria.map((crit) => {
+          const criteriaId = crit.id;
+          const vendorScores = editingCapabilityScores[criteriaId];
+
+          if (vendorScores) {
+            return {
+              ...crit,
+              scores: crit.scores.map((score, supplierIndex) => {
+                const vendor = fullNomination.vendorEvaluations![supplierIndex];
+                const vendorId = vendor?.vendorId;
+                return (vendorId && vendorScores[vendorId] !== undefined) ? vendorScores[vendorId] : score;
+              })
+            };
+          }
+
+          return crit;
+        })
+      }));
+
+      // Update capability data state
+      setCapabilityData(prev =>
+        prev.map(item => {
+          const criteriaId = item.criteria_id;
+          const vendorScores = editingCapabilityScores[criteriaId];
+
+          if (vendorScores) {
+            return {
+              ...item,
+              vendor_scores: {
+                ...item.vendor_scores,
+                ...vendorScores
+              }
+            };
+          }
+
+          return item;
+        })
+      );
+
+      // Clear editing state
+      setEditingCapabilityScores({});
+      setIsEditingCapability(false);
+
+      toast.success(`Successfully saved ${updates.length} capability scores`);
+    } catch (error) {
+      console.error('Failed to save capability scores:', error);
+
+      // Provide specific error message based on the error type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (errorMessage.includes('token')) {
+        toast.error('Session expired. Please refresh the page and try again.');
+      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        toast.error('Network error. Please check your connection and try again.');
+      } else {
+        toast.error(`Failed to save scores: ${errorMessage}`);
+      }
+    } finally {
+      setIsSavingCapability(false);
+    }
   };
 
+  // Cancel capability score editing
+  const cancelCapabilityEditing = () => {
+    setEditingCapabilityScores({});
+    setIsEditingCapability(false);
+  };
 
+  // Get current score (edited or original)
+  const getCurrentCapabilityScore = (criteriaIndex: number, supplierIndex: number): number => {
+    if (!fullNomination?.vendorEvaluations || !capabilityData[criteriaIndex]) {
+      return 0;
+    }
+
+    const criteria = capabilityData[criteriaIndex];
+    const vendor = fullNomination.vendorEvaluations[supplierIndex];
+    const criteriaId = criteria.criteria_id;
+
+    if (!criteriaId || !vendor?.vendorId) {
+      return 0;
+    }
+
+    // Return edited score or original score
+    return editingCapabilityScores[criteriaId]?.[vendor.vendorId] ??
+      capabilityScores.criteria[criteriaIndex]?.scores[supplierIndex] ?? 0;
+  };
 
   const renderCapabilityTab = () => {
-    // Calculate totals and ranks using component-level state
-    const totals = auditScores.suppliers.map((_, supplierIndex) =>
-      auditScores.criteria.reduce((sum, criteria) => sum + criteria.scores[supplierIndex], 0)
+    // Show loading state
+    if (isLoadingCapability) {
+      return (
+        <div className="flex justify-center items-center h-64">
+          <div className="text-white">Loading capability scores...</div>
+        </div>
+      );
+    }
+
+    // Calculate totals and ranks using current scores (including edited ones)
+    const totals = capabilityScores.suppliers.map((_, supplierIndex) =>
+      capabilityScores.criteria.reduce((sum, _criteria, criteriaIndex) => {
+        const currentScore = getCurrentCapabilityScore(criteriaIndex, supplierIndex);
+        return sum + currentScore;
+      }, 0)
     );
-    const maxTotal = auditScores.criteria.reduce((sum, criteria) => sum + criteria.maxScore, 0);
-    
+    const maxTotal = capabilityScores.criteria.reduce((sum, _criteria) => sum + (_criteria.maxScore || 0), 0);
+
     // Calculate ranks (1 = highest score)
-    const ranks = totals.map((total, index) => {
+    /* const ranks = totals.map((total, index) => {
       const higherScores = totals.filter(score => score > total).length;
       return higherScores + 1;
-    });
+    }); */
 
     return (
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
-          <h3 className="text-lg font-semibold text-white">Select Audit</h3>
+        {/* Header with Evaluation Method and Actions */}
+        <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="text-sm text-gray-400">
-              Evaluation Method: <span className="text-white font-medium">{auditScores.evaluationMethod}</span>
-            </div>
-            <Button
-              onClick={() => isEditingAudit ? handleSaveAuditScores() : setIsEditingAudit(true)}
-              variant={isEditingAudit ? "default" : "outline"}
-              size="sm"
-              className={isEditingAudit ? "bg-green-600 hover:bg-green-700" : "border-gray-600 text-gray-300 hover:bg-gray-700"}
-            >
-              {isEditingAudit ? (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Save Scores
-                </>
-              ) : (
-                <>
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
-                </>
-              )}
-            </Button>
+            <label className="text-white font-medium">Select the Evaluation Method</label>
+            <Select defaultValue="emuski-audit">
+              <SelectTrigger className="w-48 bg-gray-800 border-gray-700 text-white">
+                <SelectValue placeholder="Select method" />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-800 border-gray-700">
+                <SelectItem value="emuski-audit" className="text-white focus:bg-gray-700">EMuski Audit</SelectItem>
+                <SelectItem value="standard-audit" className="text-white focus:bg-gray-700">Standard Audit</SelectItem>
+                <SelectItem value="custom-audit" className="text-white focus:bg-gray-700">Custom Audit</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            {isEditingCapability ? (
+              <>
+                {Object.keys(editingCapabilityScores).length > 0 && (
+                  <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+                    {Object.values(editingCapabilityScores).reduce((count, vendorScores) =>
+                      count + Object.keys(vendorScores).length, 0
+                    )} unsaved changes
+                  </Badge>
+                )}
+                <Button
+                  onClick={saveCapabilityScores}
+                  disabled={isSavingCapability || Object.keys(editingCapabilityScores).length === 0}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                  size="sm"
+                >
+                  {isSavingCapability ? (
+                    <>
+                      <Save className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Changes
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={cancelCapabilityEditing}
+                  disabled={isSavingCapability}
+                  variant="outline"
+                  size="sm"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={() => setIsEditingCapability(true)}
+                variant="outline"
+                size="sm"
+                className="border-gray-600 text-gray-300 hover:bg-gray-700"
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Edit Scores
+              </Button>
+            )}
           </div>
         </div>
 
-        <Card className="bg-gray-800 border-gray-700">
-          <CardContent className="p-6">
+        {/* Capability Scoring Table */}
+        <Card className="bg-gray-800 border-gray-700 shadow-lg">
+          <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-gray-700">
-                    <TableHead className="text-gray-300 font-medium">CRITERIA</TableHead>
-                    <TableHead className="text-gray-300 font-medium text-center">Score</TableHead>
-                    {auditScores.suppliers.map((supplier, index) => (
-                      <TableHead key={index} className="text-gray-300 font-medium text-center">
-                        {supplier}
-                      </TableHead>
-                    ))}
+                  <TableRow className="border-b border-gray-600">
+                    <TableHead className="bg-gray-800 text-white font-semibold py-4 px-6 text-left">
+                      CRITERIA
+                    </TableHead>
+                    <TableHead className="bg-gray-800 text-white font-semibold py-4 px-4 text-center">
+                      Max Score
+                    </TableHead>
+                    <TableHead className="bg-gray-800 text-white font-semibold py-4 px-4 text-center">
+                      Current Score
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
-                  {auditScores.criteria.map((criteria, criteriaIndex) => (
-                    <TableRow key={criteriaIndex} className="border-gray-700">
-                      <TableCell className="text-white font-medium">{criteria.name}</TableCell>
-                      <TableCell className="text-gray-300 text-center">{criteria.maxScore}</TableCell>
-                      {criteria.scores.map((score, supplierIndex) => (
-                        <TableCell key={supplierIndex} className="text-center">
-                          {isEditingAudit ? (
+                <TableBody className="bg-gray-900">
+                  {capabilityScores.criteria.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3} className="text-center py-8 text-gray-400">
+                        No capability criteria available.
+                        <br />
+                        <span className="text-sm">Initialize capability scoring to get started.</span>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    capabilityScores.criteria.map((criteria, criteriaIndex) => (
+                      <TableRow key={criteriaIndex} className="border-b border-gray-700 hover:bg-gray-800/50">
+                        <TableCell className="text-white py-4 px-6 font-medium">
+                          {criteria.name || capabilityData[criteriaIndex]?.criteria_name || 'Unnamed Criteria'}
+                        </TableCell>
+                        <TableCell className="text-white text-center py-4 px-4 font-medium">
+                          {criteria.maxScore || capabilityData[criteriaIndex]?.max_score || 0}
+                        </TableCell>
+                        <TableCell className="text-center py-4 px-4">
+                          {isEditingCapability ? (
                             <Input
                               type="number"
                               min="0"
-                              max={criteria.maxScore}
-                              step="0.1"
-                              value={score}
-                              onChange={(e) => updateAuditScore(criteriaIndex, supplierIndex, parseFloat(e.target.value) || 0)}
-                              className="w-16 h-8 text-center bg-gray-700 border-gray-600 text-white text-sm"
+                              max={criteria.maxScore || capabilityData[criteriaIndex]?.max_score || 100}
+                              step="1"
+                              value={getCurrentCapabilityScore(criteriaIndex, 0)}
+                              onChange={(e) => updateCapabilityScoreLocal(criteriaIndex, 0, parseInt(e.target.value) || 0)}
+                              className="w-20 h-10 text-center bg-gray-700 border-gray-600 text-white hover:bg-gray-600 focus:bg-gray-600 focus:border-blue-500"
                             />
                           ) : (
-                            <span className="text-white">{score}</span>
+                            <span className="text-white font-medium text-lg">
+                              {getCurrentCapabilityScore(criteriaIndex, 0)}
+                            </span>
                           )}
                         </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
-                  
+                      </TableRow>
+                    ))
+                  )}
+
                   {/* Total Score Row */}
-                  <TableRow className="border-gray-700 bg-gray-750">
-                    <TableCell className="text-white font-bold">Total Score</TableCell>
-                    <TableCell className="text-gray-300 text-center font-bold">{maxTotal}</TableCell>
-                    {totals.map((total, index) => (
-                      <TableCell key={index} className="text-green-400 text-center font-bold">
-                        {total.toFixed(2)}
+                  {capabilityScores.criteria.length > 0 && (
+                    <TableRow className="border-b-2 border-gray-600 bg-gray-800">
+                      <TableCell className="text-white font-bold py-4 px-6">
+                        Total Score
                       </TableCell>
-                    ))}
-                  </TableRow>
-                  
-                  {/* Rank Row */}
-                  <TableRow className="border-gray-700">
-                    <TableCell className="text-white font-bold">Rank</TableCell>
-                    <TableCell className="text-gray-300 text-center"></TableCell>
-                    {ranks.map((rank, index) => (
-                      <TableCell key={index} className="text-blue-400 text-center font-bold">
-                        {rank}
+                      <TableCell className="text-white text-center font-bold py-4 px-4">
+                        {maxTotal}
                       </TableCell>
-                    ))}
-                  </TableRow>
+                      <TableCell className="text-white text-center font-bold py-4 px-4">
+                        {totals[0]?.toFixed(1) || 0}
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </div>
-            
-            {isEditingAudit && (
-              <div className="mt-4 p-4 bg-blue-900/20 rounded-lg border border-blue-700">
-                <div className="flex items-center gap-2 text-blue-400 text-sm">
-                  <Info className="h-4 w-4" />
-                  <span>Editing mode: Click on any score to modify. Values are automatically constrained to the maximum score for each criteria.</span>
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>
@@ -435,8 +643,30 @@ export function DetailedEvaluationView({
           </div>
 
           <div className="text-right">
-            <div className="text-3xl font-bold text-white">{evaluation.overallScore.toFixed(1)}%</div>
-            <div className="text-sm text-gray-400">Overall Score</div>
+            <div className="text-3xl font-bold text-white">
+              {(() => {
+                if (activeTab === 'capability' && capabilityScores.criteria.length > 0) {
+                  // Calculate capability score percentage
+                  const totalActualScore = capabilityScores.suppliers.reduce((sum, _, supplierIndex) =>
+                    sum + capabilityScores.criteria.reduce((criteriaSum, _criteria, criteriaIndex) => {
+                      const currentScore = getCurrentCapabilityScore(criteriaIndex, supplierIndex);
+                      return criteriaSum + currentScore;
+                    }, 0), 0
+                  );
+                  const totalMaxScore = capabilityScores.criteria.reduce((sum, criteria) =>
+                    sum + (criteria.maxScore || 0), 0
+                  ) * capabilityScores.suppliers.length;
+
+                  const capabilityPercentage = totalMaxScore > 0 ? (totalActualScore / totalMaxScore) * 100 : 0;
+                  return capabilityPercentage.toFixed(1);
+                } else {
+                  return evaluation.overallScore.toFixed(1);
+                }
+              })()}%
+            </div>
+            <div className="text-sm text-gray-400">
+              {activeTab === 'capability' ? 'Capability Score' : 'Overall Score'}
+            </div>
           </div>
         </div>
 
@@ -481,6 +711,7 @@ export function DetailedEvaluationView({
           {activeTab === 'rating' && (
             <VendorRatingEngine
               vendorId={evaluation.vendorId}
+              nominationId={nominationId}
               onScoreUpdate={(scores) => {
                 console.log('Updated scores:', scores);
                 // Handle score updates here if needed
@@ -490,10 +721,10 @@ export function DetailedEvaluationView({
           {activeTab === 'cost' && (
             <CostCompetencyAnalysis
               nominationId={nominationId}
-              vendors={fullNomination?.vendorEvaluations && allVendors?.vendors ? 
+              vendors={fullNomination?.vendorEvaluations ?
                 fullNomination.vendorEvaluations.map(v => ({
                   id: v.vendorId,
-                  name: allVendors.vendors.find(vendor => vendor.id === v.vendorId)?.name || `Vendor ${v.vendorId.slice(-4)}`
+                  name: v.vendorName || `Vendor ${v.vendorId.slice(-4)}`
                 })) : []
               }
               onDataUpdate={(data) => {

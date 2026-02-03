@@ -5,10 +5,14 @@ import { type AuthUser } from '@/lib/api'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase/client'
 import { authTokenManager } from '@/lib/auth/token-manager'
+import { createSecureLogger } from '@/lib/utils/secure-logger'
+import { appReadiness } from '@/lib/core/app-readiness'
+import { logger } from '@/lib/utils/logger'
 
 interface AuthContextType {
   user: AuthUser | null
   loading: boolean
+  authStatus: 'loading' | 'authenticated' | 'unauthenticated'
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>
   signUp: (email: string, password: string, fullName?: string) => Promise<{ error: Error | null }>
   signInWithGoogle: () => Promise<{ error: Error | null }>
@@ -17,6 +21,8 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+const secureLogger = createSecureLogger('Auth')
 
 /**
  * Check if a user's email exists in the authorized_users table
@@ -36,9 +42,6 @@ async function checkUserAuthorization(email: string): Promise<boolean> {
 
     // Fallback to direct query if RPC fails or returns null
     // (This is kept for backward compatibility or if RPC is missing)
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('[Auth] RPC check failed, falling back to direct query:', rpcError)
-    }
 
     const { data, error } = await supabase
       .from('authorized_users')
@@ -47,28 +50,19 @@ async function checkUserAuthorization(email: string): Promise<boolean> {
       .limit(1)
 
     if (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('[Auth] Authorization check failed:', {
-          message: error.message,
-          code: error.code,
-          details: error.details,
-          hint: error.hint,
-          fullError: error
-        })
-      }
+      secureLogger.error('Authorization check failed', { 
+        message: error.message,
+        code: error.code
+      });
       return false
     }
 
     // User is authorized if a record is found and it's active
     return data?.length > 0 && data[0].is_active === true
   } catch (e) {
-    if (process.env.NODE_ENV === 'development') {
-      console.error('[Auth] Unexpected error during authorization check:', {
-        message: e instanceof Error ? e.message : 'Unknown error',
-        stack: e instanceof Error ? e.stack : undefined,
-        fullError: e
-      })
-    }
+    secureLogger.error('Unexpected error during authorization check', {
+      message: e instanceof Error ? e.message : 'Unknown error'
+    });
     return false
   }
 }
@@ -80,6 +74,7 @@ let authInitializationPromise: Promise<void> | null = null
 export function BackendAuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [loading, setLoading] = useState(true)
+  const [authStatus, setAuthStatus] = useState<'loading' | 'authenticated' | 'unauthenticated'>('loading')
   const refreshInProgressRef = useRef(false)
 
   // Load user on mount - singleton pattern
@@ -97,7 +92,7 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
     }
 
     if (!supabase) {
-      console.warn('[Auth] Supabase client not available')
+      secureLogger.warn('Supabase client not available');
       setLoading(false)
       authInitialized = true
       return
@@ -108,27 +103,31 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
         const { data: { session }, error } = await supabase.auth.getSession()
         
         if (error) {
-          console.error('[Auth] Error getting session:', error)
+          secureLogger.error('Error getting session', { error: error.message });
           setUser(null)
           return
         }
 
         if (session?.user) {
-          // Single auth log per session
-          if (process.env.NODE_ENV === 'development' && !authInitialized) {
-            console.log('[Auth] Session initialized for:', session.user.email)
+          // Single auth log per session (email is masked in production)
+          if (!authInitialized) {
+            secureLogger.info('Session initialized', { 
+              userId: session.user.id,
+              hasEmail: !!session.user.email 
+            })
           }
           
           // Check if user is authorized
           const isAuthorized = await checkUserAuthorization(session.user.email || '')
 
           if (!isAuthorized) {
-            console.warn('[Auth] User not authorized, signing out')
+            secureLogger.warn('User not authorized, signing out');
             // Clear token immediately at decision point
             authTokenManager.clearToken()
             // User is not authorized - sign them out silently
             await supabase.auth.signOut()
             setUser(null)
+            setAuthStatus('unauthenticated')
             return
           }
 
@@ -140,26 +139,30 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
           } as AuthUser
           
           setUser(authUser)
+          setAuthStatus('authenticated')
           
           // Update token manager with current token
           // Supabase tokens expire in 1 hour by default
           const expiresInSeconds = session.expires_in || 3600; // fallback to 1 hour
           const expiresAt = Date.now() + (expiresInSeconds * 1000);
           
-          if (process.env.NODE_ENV === 'development') {
-            console.log('[Auth] Token set, expires in:', expiresInSeconds, 'seconds', new Date(expiresAt).toLocaleTimeString());
-          }
           
           authTokenManager.setToken({
             token: session.access_token,
             expiresAt
           })
+          
+          // Signal that auth is initialized and validated (user has valid token)
+          appReadiness.setAuthInitialized()
+          appReadiness.setAuthValidated()
         } else {
           setUser(null)
+          setAuthStatus('unauthenticated')
         }
       } catch (error) {
-        console.error('[Auth] Error in loadUser:', error)
+        secureLogger.error('Error in loadUser', { error: error instanceof Error ? error.message : String(error) });
         setUser(null)
+        setAuthStatus('unauthenticated')
       } finally {
         authInitialized = true
         authInitializationPromise = null
@@ -191,15 +194,11 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
         
         // Reset refresh signal so next expiry cycle can signal again
         authTokenManager.resetRefreshSignal()
-        
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[Auth] Token refreshed, expires in:', expiresInSeconds, 'seconds');
-        }
       } else {
-        console.error('[Auth] Token refresh failed:', error)
+        secureLogger.error('Token refresh failed', { error: error?.message });
       }
     } catch (error) {
-      console.error('[Auth] Token refresh error:', error)
+      secureLogger.error('Token refresh error', { error: error instanceof Error ? error.message : String(error) });
     } finally {
       refreshInProgressRef.current = false
     }
@@ -225,10 +224,6 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
       }
       lastEventTime = now
 
-      // Minimal logging - only for significant events
-      if (process.env.NODE_ENV === 'development' && event === 'SIGNED_IN') {
-        console.log('[Auth] User signed in')
-      }
 
       if (event === 'SIGNED_IN') {
         // Only process sign-in if not already initialized
@@ -242,6 +237,7 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
               fullName: session.user.user_metadata?.full_name || session.user.user_metadata?.name || '',
               createdAt: session.user.created_at,
             } as AuthUser)
+            setAuthStatus('authenticated')
             
             // Update token manager
             const expiresInSeconds = session.expires_in || 3600; // fallback to 1 hour
@@ -249,11 +245,15 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
               token: session.access_token,
               expiresAt: Date.now() + (expiresInSeconds * 1000)
             })
+            
+            // Mark auth as validated since we have a valid token
+            appReadiness.setAuthValidated()
           } else {
             // User lost authorization - clear token at decision point
             authTokenManager.clearToken()
             await supabase.auth.signOut()
             setUser(null)
+            setAuthStatus('unauthenticated')
           }
         }
       } else if (event === 'TOKEN_REFRESHED') {
@@ -263,8 +263,11 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
         // Clear token immediately at signout decision point
         authTokenManager.clearToken()
         setUser(null)
+        setAuthStatus('unauthenticated')
         // Reset initialization flag on signout
         authInitialized = false
+        // Reset app readiness state
+        appReadiness.resetAuth()
       } else if (event === 'USER_UPDATED') {
         // Handle user profile updates
         if (session?.user) {
@@ -274,6 +277,7 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
             fullName: session.user.user_metadata?.full_name || session.user.user_metadata?.name || '',
             createdAt: session.user.created_at,
           } as AuthUser)
+          setAuthStatus('authenticated')
         }
       }
     })
@@ -286,8 +290,8 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
         if (session) {
           // Trigger refresh if session exists
           const { error } = await supabase.auth.refreshSession()
-          if (error && process.env.NODE_ENV === 'development') {
-            console.warn('[Auth] Failed to refresh session:', error.message)
+          if (error) {
+            logger.warn('Failed to refresh session', { error: error.message });
           }
         }
       }
@@ -341,6 +345,7 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
           fullName: data.user.user_metadata?.full_name || data.user.user_metadata?.name || '',
           createdAt: data.user.created_at,
         } as AuthUser)
+        setAuthStatus('authenticated')
         
         // Update token manager after successful sign in
         if (data.session) {
@@ -349,6 +354,9 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
             token: data.session.access_token,
             expiresAt: Date.now() + (expiresInSeconds * 1000)
           })
+          
+          // Mark auth as validated since we have a valid session
+          appReadiness.setAuthValidated()
         }
         
         toast.success('Welcome back!')
@@ -414,6 +422,7 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
           fullName: data.user.user_metadata?.full_name || '',
           createdAt: data.user.created_at,
         } as AuthUser)
+        setAuthStatus('authenticated')
         
         // Update token manager after successful signup
         const expiresInSeconds = data.session.expires_in || 3600;
@@ -421,6 +430,9 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
           token: data.session.access_token,
           expiresAt: Date.now() + (expiresInSeconds * 1000)
         })
+        
+        // Mark auth as validated since we have a valid session
+        appReadiness.setAuthValidated()
         
         toast.success('Account created successfully! You are now logged in.')
       }
@@ -441,7 +453,11 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
       // Clear all auth state at logout decision point
       authTokenManager.clearToken()
       setUser(null)
+      setAuthStatus('unauthenticated')
       authInitialized = false
+      
+      // Reset app readiness state
+      appReadiness.resetAuth()
       
       // Clear all storage (will be handled by AuthQuerySync)
       if (typeof window !== 'undefined') {
@@ -495,11 +511,14 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
           fullName: session.user.user_metadata?.full_name || session.user.user_metadata?.name || '',
           createdAt: session.user.created_at,
         } as AuthUser)
+        setAuthStatus('authenticated')
       } else {
         setUser(null)
+        setAuthStatus('unauthenticated')
       }
     } catch (error) {
       setUser(null)
+      setAuthStatus('unauthenticated')
     }
   }
 
@@ -508,6 +527,7 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
       value={{
         user,
         loading,
+        authStatus,
         signIn,
         signUp,
         signInWithGoogle,
@@ -544,8 +564,8 @@ export function useAuth() {
  * ```
  */
 export function useAuthReady(): boolean {
-  const { user, loading } = useAuth()
-  return !loading && !!user
+  const { authStatus } = useAuth()
+  return authStatus === 'authenticated'
 }
 
 /**
@@ -553,12 +573,13 @@ export function useAuthReady(): boolean {
  * Memoized to prevent unnecessary re-renders
  */
 export function useAuthState() {
-  const { user, loading } = useAuth()
+  const { user, loading, authStatus } = useAuth()
   
   // Return memoized object to prevent re-renders
   return {
-    isAuthenticated: !loading && !!user,
-    isLoading: loading,
+    isAuthenticated: authStatus === 'authenticated',
+    isLoading: authStatus === 'loading',
+    isUnauthenticated: authStatus === 'unauthenticated',
     user
   }
 }

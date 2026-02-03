@@ -31,7 +31,7 @@ export const config = {
     // Use server-side URL when running on server (Docker network), client-side URL in browser
     baseUrl: (typeof window === 'undefined'
       ? process.env.API_URL
-      : process.env.NEXT_PUBLIC_API_URL) || 'http://127.0.0.1:4000/api/v1',
+      : process.env.NEXT_PUBLIC_API_URL) || 'http://localhost:4000/api/v1',
 
     // Timeout Configuration - 2026 Best Practice: Balance between fast fail and database operations
     timeout: process.env.NODE_ENV === 'development' ? 15000 : 30000,
@@ -62,10 +62,10 @@ export const config = {
     // Circuit Breaker Configuration
     circuitBreaker: {
       enabled: true,
-      failureThreshold: 5, // Open circuit after 5 failures
+      failureThreshold: process.env.NODE_ENV === 'development' ? 10 : 5, // More tolerant in dev
       successThreshold: 2, // Close circuit after 2 successes in HALF_OPEN
-      timeout: 30000, // Wait 30s before trying HALF_OPEN
-      rollingWindowSize: 10, // Track last 10 requests
+      timeout: process.env.NODE_ENV === 'development' ? 10000 : 30000, // Faster retry in dev
+      rollingWindowSize: process.env.NODE_ENV === 'development' ? 20 : 10, // Larger window in dev
     },
 
     // Distributed Tracing Configuration
@@ -115,6 +115,29 @@ export const config = {
   features: {
     enableAnalytics: process.env.NEXT_PUBLIC_ENABLE_ANALYTICS === 'true',
     enableDebugMode: process.env.NODE_ENV === 'development',
+  },
+
+  // Logging Configuration
+  logging: {
+    // Production: INFO+ only, Development: DEBUG+, Test: NONE
+    level: process.env.NODE_ENV === 'production' ? 'INFO' : 
+           process.env.NODE_ENV === 'test' ? 'NONE' : 'DEBUG',
+    
+    // Disable verbose API logging in production
+    enableApiLogging: process.env.NODE_ENV === 'development',
+    
+    // Skip health check and polling endpoint logs
+    skipEndpoints: ['/health', '/status', '/tracking'],
+    
+    // Enable performance tracking
+    trackPerformance: true,
+    
+    // External logging services (production)
+    external: {
+      enabled: process.env.NODE_ENV === 'production',
+      endpoint: process.env.NEXT_PUBLIC_LOGGING_ENDPOINT,
+      apiKey: process.env.NEXT_PUBLIC_LOGGING_API_KEY,
+    },
   },
 
   // React Query Configuration

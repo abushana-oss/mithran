@@ -25,6 +25,21 @@ import {
   NominationCriteriaDto,
   EvaluationScoreDto
 } from './dto/supplier-nomination.dto';
+import {
+  CostCompetencyAnalysisDto,
+  BulkUpdateCostDataDto,
+  UpdateCostValueDto
+} from './dto/cost-competency.dto';
+import {
+  VendorAssessmentCriteriaDto,
+  BatchAssessmentUpdateDto
+} from './dto/vendor-assessment.dto';
+import {
+  VendorRatingMatrixDto,
+  BatchVendorRatingUpdateDto,
+  UpdateVendorRatingDto,
+  VendorRatingOverallScoresDto
+} from './dto/vendor-rating-matrix.dto';
 
 @ApiTags('supplier-nominations')
 @ApiBearerAuth()
@@ -49,6 +64,7 @@ export class SupplierNominationsController {
   ): Promise<SupplierNominationDto> {
     return this.supplierNominationsService.create(userId, createDto, token);
   }
+
 
   @Get('project/:projectId')
   @ApiOperation({ summary: 'Get all nominations for a project' })
@@ -77,6 +93,7 @@ export class SupplierNominationsController {
     @AccessToken() token: string,
     @Param('id') id: string
   ): Promise<SupplierNominationDto> {
+    // Secure logging - no sensitive data in production
     return this.supplierNominationsService.findOne(userId, id, token);
   }
 
@@ -239,12 +256,13 @@ export class SupplierNominationsController {
     return this.supplierNominationsService.getEvaluationData(
       userId,
       evaluationId,
+      'overview',
       token
     );
   }
 
   @Put('evaluations/:evaluationId/sections/:section')
-  @ApiOperation({ summary: 'Update specific evaluation section (overview, cost_analysis, rating_engine, capability, technical)' })
+  @ApiOperation({ summary: 'Update specific evaluation section (overview, cost_analysis, rating_engine, capability)' })
   @ApiResponse({
     status: 200,
     description: 'Evaluation section updated successfully'
@@ -265,6 +283,34 @@ export class SupplierNominationsController {
     );
   }
 
+  @Get('evaluations/:evaluationId/scores')
+  @ApiOperation({ summary: 'Get calculated evaluation scores for all sections' })
+  @ApiResponse({
+    status: 200,
+    description: 'Evaluation scores retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        overall_score: { type: 'number' },
+        cost_score: { type: 'number' },
+        rating_score: { type: 'number' },
+        capability_score: { type: 'number' },
+        overview_score: { type: 'number' }
+      }
+    }
+  })
+  getEvaluationScores(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('evaluationId') evaluationId: string
+  ): Promise<any> {
+    return this.supplierNominationsService.getEvaluationScores(
+      userId,
+      evaluationId,
+      token
+    );
+  }
+
   @Delete(':id')
   @ApiOperation({ summary: 'Delete supplier nomination' })
   @ApiResponse({
@@ -277,5 +323,549 @@ export class SupplierNominationsController {
     @Param('id') id: string
   ): Promise<void> {
     return this.supplierNominationsService.remove(userId, id, token);
+  }
+
+  // Ranking Factor Weights Management Endpoints
+  @Get(':nominationId/factor-weights')
+  @ApiOperation({ summary: 'Get ranking factor weights for a nomination' })
+  @ApiResponse({
+    status: 200,
+    description: 'Factor weights retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        costFactor: { type: 'number', example: 33.33 },
+        developmentCostFactor: { type: 'number', example: 33.33 },
+        leadTimeFactor: { type: 'number', example: 33.34 }
+      }
+    }
+  })
+  getFactorWeights(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string
+  ): Promise<{ costFactor: number; developmentCostFactor: number; leadTimeFactor: number }> {
+    return this.supplierNominationsService.getFactorWeights(userId, nominationId, token);
+  }
+
+  @Put(':nominationId/factor-weights')
+  @ApiOperation({ summary: 'Update ranking factor weights for a nomination' })
+  @ApiResponse({
+    status: 200,
+    description: 'Factor weights updated successfully'
+  })
+  updateFactorWeights(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string,
+    @Body() weights: {
+      costFactor: number;
+      developmentCostFactor: number;
+      leadTimeFactor: number;
+    }
+  ): Promise<boolean> {
+    return this.supplierNominationsService.updateFactorWeights(userId, nominationId, weights, token);
+  }
+
+  // Supplier Ranking Calculation Endpoints
+  @Post(':nominationId/calculate-rankings')
+  @ApiOperation({ summary: 'Calculate supplier rankings based on current data and weights' })
+  @ApiResponse({
+    status: 200,
+    description: 'Supplier rankings calculated successfully',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          vendorId: { type: 'string' },
+          costRank: { type: 'number' },
+          developmentCostRank: { type: 'number' },
+          leadTimeRank: { type: 'number' },
+          totalScore: { type: 'number' },
+          overallRank: { type: 'number' }
+        }
+      }
+    }
+  })
+  calculateSupplierRankings(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string
+  ): Promise<Array<{
+    vendorId: string;
+    costRank: number;
+    developmentCostRank: number;
+    leadTimeRank: number;
+    totalScore: number;
+    overallRank: number;
+  }>> {
+    return this.supplierNominationsService.calculateSupplierRankings(userId, nominationId, token);
+  }
+
+  @Post(':nominationId/store-rankings')
+  @ApiOperation({ summary: 'Calculate and store supplier rankings in database' })
+  @ApiResponse({
+    status: 200,
+    description: 'Supplier rankings stored successfully'
+  })
+  storeSupplierRankings(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string
+  ): Promise<boolean> {
+    return this.supplierNominationsService.storeSupplierRankings(userId, nominationId, token);
+  }
+
+  @Get(':nominationId/rankings')
+  @ApiOperation({ summary: 'Get stored supplier rankings' })
+  @ApiResponse({
+    status: 200,
+    description: 'Stored rankings retrieved successfully',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          vendorId: { type: 'string' },
+          netPriceUnit: { type: 'number' },
+          developmentCost: { type: 'number' },
+          leadTimeDays: { type: 'number' },
+          costRank: { type: 'number' },
+          developmentCostRank: { type: 'number' },
+          leadTimeRank: { type: 'number' },
+          totalScore: { type: 'number' },
+          overallRank: { type: 'number' },
+          calculatedAt: { type: 'string', format: 'date-time' }
+        }
+      }
+    }
+  })
+  getStoredRankings(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string
+  ): Promise<Array<{
+    vendorId: string;
+    netPriceUnit: number;
+    developmentCost: number;
+    leadTimeDays: number;
+    costRank: number;
+    developmentCostRank: number;
+    leadTimeRank: number;
+    totalScore: number;
+    overallRank: number;
+    calculatedAt: string;
+  }>> {
+    return this.supplierNominationsService.getStoredRankings(userId, nominationId, token);
+  }
+
+  // Cost Competency Analysis Endpoints
+  @Get(':id/cost-analysis')
+  @ApiOperation({ summary: 'Get cost competency analysis data for nomination' })
+  @ApiResponse({
+    status: 200,
+    description: 'Cost analysis data retrieved successfully',
+    type: [CostCompetencyAnalysisDto]
+  })
+  getCostAnalysis(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('id') nominationId: string
+  ): Promise<CostCompetencyAnalysisDto[]> {
+    return this.supplierNominationsService.getCostAnalysis(userId, nominationId, token);
+  }
+
+  @Post(':id/cost-analysis/init')
+  @ApiOperation({ summary: 'Initialize cost competency analysis data for nomination' })
+  @ApiResponse({
+    status: 201,
+    description: 'Cost analysis data initialized successfully'
+  })
+  initializeCostAnalysis(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('id') nominationId: string
+  ): Promise<void> {
+    return this.supplierNominationsService.initializeCostAnalysis(userId, nominationId, token);
+  }
+
+  @Put(':id/cost-analysis')
+  @ApiOperation({ summary: 'Bulk update cost competency analysis data' })
+  @ApiResponse({
+    status: 200,
+    description: 'Cost analysis data updated successfully'
+  })
+  updateCostAnalysis(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('id') nominationId: string,
+    @Body() updateDto: BulkUpdateCostDataDto
+  ): Promise<CostCompetencyAnalysisDto[]> {
+    return this.supplierNominationsService.updateCostAnalysis(userId, nominationId, updateDto, token);
+  }
+
+  @Put(':id/cost-analysis/:component')
+  @ApiOperation({ summary: 'Update specific cost component' })
+  @ApiResponse({
+    status: 200,
+    description: 'Cost component updated successfully'
+  })
+  updateCostComponent(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('id') nominationId: string,
+    @Param('component') costComponent: string,
+    @Body() updateDto: UpdateCostValueDto
+  ): Promise<void> {
+    return this.supplierNominationsService.updateCostComponent(userId, nominationId, costComponent, updateDto, token);
+  }
+
+  @Put(':id/cost-analysis/:component/vendor/:vendorId')
+  @ApiOperation({ summary: 'Update vendor-specific cost value' })
+  @ApiResponse({
+    status: 200,
+    description: 'Vendor cost value updated successfully'
+  })
+  updateVendorCostValue(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('id') nominationId: string,
+    @Param('component') costComponent: string,
+    @Param('vendorId') vendorId: string,
+    @Body() updateDto: { numericValue?: number; textValue?: string }
+  ): Promise<void> {
+    return this.supplierNominationsService.updateVendorCostValue(userId, nominationId, costComponent, vendorId, updateDto, token);
+  }
+
+  @Put(':id/cost-analysis/batch')
+  @ApiOperation({ summary: 'Batch update cost competency analysis data - ENTERPRISE BEST PRACTICE' })
+  @ApiResponse({
+    status: 200,
+    description: 'Cost analysis data updated successfully in batch'
+  })
+  batchUpdateCostAnalysis(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('id') nominationId: string,
+    @Body() updateDto: BulkUpdateCostDataDto
+  ): Promise<CostCompetencyAnalysisDto[]> {
+    return this.supplierNominationsService.batchUpdateCostAnalysis(userId, nominationId, updateDto, token);
+  }
+
+  // Capability Scoring Endpoints
+  @Get(':id/capability-scores')
+  @ApiOperation({ summary: 'Get capability scoring data for nomination' })
+  @ApiResponse({
+    status: 200,
+    description: 'Capability scores retrieved successfully'
+  })
+  getCapabilityScores(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('id') nominationId: string
+  ): Promise<any> {
+    return this.supplierNominationsService.getCapabilityScores(userId, nominationId, token);
+  }
+
+  @Post(':id/capability-scores/init')
+  @ApiOperation({ summary: 'Initialize capability scoring criteria for nomination' })
+  @ApiResponse({
+    status: 201,
+    description: 'Capability criteria initialized successfully'
+  })
+  initializeCapabilityScores(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('id') nominationId: string
+  ): Promise<void> {
+    return this.supplierNominationsService.initializeCapabilityScores(userId, nominationId, token);
+  }
+
+  @Put(':id/capability-scores/:criteriaId/vendor/:vendorId')
+  @ApiOperation({ summary: 'Update capability score for specific vendor and criteria' })
+  @ApiResponse({
+    status: 200,
+    description: 'Capability score updated successfully'
+  })
+  updateCapabilityScore(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('id') nominationId: string,
+    @Param('criteriaId') criteriaId: string,
+    @Param('vendorId') vendorId: string,
+    @Body() updateDto: { score: number }
+  ): Promise<void> {
+    return this.supplierNominationsService.updateCapabilityScore(userId, nominationId, criteriaId, vendorId, updateDto.score, token);
+  }
+
+  @Put(':id/capability-scores/batch')
+  @ApiOperation({ summary: 'Batch update capability scores - ENTERPRISE BEST PRACTICE' })
+  @ApiResponse({
+    status: 200,
+    description: 'Capability scores updated successfully in batch'
+  })
+  batchUpdateCapabilityScores(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('id') nominationId: string,
+    @Body() updateDto: {
+      updates: Array<{
+        criteriaId: string;
+        vendorId: string;
+        score: number;
+      }>
+    }
+  ): Promise<void> {
+    return this.supplierNominationsService.batchUpdateCapabilityScores(userId, nominationId, updateDto.updates, token);
+  }
+
+  // Vendor Assessment Matrix Endpoints
+  @Get(':nominationId/vendors/:vendorId/assessment')
+  @ApiOperation({ summary: 'Get vendor assessment criteria' })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment criteria retrieved successfully',
+    type: [VendorAssessmentCriteriaDto]
+  })
+  getVendorAssessmentCriteria(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string,
+    @Param('vendorId') vendorId: string
+  ): Promise<VendorAssessmentCriteriaDto[]> {
+    return this.supplierNominationsService.getVendorAssessmentCriteria(
+      userId,
+      nominationId,
+      vendorId,
+      token
+    );
+  }
+
+  @Post(':nominationId/vendors/:vendorId/assessment/init')
+  @ApiOperation({ summary: 'Initialize vendor assessment criteria' })
+  @ApiResponse({
+    status: 201,
+    description: 'Assessment criteria initialized successfully'
+  })
+  initializeVendorAssessmentCriteria(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string,
+    @Param('vendorId') vendorId: string
+  ): Promise<void> {
+    return this.supplierNominationsService.initializeVendorAssessmentCriteria(
+      userId,
+      nominationId,
+      vendorId,
+      token
+    );
+  }
+
+  @Put(':nominationId/vendors/:vendorId/assessment/:criteriaId')
+  @ApiOperation({ summary: 'Update individual assessment criterion' })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment criterion updated successfully'
+  })
+  updateVendorAssessmentCriterion(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string,
+    @Param('vendorId') vendorId: string,
+    @Param('criteriaId') criteriaId: string,
+    @Body() updateDto: Partial<{
+      actualScore: number;
+      totalScore: number;
+      riskSectionTotal: number;
+      riskActualScore: number;
+      minorNC: number;
+      majorNC: number;
+    }>
+  ): Promise<void> {
+    return this.supplierNominationsService.updateVendorAssessmentCriterion(
+      userId,
+      nominationId,
+      vendorId,
+      criteriaId,
+      updateDto,
+      token
+    );
+  }
+
+  @Put(':nominationId/vendors/:vendorId/assessment/batch')
+  @ApiOperation({ summary: 'Batch update vendor assessment criteria - ENTERPRISE BEST PRACTICE' })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment criteria updated successfully in batch',
+    type: [VendorAssessmentCriteriaDto]
+  })
+  batchUpdateVendorAssessmentCriteria(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string,
+    @Param('vendorId') vendorId: string,
+    @Body() updateDto: BatchAssessmentUpdateDto
+  ): Promise<VendorAssessmentCriteriaDto[]> {
+    return this.supplierNominationsService.batchUpdateVendorAssessmentCriteria(
+      userId,
+      nominationId,
+      vendorId,
+      updateDto.updates,
+      token
+    );
+  }
+
+  @Get(':nominationId/vendors/:vendorId/assessment/metrics')
+  @ApiOperation({ summary: 'Get calculated assessment metrics for vendor' })
+  @ApiResponse({
+    status: 200,
+    description: 'Assessment metrics calculated successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        overallScore1: { type: 'number' },
+        overallScore2: { type: 'number' },
+        totalActual: { type: 'number' },
+        totalPossible: { type: 'number' },
+        totalMinorNC: { type: 'number' },
+        totalMajorNC: { type: 'number' },
+        ratingStatus: { type: 'string', enum: ['excellent', 'good', 'needs_improvement'] }
+      }
+    }
+  })
+  getVendorAssessmentMetrics(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string,
+    @Param('vendorId') vendorId: string
+  ): Promise<{
+    overallScore1: number;
+    overallScore2: number;
+    totalActual: number;
+    totalPossible: number;
+    totalMinorNC: number;
+    totalMajorNC: number;
+    ratingStatus: 'excellent' | 'good' | 'needs_improvement';
+  }> {
+    return this.supplierNominationsService.getVendorAssessmentMetrics(
+      userId,
+      nominationId,
+      vendorId,
+      token
+    );
+  }
+
+  // =======================================
+  // Vendor Rating Matrix Endpoints (Simplified)
+  // =======================================
+
+  @Get(':nominationId/vendors/:vendorId/rating-matrix')
+  @ApiOperation({ summary: 'Get vendor rating matrix data' })
+  @ApiResponse({
+    status: 200,
+    description: 'Rating matrix retrieved successfully',
+    type: [VendorRatingMatrixDto]
+  })
+  getVendorRatingMatrix(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string,
+    @Param('vendorId') vendorId: string
+  ): Promise<VendorRatingMatrixDto[]> {
+    return this.supplierNominationsService.getVendorRatingMatrix(
+      userId,
+      nominationId,
+      vendorId,
+      token
+    );
+  }
+
+  @Post(':nominationId/vendors/:vendorId/rating-matrix/init')
+  @ApiOperation({ summary: 'Initialize vendor rating matrix with empty values' })
+  @ApiResponse({
+    status: 201,
+    description: 'Rating matrix initialized successfully'
+  })
+  initializeVendorRatingMatrix(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string,
+    @Param('vendorId') vendorId: string
+  ): Promise<void> {
+    return this.supplierNominationsService.initializeVendorRatingMatrix(
+      userId,
+      nominationId,
+      vendorId,
+      token
+    );
+  }
+
+  @Put(':nominationId/vendors/:vendorId/rating-matrix/:ratingId')
+  @ApiOperation({ summary: 'Update individual rating matrix item' })
+  @ApiResponse({
+    status: 200,
+    description: 'Rating item updated successfully'
+  })
+  updateVendorRatingItem(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string,
+    @Param('vendorId') vendorId: string,
+    @Param('ratingId') ratingId: string,
+    @Body() updateDto: UpdateVendorRatingDto
+  ): Promise<void> {
+    return this.supplierNominationsService.updateVendorRatingItem(
+      userId,
+      nominationId,
+      vendorId,
+      ratingId,
+      updateDto,
+      token
+    );
+  }
+
+  @Put(':nominationId/vendors/:vendorId/rating-matrix/batch')
+  @ApiOperation({ summary: 'Batch update rating matrix - ENTERPRISE BEST PRACTICE' })
+  @ApiResponse({
+    status: 200,
+    description: 'Rating matrix updated successfully in batch',
+    type: [VendorRatingMatrixDto]
+  })
+  batchUpdateVendorRatingMatrix(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string,
+    @Param('vendorId') vendorId: string,
+    @Body() updateDto: BatchVendorRatingUpdateDto
+  ): Promise<VendorRatingMatrixDto[]> {
+    return this.supplierNominationsService.batchUpdateVendorRatingMatrix(
+      userId,
+      nominationId,
+      vendorId,
+      updateDto.updates,
+      token
+    );
+  }
+
+  @Get(':nominationId/vendors/:vendorId/rating-matrix/overall-scores')
+  @ApiOperation({ summary: 'Get calculated overall scores for vendor rating' })
+  @ApiResponse({
+    status: 200,
+    description: 'Overall scores calculated successfully',
+    type: VendorRatingOverallScoresDto
+  })
+  getVendorRatingOverallScores(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string,
+    @Param('vendorId') vendorId: string
+  ): Promise<VendorRatingOverallScoresDto> {
+    return this.supplierNominationsService.getVendorRatingOverallScores(
+      userId,
+      nominationId,
+      vendorId,
+      token
+    );
   }
 }

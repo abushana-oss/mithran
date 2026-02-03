@@ -18,7 +18,4 @@ export function initializeApiClient() {
   // Setup authentication error handling (production-grade global auth handler)
   initializeAuthInterceptor();
 
-  if (process.env.NODE_ENV === 'development') {
-    console.log('✅ API Client initialized with UUID validation middleware');
-  }
 }

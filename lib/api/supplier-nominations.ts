@@ -173,6 +173,8 @@ export interface EvaluationData {
 export interface VendorEvaluation {
   id: string;
   vendorId: string;
+  vendorName: string;
+  supplierCode?: string;
   vendorType: VendorType;
   overallScore: number;
   overallRank?: number;
@@ -361,16 +363,22 @@ export async function storeEvaluationData(
  * Get complete evaluation data
  */
 export async function getEvaluationData(
-  evaluationId: string
+  evaluationId: string,
+  section: string
 ): Promise<any> {
-  const response = await apiClient.get(`/supplier-nominations/evaluations/${evaluationId}/data`);
-  return response;
+  try {
+    const response = await apiClient.get(`/supplier-nominations/evaluations/${evaluationId}/sections/${section}`);
+    return response;
+  } catch (error) {
+    console.error('getEvaluationData error:', error);
+    throw error;
+  }
 }
 
 /**
- * Update specific evaluation section (overview, cost_analysis, rating_engine, capability, technical)
+ * Save evaluation section data (overview, cost_analysis, rating_engine, capability, technical)
  */
-export async function updateEvaluationSection(
+export async function saveEvaluationData(
   evaluationId: string,
   section: string,
   sectionData: any
@@ -447,6 +455,42 @@ export function getRecommendationColor(recommendation: Recommendation): string {
   }
 }
 
+// ============================================================================
+// DEBUG UTILITIES
+// ============================================================================
+
+/**
+ * Reset API circuit breaker (for debugging)
+ * Call this from browser console: resetApiCircuitBreaker()
+ */
+export function resetApiCircuitBreaker(): void {
+  try {
+    apiClient.resetCircuitBreaker();
+    console.log('Circuit breaker reset successfully');
+  } catch (error) {
+    console.error('Failed to reset circuit breaker:', error);
+  }
+}
+
+/**
+ * Get circuit breaker status
+ */
+export function getApiCircuitBreakerStatus() {
+  try {
+    const metrics = apiClient.getCircuitBreakerMetrics();
+    console.log('Circuit Breaker Status:', metrics);
+    return metrics;
+  } catch (error) {
+    console.error('Failed to get circuit breaker status:', error);
+  }
+}
+
+// Expose functions globally for debugging
+if (typeof window !== 'undefined') {
+  (window as any).resetApiCircuitBreaker = resetApiCircuitBreaker;
+  (window as any).getApiCircuitBreakerStatus = getApiCircuitBreakerStatus;
+}
+
 export function getNominationTypeLabel(type: NominationType): string {
   switch (type) {
     case NominationType.OEM:
@@ -457,5 +501,132 @@ export function getNominationTypeLabel(type: NominationType): string {
       return 'Hybrid';
     default:
       return 'Unknown';
+  }
+}
+
+// ============================================================================
+// RANKING FACTOR WEIGHTS API
+// ============================================================================
+
+export interface FactorWeights {
+  costFactor: number;
+  developmentCostFactor: number;
+  leadTimeFactor: number;
+}
+
+/**
+ * Get ranking factor weights for a nomination
+ */
+export async function getFactorWeights(nominationId: string): Promise<FactorWeights> {
+  try {
+    const response = await apiClient.get(`/supplier-nominations/${nominationId}/factor-weights`);
+    return response;
+  } catch (error) {
+    console.error('Failed to get factor weights:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update ranking factor weights for a nomination
+ */
+export async function updateFactorWeights(nominationId: string, weights: FactorWeights): Promise<boolean> {
+  try {
+    const response = await apiClient.put(`/supplier-nominations/${nominationId}/factor-weights`, weights);
+    return response;
+  } catch (error) {
+    console.error('Failed to update factor weights:', error);
+    throw error;
+  }
+}
+
+// ============================================================================
+// SUPPLIER RANKING API
+// ============================================================================
+
+export interface SupplierRanking {
+  vendorId: string;
+  vendorName?: string;
+  costRank: number;
+  developmentCostRank: number;
+  leadTimeRank: number;
+  totalScore: number;
+  overallRank: number;
+}
+
+export interface StoredRanking extends SupplierRanking {
+  netPriceUnit: number;
+  developmentCost: number;
+  leadTimeDays: number;
+  calculatedAt: string;
+}
+
+/**
+ * Calculate supplier rankings based on current data and weights
+ */
+export async function calculateSupplierRankings(nominationId: string): Promise<SupplierRanking[]> {
+  try {
+    const response = await apiClient.post(`/supplier-nominations/${nominationId}/calculate-rankings`);
+    return response || [];
+  } catch (error) {
+    console.error('Failed to calculate supplier rankings:', error);
+    throw error;
+  }
+}
+
+/**
+ * Calculate and store supplier rankings in database
+ */
+export async function storeSupplierRankings(nominationId: string): Promise<boolean> {
+  try {
+    const response = await apiClient.post(`/supplier-nominations/${nominationId}/store-rankings`);
+    return response;
+  } catch (error) {
+    console.error('Failed to store supplier rankings:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get stored supplier rankings from database
+ */
+export async function getStoredRankings(nominationId: string): Promise<StoredRanking[]> {
+  try {
+    const response = await apiClient.get(`/supplier-nominations/${nominationId}/rankings`);
+    return response || [];
+  } catch (error) {
+    console.error('Failed to get stored rankings:', error);
+    throw error;
+  }
+}
+
+// ============================================================================
+// EVALUATION SCORES API
+// ============================================================================
+
+export interface EvaluationScores {
+  overall_score: number;
+  cost_score: number;
+  rating_score: number;
+  capability_score: number;
+  overview_score: number;
+}
+
+/**
+ * Get calculated evaluation scores for all sections
+ */
+export async function getEvaluationScores(evaluationId: string): Promise<EvaluationScores> {
+  try {
+    const response = await apiClient.get(`/supplier-nominations/evaluations/${evaluationId}/scores`);
+    return response || {
+      overall_score: 0,
+      cost_score: 0,
+      rating_score: 0,
+      capability_score: 0,
+      overview_score: 0
+    };
+  } catch (error) {
+    console.error('Failed to get evaluation scores:', error);
+    throw error;
   }
 }

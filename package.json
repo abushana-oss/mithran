@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "next dev --experimental-next-config-strip-types",
     "build": "next build --experimental-next-config-strip-types",
-    "start": "next start --experimental-next-config-strip-types",
+    "start": "node .next/standalone/server.js",
+    "start:next": "next start --experimental-next-config-strip-types",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
   },

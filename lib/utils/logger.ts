@@ -35,19 +35,18 @@ class Logger {
   private minLevel: LogLevel;
 
   private constructor() {
-    // Set log level based on environment
+    // Set log level based on environment - Industry standard levels
     if (process.env.NODE_ENV === 'production') {
-      this.minLevel = LogLevel.WARN; // Only warnings and errors in production
+      this.minLevel = LogLevel.INFO; // INFO+ for production (high-level events)
     } else if (process.env.NODE_ENV === 'test') {
       this.minLevel = LogLevel.NONE; // No logs in tests
     } else {
       this.minLevel = LogLevel.DEBUG; // All logs in development
     }
 
-    // Add default console handler in development
-    if (process.env.NODE_ENV === 'development') {
-      this.addHandler(this.consoleHandler);
-    }
+    // Add console handler for development and production
+    // Production needs structured logging for external systems
+    this.addHandler(this.consoleHandler);
   }
 
   static getInstance(): Logger {

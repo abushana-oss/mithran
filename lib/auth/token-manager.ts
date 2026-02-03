@@ -37,10 +37,6 @@ class AuthTokenManager {
     
     if (now >= (this.currentToken.expiresAt - bufferTime)) {
       // Signal refresh needed to auth provider
-      if (process.env.NODE_ENV === 'development') {
-        const minutesToExpiry = Math.round((this.currentToken.expiresAt - now) / (60 * 1000))
-        console.log('[TokenManager] Token near expiry, signaling refresh. Minutes to expiry:', minutesToExpiry)
-      }
       this.signalRefreshNeeded()
       return null
     }
@@ -53,15 +49,6 @@ class AuthTokenManager {
    * Auth provider owns the refresh token - never exposed here
    */
   setToken(token: AccessToken | null): void {
-    if (process.env.NODE_ENV === 'development') {
-      if (token) {
-        const minutesToExpiry = Math.round((token.expiresAt - Date.now()) / (60 * 1000))
-        console.log('[TokenManager] Token set, valid for:', minutesToExpiry, 'minutes')
-      } else {
-        console.log('[TokenManager] Token cleared')
-      }
-    }
-    
     this.currentToken = token
     // Reset refresh signal when new token is set
     this.refreshSignalSent = false

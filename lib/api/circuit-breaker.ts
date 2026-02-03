@@ -52,6 +52,7 @@ export class CircuitBreaker {
    * Execute a function with circuit breaker protection
    */
   async execute<T>(fn: () => Promise<T>): Promise<T> {
+    console.log('[Circuit Breaker] EXECUTE CALLED:', { state: this.state });
     if (this.state === CircuitBreakerState.OPEN) {
       // Check if enough time has passed to try HALF_OPEN
       if (Date.now() >= (this.nextAttemptTime || 0)) {
@@ -69,13 +70,56 @@ export class CircuitBreaker {
     this.totalRequests++;
 
     try {
+      console.log('[Circuit Breaker] CALLING FUNCTION');
       const result = await fn();
+      console.log('[Circuit Breaker] FUNCTION SUCCESS');
       this.onSuccess();
       return result;
     } catch (error) {
-      this.onFailure();
+      console.log('[Circuit Breaker] FUNCTION ERROR:', error);
+      // Only count infrastructure failures, not business logic errors
+      if (this.isInfrastructureFailure(error)) {
+        this.onFailure();
+      } else {
+        this.onSuccess(); // Client errors don't count as failures
+      }
       throw error;
     }
+  }
+
+  /**
+   * Determine if an error represents infrastructure failure vs business logic
+   * Infrastructure failures: Network errors, 5xx server errors, timeouts
+   * Business logic: 4xx client errors, auth failures, validation errors
+   */
+  private isInfrastructureFailure(error: any): boolean {
+    // Network errors (DNS, connection refused, etc.)
+    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+      return true;
+    }
+    
+    // Timeout errors
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      return true;
+    }
+    
+    // Check for ApiError with status codes
+    if (error?.statusCode) {
+      const statusCode = error.statusCode;
+      
+      // 5xx server errors are infrastructure failures
+      if (statusCode >= 500 && statusCode < 600) {
+        return true;
+      }
+      
+      // 4xx client errors are business logic, not infrastructure
+      if (statusCode >= 400 && statusCode < 500) {
+        return false;
+      }
+    }
+    
+    // Default to infrastructure failure for unknown errors
+    return true;
   }
 
   private onSuccess(): void {
@@ -116,6 +160,17 @@ export class CircuitBreaker {
     this.successes = 0;
     this.lastFailureTime = null;
     this.nextAttemptTime = null;
+  }
+
+  /**
+   * Reset circuit breaker when health check confirms backend is healthy
+   * Only call this when you have confirmed the backend is operational
+   */
+  resetOnHealthy(): void {
+    if (this.state === CircuitBreakerState.OPEN) {
+      this.reset();
+      console.log('[CircuitBreaker] Reset due to confirmed healthy backend');
+    }
   }
 
   private addResult(success: boolean): void {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React from 'react';
 
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -27,12 +27,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+// import {
+//   DropdownMenu,
+//   DropdownMenuContent,
+//   DropdownMenuItem,
+//   DropdownMenuTrigger,
+// } from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
@@ -41,7 +41,7 @@ import { Input } from '@/components/ui/input';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, Plus, X, Search, ChevronDown } from 'lucide-react';
+import { Loader2, Search } from 'lucide-react';
 import {
   useBOMs,
   useBOMItems
@@ -180,7 +180,7 @@ export function NewEvaluationDialog({
       router.push(`/projects/${projectId}/supplier-evaluation`);
     } catch (error) {
       toast.error('Failed to create supplier evaluation. Please try again.');
-      
+
       // Log errors in development only
       if (process.env.NODE_ENV === 'development') {
         console.error('Error creating supplier evaluation:', error);
@@ -253,133 +253,133 @@ export function NewEvaluationDialog({
 
                 {/* BOM Selection */}
                 <div className="space-y-4">
-                    <div className="flex items-center gap-2 pb-2 border-b">
-                      <h3 className="text-lg font-semibold">BOM Selection</h3>
-                    </div>
+                  <div className="flex items-center gap-2 pb-2 border-b">
+                    <h3 className="text-lg font-semibold">BOM Selection</h3>
+                  </div>
 
+                  <FormField
+                    control={form.control}
+                    name="bomId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Select BOM</FormLabel>
+                        <Select
+                          onValueChange={handleBomChange}
+                          value={field.value}
+                          disabled={bomsLoading}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a BOM" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {boms.map((bom) => (
+                              <SelectItem key={bom.id} value={bom.id}>
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{bom.name}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    v{bom.version} • {bom.totalItems} items • {bom.status}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Multi-Select Parts */}
+                  {selectedBomId && (
                     <FormField
                       control={form.control}
-                      name="bomId"
-                      render={({ field }) => (
+                      name="bomItemIds"
+                      render={() => (
                         <FormItem>
-                          <FormLabel>Select BOM</FormLabel>
-                          <Select
-                            onValueChange={handleBomChange}
-                            value={field.value}
-                            disabled={bomsLoading}
-                          >
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select a BOM" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {boms.map((bom) => (
-                                <SelectItem key={bom.id} value={bom.id}>
-                                  <div className="flex flex-col">
-                                    <span className="font-medium">{bom.name}</span>
-                                    <span className="text-xs text-muted-foreground">
-                                      v{bom.version} • {bom.totalItems} items • {bom.status}
-                                    </span>
+                          <FormLabel>Select Parts (Multiple)</FormLabel>
+                          <Card>
+                            <CardHeader className="pb-3">
+                              <CardDescription>
+                                Select multiple parts for supplier evaluation
+                              </CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                              {/* Search Bar for BOM Items */}
+                              <div className="mb-3">
+                                <div className="relative">
+                                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                                  <Input
+                                    placeholder="Search parts by name, part number, or material..."
+                                    value={bomSearch}
+                                    onChange={(e) => setBomSearch(e.target.value)}
+                                    className="pl-8"
+                                  />
+                                </div>
+                              </div>
+                              <div className="h-64 overflow-y-auto pr-2">
+                                <div className="space-y-2">
+                                  {bomItemsLoading ? (
+                                    <div className="text-sm text-muted-foreground p-4 text-center">
+                                      Loading parts...
+                                    </div>
+                                  ) : filteredBomItems.length === 0 ? (
+                                    <div className="text-sm text-muted-foreground p-4 text-center">
+                                      {bomSearch ? 'No parts found matching search criteria' : 'No parts available'}
+                                    </div>
+                                  ) : (
+                                    filteredBomItems.map((item) => (
+                                      <div key={item.id} className="flex items-start space-x-2 p-2 hover:bg-muted/50 rounded">
+                                        <Checkbox
+                                          id={`part-${item.id}`}
+                                          checked={selectedBomItemIds.includes(item.id)}
+                                          onCheckedChange={() => toggleBomItem(item.id)}
+                                        />
+                                        <div className="flex-1 min-w-0">
+                                          <label
+                                            htmlFor={`part-${item.id}`}
+                                            className="text-sm font-medium cursor-pointer"
+                                          >
+                                            {item.name}
+                                          </label>
+                                          <div className="text-xs text-muted-foreground">
+                                            {item.partNumber && `Part: ${item.partNumber} • `}
+                                            {item.itemType} • Qty: {item.quantity}
+                                            {item.material && ` • ${item.material}`}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Selected Parts Display */}
+                              {selectedBomItemIds.length > 0 && (
+                                <div className="mt-3 pt-3 border-t">
+                                  <div className="text-xs font-medium text-muted-foreground mb-2">
+                                    Selected Parts ({selectedBomItemIds.length}):
                                   </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                                  <div className="flex flex-wrap gap-1">
+                                    {selectedBomItemIds.map((itemId) => {
+                                      const item = bomItems.find(b => b.id === itemId);
+                                      return item ? (
+                                        <Badge key={itemId} variant="secondary" className="text-xs">
+                                          {item.name}
+                                        </Badge>
+                                      ) : null;
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-
-                    {/* Multi-Select Parts */}
-                    {selectedBomId && (
-                      <FormField
-                        control={form.control}
-                        name="bomItemIds"
-                        render={() => (
-                          <FormItem>
-                            <FormLabel>Select Parts (Multiple)</FormLabel>
-                            <Card>
-                              <CardHeader className="pb-3">
-                                <CardDescription>
-                                  Select multiple parts for supplier evaluation
-                                </CardDescription>
-                              </CardHeader>
-                              <CardContent>
-                                {/* Search Bar for BOM Items */}
-                                <div className="mb-3">
-                                  <div className="relative">
-                                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                                    <Input
-                                      placeholder="Search parts by name, part number, or material..."
-                                      value={bomSearch}
-                                      onChange={(e) => setBomSearch(e.target.value)}
-                                      className="pl-8"
-                                    />
-                                  </div>
-                                </div>
-                                <div className="h-64 overflow-y-auto pr-2">
-                                  <div className="space-y-2">
-                                    {bomItemsLoading ? (
-                                      <div className="text-sm text-muted-foreground p-4 text-center">
-                                        Loading parts...
-                                      </div>
-                                    ) : filteredBomItems.length === 0 ? (
-                                      <div className="text-sm text-muted-foreground p-4 text-center">
-                                        {bomSearch ? 'No parts found matching search criteria' : 'No parts available'}
-                                      </div>
-                                    ) : (
-                                      filteredBomItems.map((item) => (
-                                        <div key={item.id} className="flex items-start space-x-2 p-2 hover:bg-muted/50 rounded">
-                                          <Checkbox
-                                            id={`part-${item.id}`}
-                                            checked={selectedBomItemIds.includes(item.id)}
-                                            onCheckedChange={() => toggleBomItem(item.id)}
-                                          />
-                                          <div className="flex-1 min-w-0">
-                                            <label
-                                              htmlFor={`part-${item.id}`}
-                                              className="text-sm font-medium cursor-pointer"
-                                            >
-                                              {item.name}
-                                            </label>
-                                            <div className="text-xs text-muted-foreground">
-                                              {item.partNumber && `Part: ${item.partNumber} • `}
-                                              {item.itemType} • Qty: {item.quantity}
-                                              {item.material && ` • ${item.material}`}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ))
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Selected Parts Display */}
-                                {selectedBomItemIds.length > 0 && (
-                                  <div className="mt-3 pt-3 border-t">
-                                    <div className="text-xs font-medium text-muted-foreground mb-2">
-                                      Selected Parts ({selectedBomItemIds.length}):
-                                    </div>
-                                    <div className="flex flex-wrap gap-1">
-                                      {selectedBomItemIds.map((itemId) => {
-                                        const item = bomItems.find(b => b.id === itemId);
-                                        return item ? (
-                                          <Badge key={itemId} variant="secondary" className="text-xs">
-                                            {item.name}
-                                          </Badge>
-                                        ) : null;
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-                              </CardContent>
-                            </Card>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    )}
+                  )}
                 </div>
 
 

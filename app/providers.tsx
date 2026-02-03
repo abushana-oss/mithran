@@ -9,6 +9,9 @@ import { BackendAuthProvider } from '@/lib/providers/backend-auth-provider'
 import { AuthQuerySync } from '@/lib/providers/auth-query-sync'
 import { initializeApiClient } from '@/lib/api/init'
 import { initializeCrypto } from '@/lib/init/crypto-init'
+import { useCorrelationContext } from '@/lib/hooks/useCorrelationContext'
+import { CorrelationAuthSync } from '@/lib/components/CorrelationAuthSync'
+import '@/lib/utils/api-diagnostics' // Import diagnostics for browser console
 import dynamic from 'next/dynamic'
 
 // Dynamically import React Query DevTools (development only)
@@ -21,6 +24,9 @@ const ReactQueryDevtools = dynamic(
 )
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  // Initialize correlation context for request tracing (without auth dependency)
+  useCorrelationContext();
+
   useEffect(() => {
     // Initialize crypto APIs first (critical for security)
     initializeCrypto().then(() => {
@@ -38,6 +44,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
       <BackendAuthProvider>
+        <CorrelationAuthSync />
         <QueryProvider>
           <AuthQuerySync />
           <TooltipProvider>

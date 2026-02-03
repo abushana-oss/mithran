@@ -5,6 +5,8 @@
  */
 
 import { isDevelopment } from '../config';
+import { createSecureLogger } from '../utils/secure-logger';
+import { correlationManager, generateCorrelationContext } from '../utils/tracing';
 
 export interface RequestConfig {
   url: string;
@@ -13,15 +15,21 @@ export interface RequestConfig {
   body?: any;
 }
 
+const secureLogger = createSecureLogger('API');
+
 /**
  * Request logger interceptor
- * Logs all outgoing requests in development mode
+ * Uses secure logging that masks sensitive data
  */
 export const requestLoggerInterceptor = (config: RequestConfig): RequestConfig => {
-  if (isDevelopment) {
-    console.log(`[API Request] ${config.method} ${config.url}`, {
-      body: config.body,
+  // Skip logging for health checks and frequent polling endpoints
+  const isHealthCheck = config.url.includes('/health');
+  const isFrequentPolling = config.url.includes('/status') || config.url.includes('/tracking');
+  
+  if (!isHealthCheck && !isFrequentPolling) {
+    secureLogger.logRequest(config.method, config.url, {
       headers: config.headers,
+      body: config.body
     });
   }
   return config;
@@ -29,23 +37,37 @@ export const requestLoggerInterceptor = (config: RequestConfig): RequestConfig =
 
 /**
  * Response logger interceptor
- * Logs all incoming responses in development mode
+ * Uses secure logging that masks sensitive data
  */
 export const responseLoggerInterceptor = (response: any): any => {
-  if (isDevelopment) {
-    console.log('[API Response]', response);
+  const isHealthCheck = response?.config?.url?.includes('/health');
+  
+  if (!isHealthCheck) {
+    secureLogger.logResponse(
+      response?.status || 0,
+      response?.config?.url || '',
+      {
+        data: response?.data
+      }
+    );
   }
   return response;
 };
 
 
 /**
- * Add correlation ID for request tracing
+ * Add correlation ID and distributed tracing headers
  */
 export const correlationIdInterceptor = (config: RequestConfig): RequestConfig => {
-  const correlationId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  // Get or generate correlation context
+  let context = correlationManager.get();
+  if (!context) {
+    context = generateCorrelationContext();
+  }
 
-  config.headers['X-Correlation-ID'] = correlationId;
+  // Add W3C Trace Context and correlation headers
+  const tracingHeaders = correlationManager.getHeaders();
+  Object.assign(config.headers, tracingHeaders);
 
   return config;
 };

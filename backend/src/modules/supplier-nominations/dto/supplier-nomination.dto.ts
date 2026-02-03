@@ -280,6 +280,12 @@ export class VendorEvaluationDto {
   @ApiProperty()
   vendorId: string;
 
+  @ApiProperty()
+  vendorName: string;
+
+  @ApiPropertyOptional()
+  supplierCode?: string;
+
   @ApiProperty({ enum: VendorType })
   vendorType: VendorType;
 

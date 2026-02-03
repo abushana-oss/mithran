@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { ArrowLeft, Search, MapPin, Send, Edit, Trash2, Loader2, Box, Package, CheckCircle2, Circle, Clock, Mail, Phone, ChevronRight, Users, FileCheck, Star } from 'lucide-react';
+import { ArrowLeft, Search, MapPin, Send, Edit, Trash2, Loader2, Box, Package, CheckCircle2, Circle, Clock, Mail, Phone, ChevronRight } from 'lucide-react';
 import { useVendors } from '@/lib/api/hooks/useVendors';
 import { useSupplierEvaluationGroup, useUpdateSupplierEvaluationGroup } from '@/lib/api/hooks/useSupplierEvaluationGroups';
 import { BOMItemDialog } from '@/components/features/bom/BOMItemDialog';

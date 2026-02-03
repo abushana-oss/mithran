@@ -20,7 +20,7 @@ export function ManufacturingProcessSection({ bomItemId }: ManufacturingProcessS
   const [editProcess, setEditProcess] = useState<any | null>(null);
 
   // Fetch process costs from database
-  const { data, isLoading, error } = useProcessCosts({
+  const { data, isLoading } = useProcessCosts({
     bomItemId,
     isActive: true,
     enabled: !!bomItemId,

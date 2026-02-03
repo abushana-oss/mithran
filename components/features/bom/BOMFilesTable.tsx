@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { 
   FileText, 
   Box, 
-  Download, 
   Eye, 
   Filter,
   Search,
@@ -208,7 +207,7 @@ export function BOMFilesTable({ items, onViewItem }: BOMFilesTableProps) {
               </tr>
             </thead>
             <tbody>
-              {filteredFiles.map((file, index) => (
+              {filteredFiles.map((file) => (
                 <tr key={`${file.item.id}-${file.fileType}`} className="border-b hover:bg-muted/30">
                   <td className="p-4">
                     <div className="flex items-center gap-3">

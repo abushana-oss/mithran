@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Search, Plus, FileText, Box, Eye } from 'lucide-react';
+import { Search, Plus, FileText, Box } from 'lucide-react';
 
 interface BOMItem {
   id: string;
