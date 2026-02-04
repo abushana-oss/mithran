@@ -117,21 +117,41 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
     loadData();
   }, [nominationId, vendorId]);
 
-  // Handle field updates
+  // Handle field updates with proper validation
   const handleFieldChange = (id: string, field: keyof UpdateVendorRatingData, value: number) => {
+    // Validate ranges based on field type
+    let validatedValue = value;
+    
+    if (field === 'sectionWiseCapabilityPercent' || field === 'riskMitigationPercent') {
+      // Percentage fields: 0-100
+      validatedValue = Math.max(0, Math.min(100, value));
+    } else if (field === 'minorNC' || field === 'majorNC') {
+      // NC fields: 0-999
+      validatedValue = Math.max(0, Math.min(999, Math.floor(value)));
+    }
+    
     setEditingValues(prev => ({
       ...prev,
       [id]: {
         ...prev[id],
         id,
-        [field]: value
+        [field]: validatedValue
       }
     }));
   };
 
   // Calculate real-time overall scores based on current editing state
   const calculateCurrentOverallScores = () => {
-    if (ratingData.length === 0) return overallScores;
+    // Only calculate if we have real API data
+    if (!ratingData || ratingData.length === 0) {
+      return {
+        sectionWiseCapability: 0,
+        riskMitigation: 0,
+        totalMinorNC: 0,
+        totalMajorNC: 0,
+        totalRecords: 0
+      };
+    }
 
     let totalSectionCapability = 0;
     let totalRiskMitigation = 0;
@@ -143,10 +163,10 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
       const editing = editingValues[item.id];
       
       // Use edited values if available, otherwise use original values
-      const sectionCapability = editing?.sectionWiseCapabilityPercent ?? item.sectionWiseCapabilityPercent;
-      const riskMitigation = editing?.riskMitigationPercent ?? item.riskMitigationPercent;
-      const minorNC = editing?.minorNC ?? item.minorNC;
-      const majorNC = editing?.majorNC ?? item.majorNC;
+      const sectionCapability = editing?.sectionWiseCapabilityPercent ?? (item.sectionWiseCapabilityPercent || 0);
+      const riskMitigation = editing?.riskMitigationPercent ?? (item.riskMitigationPercent || 0);
+      const minorNC = editing?.minorNC ?? (item.minorNC || 0);
+      const majorNC = editing?.majorNC ?? (item.majorNC || 0);
 
       totalSectionCapability += sectionCapability;
       totalRiskMitigation += riskMitigation;
@@ -347,21 +367,16 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(ratingData.length === 0 ? [
-                { id: '1', sNo: 1, category: 'Quality', assessmentAspects: 'Manufacturing Capability', sectionWiseCapabilityPercent: 0, riskMitigationPercent: 0, minorNC: 0, majorNC: 0 },
-                { id: '2', sNo: 2, category: 'Quality', assessmentAspects: 'Problem Solving Capability', sectionWiseCapabilityPercent: 0, riskMitigationPercent: 0, minorNC: 0, majorNC: 0 },
-                { id: '3', sNo: 3, category: 'Quality', assessmentAspects: 'Quality Control Capability', sectionWiseCapabilityPercent: 0, riskMitigationPercent: 0, minorNC: 0, majorNC: 0 },
-                { id: '4', sNo: 4, category: 'Quality', assessmentAspects: 'Prevention Capability', sectionWiseCapabilityPercent: 0, riskMitigationPercent: 0, minorNC: 0, majorNC: 0 },
-                { id: '5', sNo: 5, category: 'Cost', assessmentAspects: 'Cost', sectionWiseCapabilityPercent: 0, riskMitigationPercent: 0, minorNC: 0, majorNC: 0 },
-                { id: '6', sNo: 6, category: 'Logistics', assessmentAspects: 'Delivery Performance', sectionWiseCapabilityPercent: 0, riskMitigationPercent: 0, minorNC: 0, majorNC: 0 },
-                { id: '7', sNo: 7, category: 'Logistics', assessmentAspects: 'Customer Supplier Management', sectionWiseCapabilityPercent: 0, riskMitigationPercent: 0, minorNC: 0, majorNC: 0 },
-                { id: '8', sNo: 8, category: 'Development', assessmentAspects: 'Design & Development', sectionWiseCapabilityPercent: 0, riskMitigationPercent: 0, minorNC: 0, majorNC: 0 },
-                { id: '9', sNo: 9, category: 'Management', assessmentAspects: 'Strategy', sectionWiseCapabilityPercent: 0, riskMitigationPercent: 0, minorNC: 0, majorNC: 0 },
-                { id: '10', sNo: 10, category: 'Management', assessmentAspects: 'Management Culture', sectionWiseCapabilityPercent: 0, riskMitigationPercent: 0, minorNC: 0, majorNC: 0 },
-                { id: '11', sNo: 11, category: 'Management', assessmentAspects: 'TQM culture focus', sectionWiseCapabilityPercent: 0, riskMitigationPercent: 0, minorNC: 0, majorNC: 0 },
-                { id: '12', sNo: 12, category: 'Management', assessmentAspects: 'Legal & statutory Compliances', sectionWiseCapabilityPercent: 0, riskMitigationPercent: 0, minorNC: 0, majorNC: 0 },
-                { id: '13', sNo: 13, category: 'Core Process', assessmentAspects: 'Commodity', sectionWiseCapabilityPercent: 0, riskMitigationPercent: 0, minorNC: 0, majorNC: 0 }
-              ] : ratingData).map((item) => (
+              {ratingData.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center text-gray-400 py-8">
+                    {isLoading ? 'Loading rating matrix...' : 'No rating data available'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                ratingData
+                  .sort((a, b) => (a.sortOrder || a.sNo) - (b.sortOrder || b.sNo))
+                  .map((item) => (
                     <TableRow key={item.id} className="border-gray-700">
                       <TableCell className="text-gray-300 text-center">{item.sNo}</TableCell>
                       <TableCell className="text-gray-300 font-medium text-center">{item.category}</TableCell>
@@ -429,9 +444,10 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
                         )}
                       </TableCell>
                     </TableRow>
-                ))}
+                  ))
+              )}
                 
-                {/* Overall Score Row - matching the image */}
+              {/* Overall Score Row - matching the image */}
                 <TableRow className="bg-yellow-200 border-t-2 border-gray-600">
                   <TableCell colSpan={3} className="text-black font-bold text-center py-3">
                     Overall Score

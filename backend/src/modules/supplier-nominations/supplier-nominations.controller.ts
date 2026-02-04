@@ -802,14 +802,15 @@ export class SupplierNominationsController {
   @ApiOperation({ summary: 'Initialize vendor rating matrix with empty values' })
   @ApiResponse({
     status: 201,
-    description: 'Rating matrix initialized successfully'
+    description: 'Rating matrix initialized successfully',
+    type: [VendorRatingMatrixDto]
   })
   initializeVendorRatingMatrix(
     @CurrentUser('id') userId: string,
     @AccessToken() token: string,
     @Param('nominationId') nominationId: string,
     @Param('vendorId') vendorId: string
-  ): Promise<void> {
+  ): Promise<VendorRatingMatrixDto[]> {
     return this.supplierNominationsService.initializeVendorRatingMatrix(
       userId,
       nominationId,
@@ -856,6 +857,14 @@ export class SupplierNominationsController {
     @Param('vendorId') vendorId: string,
     @Body() updateDto: BatchVendorRatingUpdateDto
   ): Promise<VendorRatingMatrixDto[]> {
+    console.log('[CONTROLLER] Received batch update:', {
+      userId,
+      nominationId, 
+      vendorId,
+      updatesLength: updateDto?.updates?.length || 0,
+      firstUpdate: updateDto?.updates?.[0] || 'No updates'
+    });
+    
     return this.supplierNominationsService.batchUpdateVendorRatingMatrix(
       userId,
       nominationId,

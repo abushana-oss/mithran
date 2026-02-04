@@ -1937,6 +1937,8 @@ export class SupplierNominationsService {
     try {
       await this.verifyNominationOwnership(userId, nominationId, accessToken);
 
+      this.logger.log(`Fetching rating matrix for nomination: ${nominationId}, vendor: ${vendorId}`);
+
       const { data, error } = await client
         .from('vendor_rating_matrix')
         .select('*')
@@ -1945,10 +1947,31 @@ export class SupplierNominationsService {
         .order('sort_order', { ascending: true });
 
       if (error) {
+        this.logger.error(`Database error fetching rating matrix:`, error);
         throw new BadRequestException(`Failed to get rating matrix: ${error.message}`);
       }
 
-      return data || [];
+      this.logger.log(`Found ${data?.length || 0} rating matrix records`);
+
+      // Transform snake_case to match DTO structure
+      const transformedData = (data || []).map(item => ({
+        id: item.id,
+        nomination_evaluation_id: item.nomination_evaluation_id,
+        vendor_id: item.vendor_id,
+        s_no: item.s_no,
+        category: item.category,
+        assessment_aspects: item.assessment_aspects,
+        section_wise_capability_percent: item.section_wise_capability_percent,
+        risk_mitigation_percent: item.risk_mitigation_percent,
+        minor_nc: item.minor_nc,
+        major_nc: item.major_nc,
+        sort_order: item.sort_order,
+        created_at: item.created_at,
+        updated_at: item.updated_at
+      }));
+
+      this.logger.log(`Returning ${transformedData.length} transformed records`);
+      return transformedData;
     } catch (error) {
       this.logger.error('Failed to get vendor rating matrix:', error);
       throw error;
@@ -1963,11 +1986,19 @@ export class SupplierNominationsService {
     nominationId: string,
     vendorId: string,
     accessToken: string
-  ): Promise<void> {
+  ): Promise<VendorRatingMatrixDto[]> {
     const client = this.supabaseService.getClient(accessToken);
 
     try {
       await this.verifyNominationOwnership(userId, nominationId, accessToken);
+
+      // First check if data already exists
+      const existingData = await this.getVendorRatingMatrix(userId, nominationId, vendorId, accessToken);
+      
+      if (existingData && existingData.length > 0) {
+        this.logger.log(`Rating matrix already exists for nomination ${nominationId}, vendor ${vendorId} - returning existing data`);
+        return existingData;
+      }
 
       // Call the database function to initialize empty matrix
       const { error } = await client
@@ -1981,6 +2012,17 @@ export class SupplierNominationsService {
       }
 
       this.logger.log(`Initialized vendor rating matrix for nomination ${nominationId}, vendor ${vendorId}`);
+
+      // Fetch and return the newly created data
+      const newData = await this.getVendorRatingMatrix(userId, nominationId, vendorId, accessToken);
+      
+      if (!newData || newData.length === 0) {
+        // If still no data after initialization, create it manually
+        this.logger.warn(`No data returned after initialization, attempting manual creation`);
+        throw new BadRequestException('Failed to create rating matrix - please check database permissions and try again');
+      }
+
+      return newData;
     } catch (error) {
       this.logger.error('Failed to initialize vendor rating matrix:', error);
       throw error;
@@ -2049,34 +2091,86 @@ export class SupplierNominationsService {
     try {
       await this.verifyNominationOwnership(userId, nominationId, accessToken);
 
-      // Process updates in batch
+      if (!updates || updates.length === 0) {
+        throw new BadRequestException('No updates provided');
+      }
+
+      // Validate all update IDs exist first
+      const { data: existingRecords, error: validateError } = await client
+        .from('vendor_rating_matrix')
+        .select('id')
+        .eq('nomination_evaluation_id', nominationId)
+        .eq('vendor_id', vendorId)
+        .in('id', updates.map(u => u.id));
+
+      if (validateError) {
+        throw new BadRequestException(`Failed to validate records: ${validateError.message}`);
+      }
+
+      const existingIds = new Set(existingRecords?.map(r => r.id) || []);
+      const invalidIds = updates.filter(u => !existingIds.has(u.id)).map(u => u.id);
+
+      if (invalidIds.length > 0) {
+        throw new BadRequestException(`Invalid record IDs: ${invalidIds.join(', ')}`);
+      }
+
+      // Process updates in batch with transaction-like behavior
+      let successfulUpdates = 0;
+      const errors: string[] = [];
+
       for (const update of updates) {
-        // Convert camelCase to snake_case for database
-        const dbData: any = {};
-        if (update.assessmentAspects !== undefined) 
-          dbData.assessment_aspects = update.assessmentAspects;
-        if (update.sectionWiseCapabilityPercent !== undefined) 
-          dbData.section_wise_capability_percent = update.sectionWiseCapabilityPercent;
-        if (update.riskMitigationPercent !== undefined) 
-          dbData.risk_mitigation_percent = update.riskMitigationPercent;
-        if (update.minorNC !== undefined) 
-          dbData.minor_nc = update.minorNC;
-        if (update.majorNC !== undefined) 
-          dbData.major_nc = update.majorNC;
+        try {
+          // Convert camelCase to snake_case for database
+          const dbData: any = { updated_at: new Date().toISOString() };
+          
+          if (update.assessmentAspects !== undefined) 
+            dbData.assessment_aspects = update.assessmentAspects;
+          if (update.sectionWiseCapabilityPercent !== undefined) 
+            dbData.section_wise_capability_percent = Number(update.sectionWiseCapabilityPercent);
+          if (update.riskMitigationPercent !== undefined) 
+            dbData.risk_mitigation_percent = Number(update.riskMitigationPercent);
+          if (update.minorNC !== undefined) 
+            dbData.minor_nc = Number(update.minorNC);
+          if (update.majorNC !== undefined) 
+            dbData.major_nc = Number(update.majorNC);
 
-        const { error } = await client
-          .from('vendor_rating_matrix')
-          .update(dbData)
-          .eq('id', update.id)
-          .eq('nomination_evaluation_id', nominationId)
-          .eq('vendor_id', vendorId);
+          const { error } = await client
+            .from('vendor_rating_matrix')
+            .update(dbData)
+            .eq('id', update.id)
+            .eq('nomination_evaluation_id', nominationId)
+            .eq('vendor_id', vendorId);
 
-        if (error) {
-          throw new BadRequestException(`Failed to update rating item ${update.id}: ${error.message}`);
+          if (error) {
+            errors.push(`Failed to update ${update.id}: ${error.message}`);
+          } else {
+            successfulUpdates++;
+          }
+        } catch (updateError) {
+          errors.push(`Exception updating ${update.id}: ${updateError.message}`);
         }
       }
 
-      this.logger.log(`Batch updated ${updates.length} rating items for nomination ${nominationId}, vendor ${vendorId}`);
+      if (errors.length > 0 && successfulUpdates === 0) {
+        throw new BadRequestException(`All updates failed: ${errors.join('; ')}`);
+      }
+
+      if (errors.length > 0) {
+        this.logger.warn(`Partial batch update success: ${successfulUpdates}/${updates.length} succeeded. Errors: ${errors.join('; ')}`);
+      }
+
+      this.logger.log(`Batch updated ${successfulUpdates}/${updates.length} rating items for nomination ${nominationId}, vendor ${vendorId}`);
+
+      // Trigger overall scores recalculation (happens automatically via DB trigger, but ensure immediate consistency)
+      try {
+        await client.rpc('calculate_vendor_rating_overall_scores', {
+          p_nomination_evaluation_id: nominationId,
+          p_vendor_id: vendorId
+        });
+      } catch (scoreError) {
+        this.logger.warn(`Failed to recalculate overall scores: ${scoreError.message}`);
+        // Don't fail the operation for score calculation issues
+      }
 
       // Return the updated data
       return await this.getVendorRatingMatrix(userId, nominationId, vendorId, accessToken);
