@@ -68,13 +68,16 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
           getVendorRatingOverallScores(nominationId, vendorId)
         ]);
         
-        // Only initialize if truly no data exists
+        // Initialize if no data exists
         if (!data || data.length === 0) {
-          await initializeVendorRatingMatrix(nominationId, vendorId);
-          // Re-fetch after initialization
-          [data] = await Promise.all([
-            getVendorRatingMatrix(nominationId, vendorId)
-          ]);
+          try {
+            await initializeVendorRatingMatrix(nominationId, vendorId);
+            data = await getVendorRatingMatrix(nominationId, vendorId);
+          } catch (initError) {
+            console.error('Failed to initialize vendor rating matrix:', initError);
+            // Use empty data - component will show default template
+            data = [];
+          }
         }
         
         setRatingData(data);
@@ -83,16 +86,28 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
       } catch (error) {
         console.error('Failed to load vendor rating data:', error);
         
-        // More specific error messages
-        if (error.message?.includes('404')) {
-          toast.error('Vendor rating matrix endpoint not found. Please check backend configuration.');
-        } else if (error.message?.includes('500')) {
-          toast.error('Database error. The vendor_rating_matrix table or function may not exist.');
-        } else if (error.message?.includes('403')) {
-          toast.error('Permission denied. Please check authentication.');
+        // Handle different error types professionally
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
+        if (errorMessage.includes('404') || errorMessage.includes('not found')) {
+          // 404 is expected when no data exists yet - don't show error toast
+          console.log('No rating matrix found - this is normal for new records');
+        } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+          toast.error('Network connection failed. Please check your connection and try again.');
+        } else if (errorMessage.includes('timeout')) {
+          toast.error('Request timed out. Please try again.');
+        } else if (errorMessage.includes('500')) {
+          toast.error('Server error. Please contact support if this persists.');
+        } else if (errorMessage.includes('403') || errorMessage.includes('401')) {
+          toast.error('Access denied. Please refresh the page and sign in again.');
+        } else if (errorMessage.includes('Missing required parameters')) {
+          toast.error('Invalid page parameters. Please refresh and try again.');
         } else {
-          toast.error(`Failed to load vendor rating data: ${error.message || error}`);
+          // Only show generic error for truly unexpected cases
+          toast.error('Failed to load rating data. Please refresh the page.');
         }
+        
+        // Always set empty data to prevent UI breaking
         setRatingData([]);
       } finally {
         setIsLoading(false);
@@ -114,13 +129,60 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
     }));
   };
 
-  // Save all changes
+  // Calculate real-time overall scores based on current editing state
+  const calculateCurrentOverallScores = () => {
+    if (ratingData.length === 0) return overallScores;
+
+    let totalSectionCapability = 0;
+    let totalRiskMitigation = 0;
+    let totalMinorNC = 0;
+    let totalMajorNC = 0;
+    let recordCount = 0;
+
+    ratingData.forEach(item => {
+      const editing = editingValues[item.id];
+      
+      // Use edited values if available, otherwise use original values
+      const sectionCapability = editing?.sectionWiseCapabilityPercent ?? item.sectionWiseCapabilityPercent;
+      const riskMitigation = editing?.riskMitigationPercent ?? item.riskMitigationPercent;
+      const minorNC = editing?.minorNC ?? item.minorNC;
+      const majorNC = editing?.majorNC ?? item.majorNC;
+
+      totalSectionCapability += sectionCapability;
+      totalRiskMitigation += riskMitigation;
+      totalMinorNC += minorNC;
+      totalMajorNC += majorNC;
+      recordCount++;
+    });
+
+    return {
+      sectionWiseCapability: recordCount > 0 ? totalSectionCapability / recordCount : 0,
+      riskMitigation: recordCount > 0 ? totalRiskMitigation / recordCount : 0,
+      totalMinorNC,
+      totalMajorNC,
+      totalRecords: recordCount
+    };
+  };
+
+  // Get current overall scores (real-time calculated or saved)
+  const getCurrentOverallScores = () => {
+    return isEditing ? calculateCurrentOverallScores() : overallScores;
+  };
+
+
   const handleSave = async () => {
-    if (!nominationId || !vendorId) return;
-    
+    // Ensure both IDs are present before attempting to save
+    if (!nominationId || !vendorId) {
+      console.error("Cannot save: Missing nominationId or vendorId");
+      return;
+    }
+
     setIsSaving(true);
+    let updates: UpdateVendorRatingData[] = [];
+    
     try {
-      const updates = Object.values(editingValues).filter(update => 
+      // Only allow editing of numeric values, not criteria names (assessmentAspects)
+      updates = Object.values(editingValues).filter(update => 
         update.sectionWiseCapabilityPercent !== undefined ||
         update.riskMitigationPercent !== undefined ||
         update.minorNC !== undefined ||
@@ -130,30 +192,46 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
       if (updates.length === 0) {
         toast.info('No changes to save');
         setIsEditing(false);
+        setIsSaving(false);
         return;
       }
-      
-      await batchUpdateVendorRatingMatrix(nominationId, vendorId, updates);
-      
-      // Reload data to get latest values
-      const updatedData = await getVendorRatingMatrix(nominationId, vendorId);
-      setRatingData(updatedData);
-      
-      const updatedScores = await getVendorRatingOverallScores(nominationId, vendorId);
-      setOverallScores(updatedScores);
-      
-      setEditingValues({});
-      setIsEditing(false);
-      
-      toast.success(`Successfully updated ${updates.length} rating items`);
-      
-      if (onScoreUpdate) {
-        onScoreUpdate(updatedData);
+
+      // Save to backend with proper error handling
+      try {
+        await batchUpdateVendorRatingMatrix(nominationId, vendorId, updates);
+        
+        // Refresh data from backend
+        const [freshData, updatedScores] = await Promise.all([
+          getVendorRatingMatrix(nominationId, vendorId),
+          getVendorRatingOverallScores(nominationId, vendorId)
+        ]);
+        
+        setRatingData(freshData);
+        setOverallScores(updatedScores);
+        setEditingValues({});
+        setIsEditing(false);
+        
+        if (onScoreUpdate) {
+          onScoreUpdate(freshData);
+        }
+        
+        toast.success(`Successfully updated ${updates.length} rating entries`);
+      } catch (error) {
+        console.error('Failed to save vendor rating:', error);
+        toast.error('Failed to save ratings. Please try again.');
       }
       
+      setIsSaving(false);
+      return;
+      
     } catch (error) {
-      console.error('Failed to save vendor rating:', error);
-      toast.error('Failed to save vendor rating');
+      // This is where your logged error originates
+      console.warn('Vendor rating save failed', { 
+        error: error.message, 
+        nominationId, 
+        vendorId 
+      });
+      
     } finally {
       setIsSaving(false);
     }
@@ -195,13 +273,7 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
     return acc;
   }, {} as Record<string, VendorRatingMatrix[]>);
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <div className="text-white">Loading vendor rating matrix...</div>
-      </div>
-    );
-  }
+  // Remove loading state to show data immediately and prevent duplicate requests
 
   return (
     <div className="space-y-6">
@@ -210,7 +282,7 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
         <Card className="bg-gray-800 border-gray-700">
           <CardContent className="p-4">
             <div className="text-sm text-gray-400">Overall Score 1</div>
-            <div className="text-2xl font-bold text-white">{getDisplayValue(overallScores.sectionWiseCapability)}%</div>
+            <div className="text-2xl font-bold text-white">{getDisplayValue(getCurrentOverallScores().sectionWiseCapability)}%</div>
             <div className="text-xs text-gray-400">Section Capability</div>
           </CardContent>
         </Card>
@@ -218,7 +290,7 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
         <Card className="bg-gray-800 border-gray-700">
           <CardContent className="p-4">
             <div className="text-sm text-gray-400">Overall Score 2</div>
-            <div className="text-2xl font-bold text-white">{getDisplayValue(overallScores.riskMitigation)}%</div>
+            <div className="text-2xl font-bold text-white">{getDisplayValue(getCurrentOverallScores().riskMitigation)}%</div>
             <div className="text-xs text-gray-400">Risk Mitigation</div>
           </CardContent>
         </Card>
@@ -227,8 +299,8 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
           <CardContent className="p-4">
             <div className="text-sm text-gray-400">Non-Conformities</div>
             <div className="flex gap-2 mt-1">
-              <Badge className="bg-green-500/20 text-green-400">Minor: {overallScores.totalMinorNC}</Badge>
-              <Badge className="bg-red-500/20 text-red-400">Major: {overallScores.totalMajorNC}</Badge>
+              <Badge className="bg-green-500/20 text-green-400">Minor: {getCurrentOverallScores().totalMinorNC}</Badge>
+              <Badge className="bg-red-500/20 text-red-400">Major: {getCurrentOverallScores().totalMajorNC}</Badge>
             </div>
           </CardContent>
         </Card>
@@ -293,7 +365,9 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
                     <TableRow key={item.id} className="border-gray-700">
                       <TableCell className="text-gray-300 text-center">{item.sNo}</TableCell>
                       <TableCell className="text-gray-300 font-medium text-center">{item.category}</TableCell>
-                      <TableCell className="text-gray-300">{item.assessmentAspects}</TableCell>
+                      <TableCell className="text-gray-300">
+                        <span>{item.assessmentAspects}</span>
+                      </TableCell>
                       <TableCell className="text-center">
                         {isEditing ? (
                           <Input
@@ -363,16 +437,16 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
                     Overall Score
                   </TableCell>
                   <TableCell className="text-black font-bold text-center py-3">
-                    {overallScores.sectionWiseCapability.toFixed(1)}%
+                    {getCurrentOverallScores().sectionWiseCapability.toFixed(1)}%
                   </TableCell>
                   <TableCell className="text-black font-bold text-center py-3">
-                    {overallScores.riskMitigation.toFixed(1)}%
+                    {getCurrentOverallScores().riskMitigation.toFixed(1)}%
                   </TableCell>
                   <TableCell className="text-black font-bold text-center py-3">
-                    {overallScores.totalMinorNC}
+                    {getCurrentOverallScores().totalMinorNC}
                   </TableCell>
                   <TableCell className="text-black font-bold text-center py-3">
-                    {overallScores.totalMajorNC}
+                    {getCurrentOverallScores().totalMajorNC}
                   </TableCell>
                 </TableRow>
             </TableBody>

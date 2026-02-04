@@ -1,11 +1,12 @@
 import { apiClient } from './client';
 
 export interface CapabilityCriteria {
-  criteria_id: string;
-  criteria_name: string;
-  max_score: number;
-  sort_order: number;
-  vendor_scores: Record<string, number>;
+  id: string;
+  criteriaId: string;
+  criteriaName: string;
+  maxScore: number;
+  sortOrder: number;
+  vendorScores: Record<string, number>;
 }
 
 export interface CapabilityScore {
@@ -40,6 +41,19 @@ export async function updateCapabilityScore(
 ): Promise<void> {
   await apiClient.put(`/supplier-nominations/${nominationId}/capability-scores/${criteriaId}/vendor/${vendorId}`, {
     score
+  });
+}
+
+/**
+ * Update capability criteria name
+ */
+export async function updateCapabilityCriteriaName(
+  nominationId: string,
+  criteriaId: string,
+  criteriaName: string
+): Promise<void> {
+  await apiClient.put(`/supplier-nominations/${nominationId}/capability-scores/${criteriaId}`, {
+    criteriaName
   });
 }
 

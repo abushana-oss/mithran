@@ -25,6 +25,9 @@ import { healthCheckManager, ServiceStatus } from './health-check';
 import { envValidator } from '../config/env-validator';
 import { logger } from '../utils/logger';
 import { appReadiness, AppReadinessState } from '../core/app-readiness';
+import { requestQueue } from './request-queue';
+import { authRequestInterceptor, AuthRequestInterceptor } from './auth-request-interceptor';
+import { circuitBreakerManager } from './circuit-breaker-manager';
 
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -87,6 +90,11 @@ class ApiClient {
       successThreshold: appConfig.api.circuitBreaker.successThreshold,
       timeout: appConfig.api.circuitBreaker.timeout,
       rollingWindowSize: appConfig.api.circuitBreaker.rollingWindowSize,
+    });
+
+    // Register circuit breaker reset function with manager
+    circuitBreakerManager.registerResetFunction(() => {
+      this.circuitBreaker.forceReset();
     });
 
     // Initialize health monitoring (client-side only)
@@ -175,8 +183,8 @@ class ApiClient {
   }
 
   /**
-   * Determine if circuit breaker should be bypassed due to auth not being ready
-   * Prevents race conditions where requests fire before auth initialization
+   * Determine if circuit breaker should be bypassed
+   * Enhanced to work with auth coordination system
    */
   private shouldBypassForAuth(endpoint: string): boolean {
     // Always bypass circuit breaker for public endpoints
@@ -184,14 +192,25 @@ class ApiClient {
       return true;
     }
     
+    // Bypass circuit breaker for auth validation requests
+    // These are critical for the auth coordination system to work
+    if (endpoint.includes('/projects?limit=1')) {
+      return true;
+    }
+    
     // Check app readiness state - only use circuit breaker when app is fully ready
-    const isReady = appReadiness.isReady();
+    const readinessState = appReadiness.getState();
     const hasToken = !!this.getAuthToken();
     
-    // Only bypass if app is not ready AND we don't have a token
-    // This prevents race conditions during auth initialization while allowing
-    // requests with valid tokens to use the circuit breaker
-    if (!isReady && !hasToken) {
+    // During auth initialization, bypass circuit breaker to prevent false failures
+    // This prevents the auth-restore race condition that causes CORS-like errors
+    if (readinessState === 'AUTH_INITIALIZING' || readinessState === 'BOOTING') {
+      return true;
+    }
+    
+    // If we're in AUTH_READY state but no token, allow bypass for one attempt
+    // This handles the case where auth finishes but token isn't available yet
+    if (readinessState === 'AUTH_READY' && !hasToken) {
       return true;
     }
     
@@ -346,6 +365,45 @@ class ApiClient {
   }
 
   private async request<T>(
+    endpoint: string,
+    options: RequestOptions = {},
+  ): Promise<T | null> {
+    const method = options.method || 'GET';
+    
+    // Use auth request interceptor for all requests
+    return authRequestInterceptor.interceptRequest(
+      {
+        endpoint,
+        method,
+        isPublic: AuthRequestInterceptor.isPublicEndpoint(endpoint) || !!options.bypassCircuitBreaker,
+        requiresAuth: AuthRequestInterceptor.requiresAuthentication(endpoint) && !options.bypassCircuitBreaker
+      },
+      () => this.executeRequest(endpoint, options)
+    );
+  }
+
+  /**
+   * Determine if request should be queued based on app readiness
+   */
+  private shouldQueueRequest(endpoint: string, options: RequestOptions): boolean {
+    // Never queue public endpoints
+    if (endpoint.includes('/health') || options.bypassCircuitBreaker) {
+      return false;
+    }
+
+    // Queue requests when app is not ready and we don't have a valid token
+    const readinessState = appReadiness.getState();
+    const hasValidToken = !!this.getAuthToken();
+    
+    return (
+      (readinessState === AppReadinessState.BOOTING || 
+       readinessState === AppReadinessState.AUTH_INITIALIZING ||
+       (readinessState === AppReadinessState.AUTH_READY && !hasValidToken)) &&
+      !options.silent // Don't queue silent requests to avoid hanging UI
+    );
+  }
+
+  private async executeRequest<T>(
     endpoint: string,
     options: RequestOptions = {},
   ): Promise<T | null> {
@@ -735,10 +793,10 @@ class ApiClient {
           if (traceSpan) {
             traceManager.addSpanAttributes(traceSpan.spanId, {
               'error.type': error.code || 'api_error',
-              'error.message': error.message,
+              'error.message': String(error.message || 'Unknown error'),
               'http.status_code': error.statusCode,
             });
-            traceManager.endSpan(traceSpan.spanId, 'error', error.message);
+            traceManager.endSpan(traceSpan.spanId, 'error', String(error.message || 'Unknown error'));
           }
 
           // Special handling for 429 (rate limit)
@@ -784,52 +842,58 @@ class ApiClient {
           let errorCode: string;
           let errorMessage: string;
           
-          if (error.message.includes('Failed to fetch')) {
-            // Check if we have a valid JWT token - if yes, likely backend issue
-            // If no token or invalid, likely auth/CORS related
+          if (String(error.message || '').includes('Failed to fetch')) {
+            // Improved error classification based on auth state and timing
             const hasValidToken = !!this.getAuthToken();
-            const isAuthReady = appReadiness.getState() !== AppReadinessState.AUTH_INITIALIZING;
+            const readinessState = appReadiness.getState();
+            const isLocalhost = url.includes('localhost') || url.includes('127.0.0.1');
             
-            if (!hasValidToken && !isAuthReady) {
-              // No token and auth not ready - likely auth/CORS related
-              errorCode = 'AUTH_ERROR';
-              errorMessage = 'Authentication failed. Please sign in again.';
-            } else if (hasValidToken) {
-              // Have token but fetch failed - likely backend issue
-              errorCode = 'NETWORK_ERROR';
-              const isLocalhost = url.includes('localhost') || url.includes('127.0.0.1');
-              errorMessage = isLocalhost 
-                ? 'Connection failed - check if backend server is running and accessible.'
-                : `Network error - please check your connection to ${url}`;
-            } else {
-              // Auth is ready but no token - session expired
+            if (readinessState === 'BOOTING' || readinessState === 'AUTH_INITIALIZING') {
+              // Auth system still initializing - this is a race condition, not a real error
+              errorCode = 'AUTH_INITIALIZING';
+              errorMessage = 'Request made during auth initialization. Please wait...';
+            } else if (!hasValidToken && readinessState === 'AUTH_READY') {
+              // Auth finished but no token available - expired or failed
               errorCode = 'AUTH_EXPIRED';
               errorMessage = 'Session expired. Please sign in again.';
+            } else if (hasValidToken && isLocalhost) {
+              // Have token but local backend is unreachable
+              errorCode = 'BACKEND_UNREACHABLE';
+              errorMessage = 'Connection failed - check if backend server is running and accessible.';
+            } else if (hasValidToken) {
+              // Have token but remote backend failed - network issue
+              errorCode = 'NETWORK_ERROR';
+              errorMessage = `Network error - please check your connection to ${url}`;
+            } else {
+              // Default case - likely auth/CORS related
+              errorCode = 'CONNECTION_ERROR';
+              errorMessage = 'Connection failed. Please refresh the page and try again.';
             }
-          } else if (error.message.includes('aborted') || error.message.includes('cancelled')) {
+          } else if (String(error.message || '').includes('aborted') || String(error.message || '').includes('cancelled')) {
             errorCode = 'REQUEST_ABORTED_OR_BLOCKED';
             errorMessage = 'Request was aborted or blocked';
-          } else if (error.message.includes('timeout')) {
+          } else if (String(error.message || '').includes('timeout')) {
             errorCode = 'TIMEOUT_ERROR';  
             errorMessage = 'Request timed out';
           } else {
             // Don't assume backend is down for other TypeErrors
             errorCode = 'REQUEST_ERROR';
-            errorMessage = `Request failed: ${error.message}`;
+            errorMessage = `Request failed: ${String(error.message || 'Unknown error')}`;
           }
 
           tracker.recordError(0, errorCode);
 
           if (traceSpan) {
             traceManager.addSpanAttributes(traceSpan.spanId, {
-              'error.type': errorCode.toLowerCase(),
-              'error.message': error.message,
+              'error.type': String(errorCode || 'unknown_error').toLowerCase(),
+              'error.message': String(error.message || 'Unknown error'),
             });
             traceManager.endSpan(traceSpan.spanId, 'error', errorMessage);
           }
 
-          // Only retry on actual network errors, not on aborted/blocked requests
-          if (errorCode === 'NETWORK_ERROR' && this.shouldRetry(error, attemptNumber, retry, priority)) {
+          // Retry on network errors and auth initialization race conditions
+          if ((errorCode === 'NETWORK_ERROR' || errorCode === 'AUTH_INITIALIZING' || errorCode === 'BACKEND_UNREACHABLE') 
+              && this.shouldRetry(error, attemptNumber, retry, priority)) {
             const backoffMs = this.getBackoffDelay(attemptNumber, priority);
             logger.warn('Network error, retrying', {
               backoffMs,
@@ -842,7 +906,7 @@ class ApiClient {
           }
 
           if (silent) return null;
-          throw new ApiError(errorMessage, 0, errorCode);
+          throw new ApiError(String(errorMessage || 'Unknown error'), 0, String(errorCode || 'UNKNOWN_ERROR'));
         }
 
         // Silent mode: return null for all other error types
@@ -873,6 +937,8 @@ class ApiClient {
       this.shouldBypassForAuth(endpoint);
     
     // Wrap executeRequest with circuit breaker
+    // The request queue already handles auth initialization delays,
+    // so circuit breaker should work normally here
     const requestPromise = shouldBypassCircuitBreaker
       ? executeRequest()
       : this.circuitBreaker.execute(() => executeRequest());
@@ -1082,13 +1148,13 @@ class ApiClient {
           let errorCode: string;
           let errorMessage: string;
           
-          if (error.message.includes('Failed to fetch') || error.message.includes('fetch')) {
+          if (String(error.message || '').includes('Failed to fetch') || String(error.message || '').includes('fetch')) {
             errorCode = 'NETWORK_ERROR';
             errorMessage = 'Network error during upload - please check your connection';
-          } else if (error.message.includes('aborted') || error.message.includes('cancelled')) {
+          } else if (String(error.message || '').includes('aborted') || String(error.message || '').includes('cancelled')) {
             errorCode = 'REQUEST_ABORTED_OR_BLOCKED';
             errorMessage = 'Upload was aborted or blocked';
-          } else if (error.message.includes('timeout')) {
+          } else if (String(error.message || '').includes('timeout')) {
             errorCode = 'TIMEOUT_ERROR';  
             errorMessage = 'Upload timed out';
           } else {
@@ -1325,7 +1391,7 @@ export async function checkApiHealth(): Promise<{
   const startTime = Date.now();
 
   try {
-    // Use a lightweight endpoint (adjust based on your API)
+    // Use the health endpoint (matches the backend API structure)
     await apiClient.get('/health', {
       timeout: 5000,
       bypassCircuitBreaker: true,

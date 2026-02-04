@@ -21,7 +21,6 @@ import { CalculatorsModule } from './modules/calculators/calculators.module';
 import { HealthModule } from './modules/health/health.module';
 import { SupplierEvaluationModule } from './modules/supplier-evaluation/supplier-evaluation.module';
 import { SupplierEvaluationGroupsModule } from './modules/supplier-evaluation-groups/supplier-evaluation-groups.module';
-import { VendorRatingsModule } from './modules/vendor-ratings/vendor-ratings.module';
 import { RfqModule } from './modules/rfq/rfq.module';
 import { SupplierNominationsModule } from './modules/supplier-nominations/supplier-nominations.module';
 import { LoggerModule } from './common/logger/logger.module';
@@ -73,7 +72,6 @@ import { validate } from './config/env.validation';
     HealthModule,
     SupplierEvaluationModule,
     SupplierEvaluationGroupsModule,
-    VendorRatingsModule,
     RfqModule,
     SupplierNominationsModule,
   ],

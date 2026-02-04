@@ -8,6 +8,7 @@ import { authTokenManager } from '@/lib/auth/token-manager'
 import { createSecureLogger } from '@/lib/utils/secure-logger'
 import { appReadiness } from '@/lib/core/app-readiness'
 import { logger } from '@/lib/utils/logger'
+import { authCoordinator } from '@/lib/api/auth-coordinator'
 
 interface AuthContextType {
   user: AuthUser | null
@@ -155,6 +156,11 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
           // Signal that auth is initialized and validated (user has valid token)
           appReadiness.setAuthInitialized()
           appReadiness.setAuthValidated()
+          
+          // Start auth coordinator validation
+          authCoordinator.validateCurrentAuth().catch(err => {
+            secureLogger.warn('Auth coordinator validation failed', { error: err.message });
+          })
         } else {
           setUser(null)
           setAuthStatus('unauthenticated')
@@ -194,6 +200,11 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
         
         // Reset refresh signal so next expiry cycle can signal again
         authTokenManager.resetRefreshSignal()
+        
+        // Revalidate with auth coordinator after token refresh
+        authCoordinator.revalidate().catch(err => {
+          secureLogger.warn('Auth coordinator revalidation failed after refresh', { error: err.message });
+        })
       } else {
         secureLogger.error('Token refresh failed', { error: error?.message });
       }
@@ -268,6 +279,8 @@ export function BackendAuthProvider({ children }: { children: React.ReactNode })
         authInitialized = false
         // Reset app readiness state
         appReadiness.resetAuth()
+        // Reset auth coordinator
+        authCoordinator.reset()
       } else if (event === 'USER_UPDATED') {
         // Handle user profile updates
         if (session?.user) {

@@ -77,8 +77,8 @@ export async function batchUpdateCostAnalysis(
   data: BulkUpdateCostData
 ): Promise<CostCompetencyAnalysis[]> {
   try {
-    // Try batch endpoint first (preferred)
-    const response = await apiClient.put(`/supplier-nominations/${nominationId}/cost-analysis/batch`, data);
+    // Try batch endpoint first - send components array directly
+    const response = await apiClient.put(`/supplier-nominations/${nominationId}/cost-analysis/batch`, data.components);
     return Array.isArray(response) ? response : [];
   } catch (error) {
     console.warn('Batch cost analysis update failed, falling back to regular bulk update:', error);

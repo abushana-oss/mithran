@@ -179,6 +179,44 @@ export class ApiLogger extends ComponentLogger {
   }
 
   /**
+   * Log API requests with context
+   */
+  logApiRequest(
+    method: string,
+    endpoint: string,
+    metadata?: Record<string, any>
+  ): void {
+    const requestData = {
+      method,
+      endpoint,
+      timestamp: new Date().toISOString(),
+      ...metadata
+    };
+
+    this.info(`API Request: ${method} ${endpoint}`, requestData);
+  }
+
+  /**
+   * Log API responses with context
+   */
+  logApiResponse(
+    method: string,
+    endpoint: string,
+    response: any,
+    metadata?: Record<string, any>
+  ): void {
+    const responseData = {
+      method,
+      endpoint,
+      status: response?.status,
+      timestamp: new Date().toISOString(),
+      ...metadata
+    };
+
+    this.info(`API Response: ${method} ${endpoint}`, responseData);
+  }
+
+  /**
    * Log API errors with context
    */
   logApiError(

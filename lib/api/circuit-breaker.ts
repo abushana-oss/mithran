@@ -94,7 +94,7 @@ export class CircuitBreaker {
    */
   private isInfrastructureFailure(error: any): boolean {
     // Network errors (DNS, connection refused, etc.)
-    if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+    if (error instanceof TypeError && String(error.message || '').includes('Failed to fetch')) {
       return true;
     }
     

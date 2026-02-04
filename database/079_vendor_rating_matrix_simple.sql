@@ -61,7 +61,7 @@ CREATE POLICY "Users can access vendor ratings for their nominations"
 
 -- Function to initialize empty vendor rating criteria structure
 CREATE OR REPLACE FUNCTION initialize_vendor_rating_matrix(
-    p_nomination_id UUID,
+    p_nomination_evaluation_id UUID,
     p_vendor_id UUID
 )
 RETURNS VOID AS $$
@@ -69,7 +69,7 @@ BEGIN
     -- Check if criteria already exist
     IF EXISTS (
         SELECT 1 FROM vendor_rating_matrix 
-        WHERE nomination_evaluation_id = p_nomination_id 
+        WHERE nomination_evaluation_id = p_nomination_evaluation_id 
         AND vendor_id = p_vendor_id
     ) THEN
         RETURN;
@@ -89,35 +89,35 @@ BEGIN
         sort_order
     ) VALUES
     -- Quality category
-    (p_nomination_id, p_vendor_id, 1, 'Quality', 'Manufacturing Capability', 0.00, 0.00, 0, 0, 1),
-    (p_nomination_id, p_vendor_id, 2, 'Quality', 'Problem Solving Capability', 0.00, 0.00, 0, 0, 2),
-    (p_nomination_id, p_vendor_id, 3, 'Quality', 'Quality Control Capability', 0.00, 0.00, 0, 0, 3),
-    (p_nomination_id, p_vendor_id, 4, 'Quality', 'Prevention Capability', 0.00, 0.00, 0, 0, 4),
+    (p_nomination_evaluation_id, p_vendor_id, 1, 'Quality', 'Manufacturing Capability', 0.00, 0.00, 0, 0, 1),
+    (p_nomination_evaluation_id, p_vendor_id, 2, 'Quality', 'Problem Solving Capability', 0.00, 0.00, 0, 0, 2),
+    (p_nomination_evaluation_id, p_vendor_id, 3, 'Quality', 'Quality Control Capability', 0.00, 0.00, 0, 0, 3),
+    (p_nomination_evaluation_id, p_vendor_id, 4, 'Quality', 'Prevention Capability', 0.00, 0.00, 0, 0, 4),
     
     -- Cost category
-    (p_nomination_id, p_vendor_id, 5, 'Cost', 'Cost', 0.00, 0.00, 0, 0, 5),
+    (p_nomination_evaluation_id, p_vendor_id, 5, 'Cost', 'Cost', 0.00, 0.00, 0, 0, 5),
     
     -- Logistics category
-    (p_nomination_id, p_vendor_id, 6, 'Logistics', 'Delivery Performance', 0.00, 0.00, 0, 0, 6),
-    (p_nomination_id, p_vendor_id, 7, 'Logistics', 'Customer Supplier Management', 0.00, 0.00, 0, 0, 7),
+    (p_nomination_evaluation_id, p_vendor_id, 6, 'Logistics', 'Delivery Performance', 0.00, 0.00, 0, 0, 6),
+    (p_nomination_evaluation_id, p_vendor_id, 7, 'Logistics', 'Customer Supplier Management', 0.00, 0.00, 0, 0, 7),
     
     -- Development category
-    (p_nomination_id, p_vendor_id, 8, 'Development', 'Design & Development', 0.00, 0.00, 0, 0, 8),
+    (p_nomination_evaluation_id, p_vendor_id, 8, 'Development', 'Design & Development', 0.00, 0.00, 0, 0, 8),
     
     -- Management category
-    (p_nomination_id, p_vendor_id, 9, 'Management', 'Strategy', 0.00, 0.00, 0, 0, 9),
-    (p_nomination_id, p_vendor_id, 10, 'Management', 'Management Culture', 0.00, 0.00, 0, 0, 10),
-    (p_nomination_id, p_vendor_id, 11, 'Management', 'TQM culture focus', 0.00, 0.00, 0, 0, 11),
-    (p_nomination_id, p_vendor_id, 12, 'Management', 'Legal & statutory Compliances', 0.00, 0.00, 0, 0, 12),
+    (p_nomination_evaluation_id, p_vendor_id, 9, 'Management', 'Strategy', 0.00, 0.00, 0, 0, 9),
+    (p_nomination_evaluation_id, p_vendor_id, 10, 'Management', 'Management Culture', 0.00, 0.00, 0, 0, 10),
+    (p_nomination_evaluation_id, p_vendor_id, 11, 'Management', 'TQM culture focus', 0.00, 0.00, 0, 0, 11),
+    (p_nomination_evaluation_id, p_vendor_id, 12, 'Management', 'Legal & statutory Compliances', 0.00, 0.00, 0, 0, 12),
     
     -- Core Process category
-    (p_nomination_id, p_vendor_id, 13, 'Core Process', 'Commodity', 0.00, 0.00, 0, 0, 13);
+    (p_nomination_evaluation_id, p_vendor_id, 13, 'Core Process', 'Commodity', 0.00, 0.00, 0, 0, 13);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Function to calculate overall scores
 CREATE OR REPLACE FUNCTION get_vendor_rating_overall_scores(
-    p_nomination_id UUID,
+    p_nomination_evaluation_id UUID,
     p_vendor_id UUID
 )
 RETURNS JSON AS $$
@@ -132,7 +132,7 @@ BEGIN
         'totalRecords', COUNT(*)
     ) INTO result
     FROM vendor_rating_matrix
-    WHERE nomination_evaluation_id = p_nomination_id 
+    WHERE nomination_evaluation_id = p_nomination_evaluation_id 
     AND vendor_id = p_vendor_id;
     
     RETURN COALESCE(result, '{"sectionWiseCapability": 0, "riskMitigation": 0, "totalMinorNC": 0, "totalMajorNC": 0, "totalRecords": 0}');

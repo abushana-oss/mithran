@@ -238,30 +238,36 @@ export function DetailedEvaluationView({
 
   // const hasUnsavedScores = Object.keys(editingScores).length > 0;
 
-  // Handle capability score local updates (no API call)
-  const updateCapabilityScoreLocal = (criteriaIndex: number, supplierIndex: number, newScore: number) => {
+  // Handle capability score local updates (no API call) - for current vendor only
+  const updateCapabilityScoreLocal = (criteriaIndex: number, newScore: number) => {
     if (!fullNomination?.vendorEvaluations || !capabilityData[criteriaIndex]) {
       return;
     }
 
     const criteria = capabilityData[criteriaIndex];
-    const vendor = fullNomination.vendorEvaluations[supplierIndex];
-    const criteriaId = criteria.criteria_id;
+    const criteriaId = criteria.criteriaId;
+    const currentVendorId = evaluation.vendorId;
 
-    if (!criteriaId || !vendor?.vendorId) {
+    if (!criteriaId || !currentVendorId) {
       return;
     }
 
-    const validScore = Math.min(Math.max(0, newScore), criteria.max_score || 100);
+    const validScore = Math.min(Math.max(0, newScore), criteria.maxScore || 100);
 
-    // Update editing state
+    // Update editing state for current vendor
     setEditingCapabilityScores(prev => ({
       ...prev,
       [criteriaId]: {
         ...prev[criteriaId],
-        [vendor.vendorId]: validScore
+        [currentVendorId]: validScore
       }
     }));
+  };
+
+  // Get criteria name (read-only)
+  const getCriteriaName = (criteriaIndex: number): string => {
+    const criteria = capabilityData[criteriaIndex];
+    return criteria?.criteriaName || 'Unnamed Criteria';
   };
 
   // Save all capability score changes in batch - ENTERPRISE BEST PRACTICE
@@ -271,12 +277,19 @@ export function DetailedEvaluationView({
       return;
     }
 
+    // Check if there are any changes to save
+    if (Object.keys(editingCapabilityScores).length === 0) {
+      toast.error('No changes to save');
+      return;
+    }
+
     setIsSavingCapability(true);
 
     try {
+      // Save score changes
       const updates: BatchCapabilityUpdate[] = [];
 
-      // Prepare batch updates
+      // Prepare batch updates - only for current vendor if this is single vendor view
       for (const [criteriaId, vendorScores] of Object.entries(editingCapabilityScores)) {
         for (const [vendorId, score] of Object.entries(vendorScores)) {
           updates.push({
@@ -287,68 +300,49 @@ export function DetailedEvaluationView({
         }
       }
 
-      // Single API call for all updates (with fallback) - ENTERPRISE BEST PRACTICE
-      await batchUpdateCapabilityScores(nominationId, updates);
+      if (updates.length > 0) {
+        // Single API call for all score updates (with fallback) - ENTERPRISE BEST PRACTICE
+        await batchUpdateCapabilityScores(nominationId, updates);
+      }
 
-      // Update local state with saved values
-      setCapabilityScores(prev => ({
-        ...prev,
-        criteria: prev.criteria.map((crit) => {
-          const criteriaId = crit.id;
-          const vendorScores = editingCapabilityScores[criteriaId];
+      // Refresh capability data from server to ensure consistency
+      const refreshedData = await getCapabilityScores(nominationId);
+      setCapabilityData(refreshedData);
 
-          if (vendorScores) {
-            return {
-              ...crit,
-              scores: crit.scores.map((score, supplierIndex) => {
-                const vendor = fullNomination.vendorEvaluations![supplierIndex];
-                const vendorId = vendor?.vendorId;
-                return (vendorId && vendorScores[vendorId] !== undefined) ? vendorScores[vendorId] : score;
-              })
-            };
-          }
+      // Transform refreshed data for table display
+      if (fullNomination?.vendorEvaluations) {
+        const vendors = fullNomination.vendorEvaluations.map((v, index) => ({
+          id: v.vendorId,
+          name: v.vendorName || `Supplier ${index + 1}`
+        }));
 
-          return crit;
-        })
-      }));
-
-      // Update capability data state
-      setCapabilityData(prev =>
-        prev.map(item => {
-          const criteriaId = item.criteria_id;
-          const vendorScores = editingCapabilityScores[criteriaId];
-
-          if (vendorScores) {
-            return {
-              ...item,
-              vendor_scores: {
-                ...item.vendor_scores,
-                ...vendorScores
-              }
-            };
-          }
-
-          return item;
-        })
-      );
+        if (refreshedData && refreshedData.length > 0) {
+          const refreshedTableData = transformCapabilityDataToTable(refreshedData, vendors);
+          setCapabilityScores(refreshedTableData as CapabilityTabState);
+        }
+      }
 
       // Clear editing state
       setEditingCapabilityScores({});
       setIsEditingCapability(false);
 
-      toast.success(`Successfully saved ${updates.length} capability scores`);
+      toast.success(`Successfully saved ${updates.length} score changes`);
     } catch (error) {
       console.error('Failed to save capability scores:', error);
 
       // Provide specific error message based on the error type
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('token')) {
+      if (errorMessage.includes('token') || errorMessage.includes('401')) {
         toast.error('Session expired. Please refresh the page and try again.');
-      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+      } else if (errorMessage.includes('network') || errorMessage.includes('fetch') || errorMessage.includes('Failed to fetch')) {
         toast.error('Network error. Please check your connection and try again.');
+      } else if (errorMessage.includes('Backend server is not running')) {
+        toast.error('Backend server is unavailable. Please try again later.');
       } else {
         toast.error(`Failed to save scores: ${errorMessage}`);
       }
+
+      // Keep editing mode active on error so user can retry
     } finally {
       setIsSavingCapability(false);
     }
@@ -360,23 +354,34 @@ export function DetailedEvaluationView({
     setIsEditingCapability(false);
   };
 
-  // Get current score (edited or original)
-  const getCurrentCapabilityScore = (criteriaIndex: number, supplierIndex: number): number => {
+  // Get current vendor index in the evaluation list
+  const getCurrentVendorIndex = (): number => {
+    if (!fullNomination?.vendorEvaluations) return 0;
+    
+    const currentVendorIndex = fullNomination.vendorEvaluations.findIndex(
+      v => v.vendorId === evaluation.vendorId
+    );
+    
+    return currentVendorIndex >= 0 ? currentVendorIndex : 0;
+  };
+
+  // Get current score (edited or original) for the current vendor
+  const getCurrentCapabilityScore = (criteriaIndex: number): number => {
     if (!fullNomination?.vendorEvaluations || !capabilityData[criteriaIndex]) {
       return 0;
     }
 
     const criteria = capabilityData[criteriaIndex];
-    const vendor = fullNomination.vendorEvaluations[supplierIndex];
-    const criteriaId = criteria.criteria_id;
+    const criteriaId = criteria.criteriaId;
+    const currentVendorId = evaluation.vendorId;
 
-    if (!criteriaId || !vendor?.vendorId) {
+    if (!criteriaId || !currentVendorId) {
       return 0;
     }
 
-    // Return edited score or original score
-    return editingCapabilityScores[criteriaId]?.[vendor.vendorId] ??
-      capabilityScores.criteria[criteriaIndex]?.scores[supplierIndex] ?? 0;
+    // Return edited score or original score for current vendor
+    return editingCapabilityScores[criteriaId]?.[currentVendorId] ??
+      criteria.vendorScores?.[currentVendorId] ?? 0;
   };
 
   const renderCapabilityTab = () => {
@@ -389,13 +394,11 @@ export function DetailedEvaluationView({
       );
     }
 
-    // Calculate totals and ranks using current scores (including edited ones)
-    const totals = capabilityScores.suppliers.map((_, supplierIndex) =>
-      capabilityScores.criteria.reduce((sum, _criteria, criteriaIndex) => {
-        const currentScore = getCurrentCapabilityScore(criteriaIndex, supplierIndex);
-        return sum + currentScore;
-      }, 0)
-    );
+    // Calculate total for current vendor using current scores (including edited ones)
+    const currentVendorTotal = capabilityScores.criteria.reduce((sum, _criteria, criteriaIndex) => {
+      const currentScore = getCurrentCapabilityScore(criteriaIndex);
+      return sum + currentScore;
+    }, 0);
     const maxTotal = capabilityScores.criteria.reduce((sum, _criteria) => sum + (_criteria.maxScore || 0), 0);
 
     // Calculate ranks (1 = highest score)
@@ -478,76 +481,89 @@ export function DetailedEvaluationView({
         {/* Capability Scoring Table */}
         <Card className="bg-gray-800 border-gray-700 shadow-lg">
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-b border-gray-600">
-                    <TableHead className="bg-gray-800 text-white font-semibold py-4 px-6 text-left">
-                      CRITERIA
-                    </TableHead>
-                    <TableHead className="bg-gray-800 text-white font-semibold py-4 px-4 text-center">
-                      Max Score
-                    </TableHead>
-                    <TableHead className="bg-gray-800 text-white font-semibold py-4 px-4 text-center">
-                      Current Score
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody className="bg-gray-900">
-                  {capabilityScores.criteria.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={3} className="text-center py-8 text-gray-400">
-                        No capability criteria available.
-                        <br />
-                        <span className="text-sm">Initialize capability scoring to get started.</span>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    capabilityScores.criteria.map((criteria, criteriaIndex) => (
-                      <TableRow key={criteriaIndex} className="border-b border-gray-700 hover:bg-gray-800/50">
-                        <TableCell className="text-white py-4 px-6 font-medium">
-                          {criteria.name || capabilityData[criteriaIndex]?.criteria_name || 'Unnamed Criteria'}
-                        </TableCell>
-                        <TableCell className="text-white text-center py-4 px-4 font-medium">
-                          {criteria.maxScore || capabilityData[criteriaIndex]?.max_score || 0}
-                        </TableCell>
-                        <TableCell className="text-center py-4 px-4">
+            <div className="overflow-x-auto min-w-full">
+              {/* Header Row */}
+              <div className="grid grid-cols-3 bg-gray-800 border-b border-gray-600 sticky top-0">
+                <div className="text-white font-semibold py-4 px-6 text-left">
+                  CRITERIA
+                </div>
+                <div className="text-white font-semibold py-4 px-4 text-center">
+                  Max Score
+                </div>
+                <div className="text-white font-semibold py-4 px-4 text-center">
+                  Current Score
+                </div>
+              </div>
+
+              {/* Table Body */}
+              <div className="bg-gray-900">
+                {capabilityData.length === 0 ? (
+                  <div className="grid grid-cols-1 text-center py-8 text-gray-400 border-b border-gray-700">
+                    <div>
+                      No capability criteria available.
+                      <br />
+                      <span className="text-sm">Initialize capability scoring to get started.</span>
+                      <Button 
+                        onClick={async () => {
+                          try {
+                            await initializeCapabilityScores(nominationId);
+                            window.location.reload();
+                          } catch (error) {
+                            toast.error('Failed to initialize capability scoring');
+                          }
+                        }}
+                        className="mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+                        size="sm"
+                      >
+                        Initialize Capability Scoring
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {capabilityData.map((criteria, criteriaIndex) => (
+                      <div key={criteriaIndex} className="grid grid-cols-3 border-b border-gray-700 hover:bg-gray-800/50">
+                        <div className="text-white py-4 px-6 font-medium break-words">
+                          <span>{getCriteriaName(criteriaIndex)}</span>
+                        </div>
+                        <div className="text-white text-center py-4 px-4 font-medium">
+                          {criteria.maxScore || 0}
+                        </div>
+                        <div className="text-center py-4 px-4 flex justify-center items-center">
                           {isEditingCapability ? (
                             <Input
                               type="number"
                               min="0"
-                              max={criteria.maxScore || capabilityData[criteriaIndex]?.max_score || 100}
+                              max={criteria.maxScore || 100}
                               step="1"
-                              value={getCurrentCapabilityScore(criteriaIndex, 0)}
-                              onChange={(e) => updateCapabilityScoreLocal(criteriaIndex, 0, parseInt(e.target.value) || 0)}
+                              value={getCurrentCapabilityScore(criteriaIndex)}
+                              onChange={(e) => updateCapabilityScoreLocal(criteriaIndex, parseInt(e.target.value) || 0)}
                               className="w-20 h-10 text-center bg-gray-700 border-gray-600 text-white hover:bg-gray-600 focus:bg-gray-600 focus:border-blue-500"
                             />
                           ) : (
                             <span className="text-white font-medium text-lg">
-                              {getCurrentCapabilityScore(criteriaIndex, 0)}
+                              {getCurrentCapabilityScore(criteriaIndex)}
                             </span>
                           )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
+                        </div>
+                      </div>
+                    ))}
 
-                  {/* Total Score Row */}
-                  {capabilityScores.criteria.length > 0 && (
-                    <TableRow className="border-b-2 border-gray-600 bg-gray-800">
-                      <TableCell className="text-white font-bold py-4 px-6">
+                    {/* Total Score Row */}
+                    <div className="grid grid-cols-3 border-b-2 border-gray-600 bg-gray-800">
+                      <div className="text-white font-bold py-4 px-6">
                         Total Score
-                      </TableCell>
-                      <TableCell className="text-white text-center font-bold py-4 px-4">
+                      </div>
+                      <div className="text-white text-center font-bold py-4 px-4">
                         {maxTotal}
-                      </TableCell>
-                      <TableCell className="text-white text-center font-bold py-4 px-4">
-                        {totals[0]?.toFixed(1) || 0}
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                      </div>
+                      <div className="text-white text-center font-bold py-4 px-4">
+                        {currentVendorTotal?.toFixed(1) || 0}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -646,16 +662,14 @@ export function DetailedEvaluationView({
             <div className="text-3xl font-bold text-white">
               {(() => {
                 if (activeTab === 'capability' && capabilityScores.criteria.length > 0) {
-                  // Calculate capability score percentage
-                  const totalActualScore = capabilityScores.suppliers.reduce((sum, _, supplierIndex) =>
-                    sum + capabilityScores.criteria.reduce((criteriaSum, _criteria, criteriaIndex) => {
-                      const currentScore = getCurrentCapabilityScore(criteriaIndex, supplierIndex);
-                      return criteriaSum + currentScore;
-                    }, 0), 0
-                  );
+                  // Calculate capability score percentage for current vendor
+                  const totalActualScore = capabilityScores.criteria.reduce((sum, _criteria, criteriaIndex) => {
+                    const currentScore = getCurrentCapabilityScore(criteriaIndex);
+                    return sum + currentScore;
+                  }, 0);
                   const totalMaxScore = capabilityScores.criteria.reduce((sum, criteria) =>
                     sum + (criteria.maxScore || 0), 0
-                  ) * capabilityScores.suppliers.length;
+                  );
 
                   const capabilityPercentage = totalMaxScore > 0 ? (totalActualScore / totalMaxScore) * 100 : 0;
                   return capabilityPercentage.toFixed(1);

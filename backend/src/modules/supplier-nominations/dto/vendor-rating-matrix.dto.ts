@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsUUID, IsString, IsNumber, IsOptional, IsArray, ValidateNested, Min, Max, IsInt } from 'class-validator';
+import { IsUUID, IsString, IsNumber, IsOptional, IsArray, ValidateNested, Min, Max, IsInt, IsNotEmpty } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class VendorRatingMatrixDto {
@@ -102,6 +102,15 @@ export class VendorRatingMatrixDto {
 
 export class UpdateVendorRatingDto {
   @ApiProperty({
+    description: 'Assessment aspects description',
+    example: 'Manufacturing Capability',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  assessmentAspects?: string;
+
+  @ApiProperty({
     description: 'Section wise capability percentage',
     example: 75.38,
     required: false
@@ -151,6 +160,15 @@ export class BatchVendorRatingUpdateItemDto {
   })
   @IsUUID()
   id: string;
+
+  @ApiProperty({
+    description: 'Assessment aspects description',
+    example: 'Manufacturing Capability',
+    required: false
+  })
+  @IsOptional()
+  @IsString()
+  assessmentAspects?: string;
 
   @ApiProperty({
     description: 'Section wise capability percentage',
@@ -241,4 +259,14 @@ export class VendorRatingOverallScoresDto {
   })
   @IsInt()
   totalRecords: number;
+}
+
+export class UpdateCapabilityCriteriaDto {
+  @ApiProperty({
+    description: 'New criteria name',
+    example: 'Quality Management System'
+  })
+  @IsString()
+  @IsNotEmpty()
+  criteriaName: string;
 }

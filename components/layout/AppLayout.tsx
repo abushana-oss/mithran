@@ -21,6 +21,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   useEffect(() => {
     // Only redirect after auth has fully loaded and there's definitively no user
     if (!loading && !user) {
+      // Store current URL for redirect after auth
+      const currentUrl = window.location.pathname + window.location.search;
+      if (currentUrl !== '/auth' && currentUrl !== '/') {
+        sessionStorage.setItem('redirectAfterAuth', currentUrl);
+      }
+      
       // Add a small delay to prevent flashing during normal auth resolution
       const timer = setTimeout(() => {
         setShouldRedirect(true);
@@ -30,6 +36,13 @@ export function AppLayout({ children }: AppLayoutProps) {
       return () => clearTimeout(timer);
     } else if (user) {
       setShouldRedirect(false);
+      
+      // Check for stored redirect URL and navigate there
+      const redirectUrl = sessionStorage.getItem('redirectAfterAuth');
+      if (redirectUrl && window.location.pathname === '/') {
+        sessionStorage.removeItem('redirectAfterAuth');
+        router.replace(redirectUrl);
+      }
     }
   }, [user, loading, router]);
 

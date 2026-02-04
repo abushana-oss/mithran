@@ -1547,7 +1547,17 @@ export class SupplierNominationsService {
         throw new BadRequestException(`Failed to get capability scores: ${error.message}`);
       }
 
-      return data || [];
+      // Transform data to match frontend interface
+      const transformedData = (data || []).map((item: any) => ({
+        id: item.criteria_id,
+        criteria_id: item.criteria_id,
+        criteria_name: item.criteria_name,
+        max_score: item.max_score,
+        sort_order: item.sort_order,
+        vendor_scores: item.vendor_scores || {}
+      }));
+
+      return transformedData;
     } catch (error) {
       this.logger.error('Failed to get capability scores:', error);
       throw error;
@@ -1667,6 +1677,41 @@ export class SupplierNominationsService {
     }
   }
 
+  /**
+   * Update capability criteria name
+   */
+  async updateCapabilityCriteria(
+    userId: string,
+    nominationId: string,
+    criteriaId: string,
+    criteriaName: string,
+    accessToken: string
+  ): Promise<void> {
+    const client = this.supabaseService.getClient(accessToken);
+
+    try {
+      await this.verifyNominationOwnership(userId, nominationId, accessToken);
+
+      const { error } = await client
+        .from('capability_criteria')
+        .update({ 
+          criteria_name: criteriaName,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', criteriaId)
+        .eq('nomination_evaluation_id', nominationId);
+
+      if (error) {
+        throw new BadRequestException(`Failed to update capability criteria: ${error.message}`);
+      }
+
+      this.logger.log(`Updated capability criteria ${criteriaId} name to "${criteriaName}"`);
+    } catch (error) {
+      this.logger.error('Failed to update capability criteria name:', error);
+      throw error;
+    }
+  }
+
   // =====================================================================================
   // VENDOR ASSESSMENT MATRIX METHODS
   // =====================================================================================
@@ -1720,7 +1765,7 @@ export class SupplierNominationsService {
       // Call the database function to initialize criteria
       const { error } = await client
         .rpc('initialize_vendor_assessment_criteria', {
-          p_nomination_id: nominationId,
+          p_nomination_evaluation_id: nominationId,
           p_vendor_id: vendorId
         });
 
@@ -1850,7 +1895,7 @@ export class SupplierNominationsService {
       // Call the database function to calculate metrics
       const { data, error } = await client
         .rpc('get_vendor_assessment_metrics', {
-          p_nomination_id: nominationId,
+          p_nomination_evaluation_id: nominationId,
           p_vendor_id: vendorId
         });
 
@@ -1927,7 +1972,7 @@ export class SupplierNominationsService {
       // Call the database function to initialize empty matrix
       const { error } = await client
         .rpc('initialize_vendor_rating_matrix', {
-          p_nomination_id: nominationId,
+          p_nomination_evaluation_id: nominationId,
           p_vendor_id: vendorId
         });
 
@@ -1960,6 +2005,8 @@ export class SupplierNominationsService {
 
       // Convert camelCase to snake_case for database
       const dbData: any = {};
+      if (updateData.assessmentAspects !== undefined) 
+        dbData.assessment_aspects = updateData.assessmentAspects;
       if (updateData.sectionWiseCapabilityPercent !== undefined) 
         dbData.section_wise_capability_percent = updateData.sectionWiseCapabilityPercent;
       if (updateData.riskMitigationPercent !== undefined) 
@@ -2006,6 +2053,8 @@ export class SupplierNominationsService {
       for (const update of updates) {
         // Convert camelCase to snake_case for database
         const dbData: any = {};
+        if (update.assessmentAspects !== undefined) 
+          dbData.assessment_aspects = update.assessmentAspects;
         if (update.sectionWiseCapabilityPercent !== undefined) 
           dbData.section_wise_capability_percent = update.sectionWiseCapabilityPercent;
         if (update.riskMitigationPercent !== undefined) 
@@ -2054,7 +2103,7 @@ export class SupplierNominationsService {
       // Call the database function to calculate overall scores
       const { data, error } = await client
         .rpc('get_vendor_rating_overall_scores', {
-          p_nomination_id: nominationId,
+          p_nomination_evaluation_id: nominationId,
           p_vendor_id: vendorId
         });
 

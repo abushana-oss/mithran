@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { ValidationPipe, VersioningType, BadRequestException } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
@@ -79,6 +79,9 @@ async function bootstrap() {
       // W3C Trace Context headers for distributed tracing
       'traceparent',
       'tracestate',
+      // Session and user tracking headers
+      'x-session-id',
+      'x-user-id',
       // Idempotency headers
       'Idempotency-Key',
       'idempotency-key',
@@ -94,6 +97,32 @@ async function bootstrap() {
       transform: true,
       transformOptions: {
         enableImplicitConversion: true,
+      },
+      // ENTERPRISE: Provide detailed validation errors for debugging
+      enableDebugMessages: true,
+      // PRINCIPAL ENGINEER: Detailed validation error reporting
+      exceptionFactory: (errors) => {
+        const formattedErrors = errors.map(error => ({
+          property: error.property,
+          value: error.value,
+          constraints: error.constraints,
+          children: error.children?.map(child => ({
+            property: child.property,
+            value: child.value,
+            constraints: child.constraints
+          }))
+        }));
+        
+        console.log('=== VALIDATION ERROR DETAILS ===');
+        console.log('Validation errors:', JSON.stringify(formattedErrors, null, 2));
+        console.log('================================');
+        
+        return new BadRequestException({
+          message: 'DTO Validation failed',
+          errors: formattedErrors,
+          timestamp: new Date().toISOString(),
+          debug: 'Check console for detailed validation errors'
+        });
       },
     }),
   );

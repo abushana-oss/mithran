@@ -81,7 +81,7 @@ export function analyzeTrackingFeature(
 function isDatabaseSchemaError(error: Error | null): boolean {
   if (!error) return false;
   
-  const errorMessage = error.message?.toLowerCase() || '';
+  const errorMessage = String(error.message || '').toLowerCase();
   const errorPatterns = [
     'not found',
     'does not exist',

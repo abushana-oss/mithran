@@ -324,7 +324,7 @@ export const uuidResponseInterceptor: ResponseInterceptor = (response: any) => {
   // Check if the response contains an error related to UUID validation from backend
   if (response && !response.success && response.error && response.error.message) {
     const error = response.error;
-    const message = error.message.toLowerCase();
+    const message = String(error.message || '').toLowerCase();
 
     // Common UUID validation error patterns from backend
     const uuidErrorPatterns = [

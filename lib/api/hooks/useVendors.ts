@@ -14,6 +14,7 @@ import type {
 } from '../vendors';
 import { ApiError } from '../client';
 import { toast } from 'sonner';
+import { useAuthAwareQuery } from '../auth-aware-query';
 
 export const vendorKeys = {
   all: ['vendors'] as const,
@@ -34,29 +35,29 @@ export const vendorKeys = {
 // ============================================================================
 
 export function useVendors(query?: VendorQuery, options?: { enabled?: boolean }) {
-  return useQuery({
-    queryKey: vendorKeys.list(query),
+  return useAuthAwareQuery(vendorKeys.list(query), {
     queryFn: () => vendorsApi.getAll(query),
     staleTime: 1000 * 60 * 5,
-    enabled: options?.enabled !== false,
+    enabled: options?.enabled,
+    requireAuth: true,
   });
 }
 
 export function useVendor(id: string) {
-  return useQuery({
-    queryKey: vendorKeys.detail(id),
+  return useAuthAwareQuery(vendorKeys.detail(id), {
     queryFn: () => vendorsApi.getById(id),
     enabled: !!id,
     staleTime: 1000 * 60 * 5,
+    requireAuth: true,
   });
 }
 
 export function useVendorPerformance(id: string) {
-  return useQuery({
-    queryKey: vendorKeys.performance(id),
+  return useAuthAwareQuery(vendorKeys.performance(id), {
     queryFn: () => vendorsApi.getPerformance(id),
     enabled: !!id,
     staleTime: 1000 * 60 * 10,
+    requireAuth: true,
   });
 }
 

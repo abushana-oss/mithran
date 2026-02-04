@@ -19,12 +19,29 @@ export interface VendorRatingMatrix {
   updatedAt: string;
 }
 
+// ENTERPRISE: Frontend interface (camelCase)
 export interface UpdateVendorRatingData {
   id: string;
   sectionWiseCapabilityPercent?: number;
   riskMitigationPercent?: number;
   minorNC?: number;
   majorNC?: number;
+  assessmentAspects?: string;
+}
+
+// ENTERPRISE: Backend DTO interface (exact match for validation)
+export interface BatchVendorRatingUpdateItemDto {
+  id: string;
+  sectionWiseCapabilityPercent?: number;
+  riskMitigationPercent?: number;
+  minorNC?: number;
+  majorNC?: number;
+  assessmentAspects?: string;
+}
+
+// ENTERPRISE: Root request DTO structure
+export interface BatchVendorRatingUpdateDto {
+  updates: BatchVendorRatingUpdateItemDto[];
 }
 
 export interface VendorRatingOverallScores {
@@ -42,6 +59,10 @@ export async function getVendorRatingMatrix(
   nominationId: string,
   vendorId: string
 ): Promise<VendorRatingMatrix[]> {
+  if (!nominationId || !vendorId) {
+    throw new Error('Missing required parameters: nominationId or vendorId');
+  }
+
   try {
     const response = await apiClient.get(`/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix`);
     
@@ -68,8 +89,24 @@ export async function getVendorRatingMatrix(
     
     return transformed;
   } catch (error) {
-    apiLogger.logApiError('GET', `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix`, error);
-    throw error; // Let the component handle the error appropriately
+    // Enhanced error handling for network failures
+    const status = error?.response?.status;
+    const statusText = error?.response?.statusText;
+    
+    apiLogger.logApiError('GET', `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix`, error, {
+      status,
+      statusText,
+      nominationId,
+      vendorId,
+      errorType: error?.constructor?.name || 'Unknown'
+    });
+    
+    // Return empty array for 404s (no data exists yet)
+    if (status === 404) {
+      return [];
+    }
+    
+    throw error;
   }
 }
 
@@ -79,11 +116,30 @@ export async function getVendorRatingMatrix(
 export async function initializeVendorRatingMatrix(
   nominationId: string,
   vendorId: string
-): Promise<void> {
+): Promise<VendorRatingMatrix[]> {
+  if (!nominationId || !vendorId) {
+    throw new Error('Missing required parameters for initialization');
+  }
+
   try {
-    await apiClient.post(`/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/init`);
+    const response = await apiClient.post(`/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/init`);
+    
+    // Return the created data if the API provides it
+    if (response?.data && Array.isArray(response.data)) {
+      return response.data;
+    }
+    
+    // If no data in response, immediately fetch the newly created data
+    return await getVendorRatingMatrix(nominationId, vendorId);
   } catch (error) {
-    apiLogger.logApiError('POST', `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/init`, error);
+    const status = error?.response?.status;
+    
+    apiLogger.logApiError('POST', `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/init`, error, {
+      status,
+      nominationId,
+      vendorId
+    });
+    
     throw error;
   }
 }
@@ -111,22 +167,196 @@ export async function updateVendorRatingItem(
 /**
  * ENTERPRISE BEST PRACTICE: Batch update vendor rating matrix
  */
+/**
+ * ENTERPRISE: Type-safe data transformation utilities
+ * Ensures data integrity and validation compliance
+ */
+class VendorRatingDataTransformer {
+  /**
+   * PRINCIPAL ENGINEER: Ultra-strict DTO transformation
+   * Only includes fields that are actually changing and valid
+   */
+  static transformToDto(updates: UpdateVendorRatingData[]): BatchVendorRatingUpdateDto {
+    const transformedUpdates: BatchVendorRatingUpdateItemDto[] = [];
+    
+    for (const update of updates) {
+      // Skip invalid records
+      if (!update.id) {
+        console.warn('Skipping update without ID:', update);
+        continue;
+      }
+
+      // Start with minimal valid structure
+      const transformed: any = { id: update.id };
+      let hasChanges = false;
+      
+      // Only include fields that are actually defined and valid
+      if (update.sectionWiseCapabilityPercent !== undefined && 
+          update.sectionWiseCapabilityPercent !== null &&
+          !isNaN(Number(update.sectionWiseCapabilityPercent))) {
+        transformed.sectionWiseCapabilityPercent = Number(update.sectionWiseCapabilityPercent);
+        hasChanges = true;
+      }
+      
+      if (update.riskMitigationPercent !== undefined && 
+          update.riskMitigationPercent !== null &&
+          !isNaN(Number(update.riskMitigationPercent))) {
+        transformed.riskMitigationPercent = Number(update.riskMitigationPercent);
+        hasChanges = true;
+      }
+      
+      if (update.minorNC !== undefined && 
+          update.minorNC !== null &&
+          Number.isInteger(Number(update.minorNC))) {
+        transformed.minorNC = Number(update.minorNC);
+        hasChanges = true;
+      }
+      
+      if (update.majorNC !== undefined && 
+          update.majorNC !== null &&
+          Number.isInteger(Number(update.majorNC))) {
+        transformed.majorNC = Number(update.majorNC);
+        hasChanges = true;
+      }
+      
+      if (update.assessmentAspects !== undefined && 
+          update.assessmentAspects !== null &&
+          typeof update.assessmentAspects === 'string' &&
+          update.assessmentAspects.trim().length > 0) {
+        transformed.assessmentAspects = update.assessmentAspects.trim();
+        hasChanges = true;
+      }
+      
+      // Only include records that have actual changes
+      if (hasChanges) {
+        transformedUpdates.push(transformed as BatchVendorRatingUpdateItemDto);
+      }
+    }
+
+    return { updates: transformedUpdates };
+  }
+
+  /**
+   * Validate DTO structure before sending
+   * Prevents runtime validation errors
+   */
+  static validateDto(dto: BatchVendorRatingUpdateDto): void {
+    if (!dto.updates || !Array.isArray(dto.updates)) {
+      throw new Error('Invalid DTO structure: updates must be an array');
+    }
+    
+    if (dto.updates.length === 0) {
+      throw new Error('No updates provided');
+    }
+    
+    dto.updates.forEach((update, index) => {
+      if (!update.id) {
+        throw new Error(`Update at index ${index} missing required id field`);
+      }
+      
+      // Validate numeric fields with enterprise-grade constraints
+      const numericFields = [
+        { name: 'sectionWiseCapabilityPercent', min: 0, max: 100 },
+        { name: 'riskMitigationPercent', min: 0, max: 100 },
+        { name: 'minorNC', min: 0, max: 999 },
+        { name: 'majorNC', min: 0, max: 999 }
+      ];
+      
+      numericFields.forEach(({ name, min, max }) => {
+        const value = update[name];
+        if (value !== undefined) {
+          const numValue = Number(value);
+          if (isNaN(numValue) || numValue < min || numValue > max) {
+            throw new Error(`Update at index ${index} has invalid ${name}: must be a number between ${min} and ${max}, received ${value}`);
+          }
+        }
+      });
+    });
+  }
+}
+
 export async function batchUpdateVendorRatingMatrix(
   nominationId: string,
   vendorId: string,
   updates: UpdateVendorRatingData[]
 ): Promise<VendorRatingMatrix[]> {
+  // Declare payload outside try block to make it accessible in catch block
+  let payload: BatchVendorRatingUpdateDto;
+  
   try {
-    console.log('Batch updating vendor rating matrix:', { updates });
+    // ENTERPRISE: Pre-flight validation
+    if (!nominationId || !vendorId) {
+      throw new Error('Missing required parameters: nominationId or vendorId');
+    }
+
+    if (!updates || updates.length === 0) {
+      throw new Error('No updates provided');
+    }
+
+    // Simple validation - let the API handle the rest
+    if (!nominationId || !vendorId) {
+      throw new Error("Missing required IDs for rating matrix update");
+    }
+
+    // Get or initialize the rating matrix
+    let existingData;
+    try {
+      existingData = await getVendorRatingMatrix(nominationId, vendorId);
+    } catch (fetchError) {
+      console.error('Failed to fetch existing data before update:', fetchError);
+      throw new Error(`Cannot update rating matrix: ${fetchError.message}`);
+    }
+
+    // Auto-initialize if no data exists
+    if (!existingData || existingData.length === 0) {
+      try {
+        console.log('Rating matrix not found, auto-initializing...');
+        await initializeVendorRatingMatrix(nominationId, vendorId);
+        existingData = await getVendorRatingMatrix(nominationId, vendorId);
+        
+        if (!existingData || existingData.length === 0) {
+          throw new Error('Failed to initialize rating matrix - no data returned after initialization');
+        }
+        
+        console.log(`Rating matrix auto-initialized with ${existingData.length} records`);
+      } catch (initError) {
+        console.error('Failed to auto-initialize rating matrix:', initError);
+        throw new Error(`Cannot create rating matrix: ${initError.message}`);
+      }
+    }
+
+    // ENTERPRISE: Type-safe transformation and validation
+    payload = VendorRatingDataTransformer.transformToDto(updates);
+    VendorRatingDataTransformer.validateDto(payload);
+    
+    apiLogger.logApiRequest('PUT', `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/batch`, {
+      updateCount: payload.updates.length,
+      updatedFields: payload.updates.map(u => Object.keys(u).filter(k => k !== 'id')),
+      existingRecords: existingData.length
+    });
+    
+    // PRINCIPAL ENGINEER: Debug exact payload structure
+    console.log('=== DEBUGGING DTO VALIDATION ===');
+    console.log('Nomination ID:', nominationId);
+    console.log('Vendor ID:', vendorId);
+    console.log('Updates count:', updates.length);
+    console.log('Raw updates:', JSON.stringify(updates, null, 2));
+    console.log('Transformed payload:', JSON.stringify(payload, null, 2));
+    console.log('Payload.updates[0] structure:', payload.updates[0] ? Object.keys(payload.updates[0]) : 'No updates');
+    console.log('Sample update object:', payload.updates[0]);
+    console.log('=====================================');
     
     const response = await apiClient.put(
       `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/batch`, 
-      { updates }
+      payload
     );
     
-    // Transform response if we get data back
+    apiLogger.logApiResponse('PUT', `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/batch`, 
+      response, { updateCount: payload.updates.length });
+
+    // ENTERPRISE: Robust response transformation with type safety
     if (Array.isArray(response?.data) && response.data.length > 0) {
-      return response.data.map((item: any) => ({
+      const transformedData = response.data.map((item: any) => ({
         id: item.id,
         nominationEvaluationId: item.nomination_evaluation_id,
         vendorId: item.vendor_id,
@@ -141,12 +371,48 @@ export async function batchUpdateVendorRatingMatrix(
         createdAt: item.created_at,
         updatedAt: item.updated_at
       }));
+      
+      apiLogger.info('Batch update completed successfully', {
+        updateCount: payload.updates.length,
+        returnedRecords: transformedData.length
+      });
+      
+      return transformedData;
     }
     
-    // Return updated data by fetching it fresh
+    // ENTERPRISE: Fallback with fresh data fetch
+    apiLogger.info('No data in response, fetching fresh data from database');
     return getVendorRatingMatrix(nominationId, vendorId);
+    
   } catch (error) {
-    console.error('Failed to batch update vendor rating matrix:', error);
+    // Enhanced error logging to capture the actual problem
+    const status = error.response?.status;
+    const statusText = error.response?.statusText;
+    const message = error.response?.data?.message || error.message || "Unknown error";
+    const responseData = error.response?.data;
+    
+    console.error('Batch update failed:', {
+      status,
+      statusText,
+      message,
+      responseData,
+      error: error,
+      nominationId,
+      vendorId,
+      updateCount: updates.length,
+      payloadUpdates: payload?.updates?.length || 0
+    });
+    
+    apiLogger.logApiError('PUT', `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/batch`, error, {
+      status,
+      statusText,
+      errorMessage: message,
+      responseData,
+      updateCount: updates.length,
+      nominationId,
+      vendorId
+    });
+    
     throw error;
   }
 }
@@ -158,6 +424,16 @@ export async function getVendorRatingOverallScores(
   nominationId: string,
   vendorId: string
 ): Promise<VendorRatingOverallScores> {
+  if (!nominationId || !vendorId) {
+    return {
+      sectionWiseCapability: 0,
+      riskMitigation: 0,
+      totalMinorNC: 0,
+      totalMajorNC: 0,
+      totalRecords: 0
+    };
+  }
+
   try {
     const response = await apiClient.get(`/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/overall-scores`);
     
@@ -180,7 +456,15 @@ export async function getVendorRatingOverallScores(
       totalRecords: 0
     };
   } catch (error) {
-    console.error('Failed to get overall scores:', error);
+    const status = error?.response?.status;
+    
+    apiLogger.logApiError('GET', `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/overall-scores`, error, {
+      status,
+      nominationId,
+      vendorId
+    });
+    
+    // Always return valid default scores instead of throwing
     return {
       sectionWiseCapability: 0,
       riskMitigation: 0,

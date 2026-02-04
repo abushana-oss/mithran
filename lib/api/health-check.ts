@@ -116,7 +116,11 @@ class HealthCheckManager {
       const timeoutId = setTimeout(() => controller.abort(), this.TIMEOUT);
 
       // Try to hit the health endpoint or a lightweight endpoint
-      const response = await fetch(`${baseUrl}/health`, {
+      // For API v1 base URLs, health is at /health not /api/v1/health
+      const healthUrl = baseUrl.includes('/api/v1') 
+        ? baseUrl.replace('/api/v1', '') + '/api/v1/health'
+        : `${baseUrl}/health`;
+      const response = await fetch(healthUrl, {
         method: 'GET',
         signal: controller.signal,
         cache: 'no-store',

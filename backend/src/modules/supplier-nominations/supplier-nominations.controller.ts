@@ -38,7 +38,8 @@ import {
   VendorRatingMatrixDto,
   BatchVendorRatingUpdateDto,
   UpdateVendorRatingDto,
-  VendorRatingOverallScoresDto
+  VendorRatingOverallScoresDto,
+  UpdateCapabilityCriteriaDto
 } from './dto/vendor-rating-matrix.dto';
 
 @ApiTags('supplier-nominations')
@@ -618,6 +619,22 @@ export class SupplierNominationsController {
     }
   ): Promise<void> {
     return this.supplierNominationsService.batchUpdateCapabilityScores(userId, nominationId, updateDto.updates, token);
+  }
+
+  @Put(':id/capability-scores/:criteriaId')
+  @ApiOperation({ summary: 'Update capability criteria name' })
+  @ApiResponse({
+    status: 200,
+    description: 'Capability criteria updated successfully'
+  })
+  updateCapabilityCriteria(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('id') nominationId: string,
+    @Param('criteriaId') criteriaId: string,
+    @Body() updateDto: UpdateCapabilityCriteriaDto
+  ): Promise<void> {
+    return this.supplierNominationsService.updateCapabilityCriteria(userId, nominationId, criteriaId, updateDto.criteriaName, token);
   }
 
   // Vendor Assessment Matrix Endpoints
