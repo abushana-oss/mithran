@@ -41,9 +41,16 @@ export default function SupplierNominationMainPage() {
   if (currentView === 'evaluation' && selectedEvaluationId && nomination) {
     const evaluation = nomination.vendorEvaluations.find(e => e.id === selectedEvaluationId);
     if (evaluation) {
+      // Create vendor object from evaluation data
+      const vendor = {
+        id: evaluation.vendorId,
+        name: evaluation.vendorName
+      };
+      
       return (
         <DetailedEvaluationView
           evaluation={evaluation}
+          vendor={vendor}
           criteria={nomination.criteria}
           nominationId={selectedNominationId!}
           onBack={handleBackToNomination}

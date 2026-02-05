@@ -7,7 +7,8 @@ import {
   Body,
   Param,
   Query,
-  UseGuards
+  UseGuards,
+  BadRequestException
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { SupplierNominationsService } from './supplier-nominations.service';
@@ -774,15 +775,22 @@ export class SupplierNominationsController {
   }
 
   // =======================================
-  // Vendor Rating Matrix Endpoints (Simplified)
+  // Vendor Rating Matrix Endpoints (ENTERPRISE GRADE - CLEANED UP)
   // =======================================
 
   @Get(':nominationId/vendors/:vendorId/rating-matrix')
-  @ApiOperation({ summary: 'Get vendor rating matrix data' })
+  @ApiOperation({ 
+    summary: 'Get vendor rating matrix data',
+    description: 'Retrieve complete rating matrix for vendor assessment'
+  })
   @ApiResponse({
     status: 200,
     description: 'Rating matrix retrieved successfully',
     type: [VendorRatingMatrixDto]
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Rating matrix not found'
   })
   getVendorRatingMatrix(
     @CurrentUser('id') userId: string,
@@ -799,11 +807,18 @@ export class SupplierNominationsController {
   }
 
   @Post(':nominationId/vendors/:vendorId/rating-matrix/init')
-  @ApiOperation({ summary: 'Initialize vendor rating matrix with empty values' })
+  @ApiOperation({ 
+    summary: 'Initialize vendor rating matrix',
+    description: 'Create rating matrix with default criteria for vendor assessment'
+  })
   @ApiResponse({
     status: 201,
     description: 'Rating matrix initialized successfully',
     type: [VendorRatingMatrixDto]
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Rating matrix already exists'
   })
   initializeVendorRatingMatrix(
     @CurrentUser('id') userId: string,
@@ -819,52 +834,35 @@ export class SupplierNominationsController {
     );
   }
 
-  @Put(':nominationId/vendors/:vendorId/rating-matrix/:ratingId')
-  @ApiOperation({ summary: 'Update individual rating matrix item' })
-  @ApiResponse({
-    status: 200,
-    description: 'Rating item updated successfully'
-  })
-  updateVendorRatingItem(
-    @CurrentUser('id') userId: string,
-    @AccessToken() token: string,
-    @Param('nominationId') nominationId: string,
-    @Param('vendorId') vendorId: string,
-    @Param('ratingId') ratingId: string,
-    @Body() updateDto: UpdateVendorRatingDto
-  ): Promise<void> {
-    return this.supplierNominationsService.updateVendorRatingItem(
-      userId,
-      nominationId,
-      vendorId,
-      ratingId,
-      updateDto,
-      token
-    );
-  }
-
   @Put(':nominationId/vendors/:vendorId/rating-matrix/batch')
-  @ApiOperation({ summary: 'Batch update rating matrix - ENTERPRISE BEST PRACTICE' })
+  @ApiOperation({ 
+    summary: 'Batch update rating matrix - ATOMIC ENTERPRISE OPERATION',
+    description: 'Atomically update multiple rating matrix items in single transaction'
+  })
   @ApiResponse({
     status: 200,
     description: 'Rating matrix updated successfully in batch',
     type: [VendorRatingMatrixDto]
   })
-  batchUpdateVendorRatingMatrix(
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid update data or batch operation failed'
+  })
+  async batchUpdateVendorRatingMatrix(
     @CurrentUser('id') userId: string,
     @AccessToken() token: string,
     @Param('nominationId') nominationId: string,
     @Param('vendorId') vendorId: string,
     @Body() updateDto: BatchVendorRatingUpdateDto
   ): Promise<VendorRatingMatrixDto[]> {
-    console.log('[CONTROLLER] Received batch update:', {
-      userId,
-      nominationId, 
-      vendorId,
-      updatesLength: updateDto?.updates?.length || 0,
-      firstUpdate: updateDto?.updates?.[0] || 'No updates'
-    });
-    
+    if (!updateDto?.updates || updateDto.updates.length === 0) {
+      throw new BadRequestException('No updates provided in batch request');
+    }
+
+    if (updateDto.updates.length > 50) {
+      throw new BadRequestException('Maximum 50 updates allowed per batch');
+    }
+
     return this.supplierNominationsService.batchUpdateVendorRatingMatrix(
       userId,
       nominationId,
@@ -875,11 +873,18 @@ export class SupplierNominationsController {
   }
 
   @Get(':nominationId/vendors/:vendorId/rating-matrix/overall-scores')
-  @ApiOperation({ summary: 'Get calculated overall scores for vendor rating' })
+  @ApiOperation({ 
+    summary: 'Get calculated overall scores for vendor rating',
+    description: 'Calculate and return aggregated scores from rating matrix data'
+  })
   @ApiResponse({
     status: 200,
     description: 'Overall scores calculated successfully',
     type: VendorRatingOverallScoresDto
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'No rating data found for score calculation'
   })
   getVendorRatingOverallScores(
     @CurrentUser('id') userId: string,

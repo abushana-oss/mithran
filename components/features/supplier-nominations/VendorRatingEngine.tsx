@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,11 +32,12 @@ import {
 
 interface VendorRatingEngineProps {
   vendorId: string;
+  vendorName?: string;
   nominationId?: string;
   onScoreUpdate?: (scores: any[]) => void;
 }
 
-export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: VendorRatingEngineProps) {
+export function VendorRatingEngine({ vendorId, vendorName, nominationId, onScoreUpdate }: VendorRatingEngineProps) {
   const [ratingData, setRatingData] = useState<VendorRatingMatrix[]>([]);
   const [overallScores, setOverallScores] = useState<VendorRatingOverallScores>({
     sectionWiseCapability: 0,
@@ -49,11 +50,11 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
   const [isEditing, setIsEditing] = useState(false);
   const [editingValues, setEditingValues] = useState<Record<string, Partial<UpdateVendorRatingData>>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [hasPendingChanges, setHasPendingChanges] = useState(false);
 
   // ENTERPRISE OPTIMIZATION: Load data on mount with request deduplication
   useEffect(() => {
     if (!nominationId || !vendorId) {
-      console.log('Missing nominationId or vendorId:', { nominationId, vendorId });
       return;
     }
     
@@ -68,30 +69,18 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
           getVendorRatingOverallScores(nominationId, vendorId)
         ]);
         
-        // Initialize if no data exists
-        if (!data || data.length === 0) {
-          try {
-            await initializeVendorRatingMatrix(nominationId, vendorId);
-            data = await getVendorRatingMatrix(nominationId, vendorId);
-          } catch (initError) {
-            console.error('Failed to initialize vendor rating matrix:', initError);
-            // Use empty data - component will show default template
-            data = [];
-          }
-        }
+        
+        // Data already exists in database, no need to initialize
         
         setRatingData(data);
         setOverallScores(scores);
         
       } catch (error) {
-        console.error('Failed to load vendor rating data:', error);
-        
         // Handle different error types professionally
         const errorMessage = error instanceof Error ? error.message : String(error);
         
         if (errorMessage.includes('404') || errorMessage.includes('not found')) {
           // 404 is expected when no data exists yet - don't show error toast
-          console.log('No rating matrix found - this is normal for new records');
         } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
           toast.error('Network connection failed. Please check your connection and try again.');
         } else if (errorMessage.includes('timeout')) {
@@ -117,7 +106,20 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
     loadData();
   }, [nominationId, vendorId]);
 
-  // Handle field updates with proper validation
+  // Enterprise debouncing for optimal performance
+  const debouncedFieldUpdates = useRef<Record<string, NodeJS.Timeout>>({});
+
+  // Cleanup debounced timeouts on unmount
+  useEffect(() => {
+    return () => {
+      // Clear field update timeouts
+      Object.values(debouncedFieldUpdates.current).forEach(timeout => {
+        clearTimeout(timeout);
+      });
+    };
+  }, []);
+  
+  // Handle field updates with proper validation and debouncing
   const handleFieldChange = (id: string, field: keyof UpdateVendorRatingData, value: number) => {
     // Validate ranges based on field type
     let validatedValue = value;
@@ -130,14 +132,29 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
       validatedValue = Math.max(0, Math.min(999, Math.floor(value)));
     }
     
-    setEditingValues(prev => ({
-      ...prev,
-      [id]: {
-        ...prev[id],
-        id,
-        [field]: validatedValue
-      }
-    }));
+    // Clear existing timeout for this field to prevent duplicate updates
+    const fieldKey = `${id}-${field}`;
+    if (debouncedFieldUpdates.current[fieldKey]) {
+      clearTimeout(debouncedFieldUpdates.current[fieldKey]);
+    }
+    
+    // Indicate pending changes for manual save
+    setHasPendingChanges(true);
+    
+    // Debounce state updates to reduce re-renders (300ms industry standard)
+    debouncedFieldUpdates.current[fieldKey] = setTimeout(() => {
+      setEditingValues(prev => ({
+        ...prev,
+        [id]: {
+          ...prev[id],
+          id,
+          [field]: validatedValue
+        }
+      }));
+      
+      // Clean up the timeout reference
+      delete debouncedFieldUpdates.current[fieldKey];
+    }, 300);
   };
 
   // Calculate real-time overall scores based on current editing state
@@ -193,7 +210,7 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
   const handleSave = async () => {
     // Ensure both IDs are present before attempting to save
     if (!nominationId || !vendorId) {
-      console.error("Cannot save: Missing nominationId or vendorId");
+      toast.error("Cannot save: Missing nomination or vendor information");
       return;
     }
 
@@ -220,14 +237,32 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
       try {
         await batchUpdateVendorRatingMatrix(nominationId, vendorId, updates);
         
+        // Add a small delay to allow database triggers to complete
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         // Refresh data from backend
         const [freshData, updatedScores] = await Promise.all([
           getVendorRatingMatrix(nominationId, vendorId),
           getVendorRatingOverallScores(nominationId, vendorId)
         ]);
         
-        setRatingData(freshData);
-        setOverallScores(updatedScores);
+        
+        // Force component re-render by clearing data first
+        setRatingData([]);
+        setOverallScores({
+          sectionWiseCapability: 0,
+          riskMitigation: 0,
+          totalMinorNC: 0,
+          totalMajorNC: 0,
+          totalRecords: 0
+        });
+        
+        // Set fresh data after brief delay
+        setTimeout(() => {
+          setRatingData(freshData);
+          setOverallScores(updatedScores);
+        }, 50);
+        
         setEditingValues({});
         setIsEditing(false);
         
@@ -236,8 +271,10 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
         }
         
         toast.success(`Successfully updated ${updates.length} rating entries`);
+        
+        // Clear pending changes after successful save
+        setHasPendingChanges(false);
       } catch (error) {
-        console.error('Failed to save vendor rating:', error);
         toast.error('Failed to save ratings. Please try again.');
       }
       
@@ -245,12 +282,8 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
       return;
       
     } catch (error) {
-      // This is where your logged error originates
-      console.warn('Vendor rating save failed', { 
-        error: error.message, 
-        nominationId, 
-        vendorId 
-      });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      toast.error(`Failed to save: ${errorMessage}`);
       
     } finally {
       setIsSaving(false);
@@ -329,180 +362,230 @@ export function VendorRatingEngine({ vendorId, nominationId, onScoreUpdate }: Ve
           <CardContent className="p-4">
             <div className="text-sm text-gray-400">Rating Status</div>
             <div className="text-lg font-bold text-white">{overallScores.totalRecords} criteria loaded</div>
-            <div className="flex items-center gap-2 mt-2">
-              <Button
-                onClick={() => setIsEditing(!isEditing)}
-                disabled={isSaving}
-                variant={isEditing ? "secondary" : "default"}
-                size="sm"
-                className="flex items-center gap-2"
-              >
-                {isEditing ? <X className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
-                {isEditing ? 'Cancel' : 'Edit Assessment'}
-              </Button>
-            </div>
+            
+            {!isEditing ? (
+              <div className="flex items-center gap-2 mt-2">
+                <Button
+                  onClick={() => setIsEditing(!isEditing)}
+                  disabled={isSaving}
+                  variant="default"
+                  size="sm"
+                  className="flex items-center gap-2"
+                >
+                  <Edit className="h-4 w-4" />
+                  Edit Assessment
+                </Button>
+              </div>
+            ) : (
+              <div className="mt-3">
+                <div className="flex items-center gap-2 mb-3">
+                  <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+                    {Object.keys(editingValues).length} unsaved changes
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleCancel}
+                    variant="outline"
+                    disabled={isSaving}
+                    size="sm"
+                    className="border-gray-600 text-gray-400 hover:text-white"
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleSave}
+                    disabled={isSaving || Object.keys(editingValues).length === 0}
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
+                  >
+                    {isSaving ? (
+                      <>
+                        <Save className="h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4" />
+                        Save Changes
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Vendor Rating Assessment Matrix */}
+      {/* Vendor Rating Header with Overall Scores */}
       <Card className="bg-gray-800 border-gray-700">
-        <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
-            <Calculator className="h-5 w-5" />
-            Vendor Rating Assessment Matrix
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0 overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-gray-700">
-                <TableHead className="text-gray-300 text-center bg-blue-100 text-black">S.no</TableHead>
-                <TableHead className="text-gray-300 text-center bg-blue-100 text-black">category</TableHead>
-                <TableHead className="text-gray-300 text-center bg-blue-100 text-black">Assessment Aspects</TableHead>
-                <TableHead className="text-gray-300 text-center bg-blue-100 text-black">Section wise<br/>Capability %</TableHead>
-                <TableHead className="text-gray-300 text-center bg-blue-100 text-black">Risk Mitigation %</TableHead>
-                <TableHead className="text-gray-300 text-center bg-blue-100 text-black">No of Minor NC</TableHead>
-                <TableHead className="text-gray-300 text-center bg-blue-100 text-black">No of Major NC</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {ratingData.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center text-gray-400 py-8">
-                    {isLoading ? 'Loading rating matrix...' : 'No rating data available'}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                ratingData
-                  .sort((a, b) => (a.sortOrder || a.sNo) - (b.sortOrder || b.sNo))
-                  .map((item) => (
-                    <TableRow key={item.id} className="border-gray-700">
-                      <TableCell className="text-gray-300 text-center">{item.sNo}</TableCell>
-                      <TableCell className="text-gray-300 font-medium text-center">{item.category}</TableCell>
-                      <TableCell className="text-gray-300">
-                        <span>{item.assessmentAspects}</span>
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {isEditing ? (
-                          <Input
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="0.1"
-                            value={getCurrentValue(item, 'sectionWiseCapabilityPercent')}
-                            onChange={(e) => handleFieldChange(item.id, 'sectionWiseCapabilityPercent', parseFloat(e.target.value) || 0)}
-                            className="w-20 h-8 text-center bg-gray-700 border-gray-600 text-white"
-                          />
-                        ) : (
-                          <span className="text-gray-300">{getDisplayValue(item.sectionWiseCapabilityPercent)}%</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {isEditing ? (
-                          <Input
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="0.1"
-                            value={getCurrentValue(item, 'riskMitigationPercent')}
-                            onChange={(e) => handleFieldChange(item.id, 'riskMitigationPercent', parseFloat(e.target.value) || 0)}
-                            className="w-20 h-8 text-center bg-gray-700 border-gray-600 text-white"
-                          />
-                        ) : (
-                          <span className="text-gray-300">{getDisplayValue(item.riskMitigationPercent)}%</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {isEditing ? (
-                          <Input
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="1"
-                            value={getCurrentValue(item, 'minorNC')}
-                            onChange={(e) => handleFieldChange(item.id, 'minorNC', parseInt(e.target.value) || 0)}
-                            className="w-16 h-8 text-center bg-gray-700 border-gray-600 text-white"
-                          />
-                        ) : (
-                          <span className="text-gray-300">{item.minorNC || 0}</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {isEditing ? (
-                          <Input
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="1"
-                            value={getCurrentValue(item, 'majorNC')}
-                            onChange={(e) => handleFieldChange(item.id, 'majorNC', parseInt(e.target.value) || 0)}
-                            className="w-16 h-8 text-center bg-gray-700 border-gray-600 text-white"
-                          />
-                        ) : (
-                          <span className="text-gray-300">{item.majorNC || 0}</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-              )}
+        <CardContent className="p-6">
+          <div className="flex justify-between items-start">
+            <div>
+              <h2 className="text-2xl font-bold text-white">
+                {vendorName || 'Vendor Rating Assessment'}
+              </h2>
+              <p className="text-gray-400 mt-1">Rating Matrix Evaluation</p>
+            </div>
+            
+            <div className="text-right">
+              <div className="text-3xl font-bold text-white">
+                {(() => {
+                  // Calculate combined overall score from all metrics
+                  const sectionCapability = overallScores.sectionWiseCapability || 0;
+                  const riskMitigation = overallScores.riskMitigation || 0;
+                  
+                  // Weighted average: 60% capability + 40% risk mitigation
+                  const overallScore = (sectionCapability * 0.6) + (riskMitigation * 0.4);
+                  return overallScore.toFixed(1);
+                })()}%
+              </div>
+              <div className="text-sm text-gray-400">Overall Score</div>
+              
+              <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
+                <div className="text-center">
+                  <div className="text-lg font-semibold text-blue-400">
+                    {overallScores.riskMitigation.toFixed(1)}%
+                  </div>
+                  <div className="text-gray-400">Risk Mitigation</div>
+                </div>
                 
-              {/* Overall Score Row - matching the image */}
-                <TableRow className="bg-yellow-200 border-t-2 border-gray-600">
-                  <TableCell colSpan={3} className="text-black font-bold text-center py-3">
-                    Overall Score
-                  </TableCell>
-                  <TableCell className="text-black font-bold text-center py-3">
-                    {getCurrentOverallScores().sectionWiseCapability.toFixed(1)}%
-                  </TableCell>
-                  <TableCell className="text-black font-bold text-center py-3">
-                    {getCurrentOverallScores().riskMitigation.toFixed(1)}%
-                  </TableCell>
-                  <TableCell className="text-black font-bold text-center py-3">
-                    {getCurrentOverallScores().totalMinorNC}
-                  </TableCell>
-                  <TableCell className="text-black font-bold text-center py-3">
-                    {getCurrentOverallScores().totalMajorNC}
-                  </TableCell>
-                </TableRow>
-            </TableBody>
-          </Table>
+                <div className="text-center">
+                  <div className="text-lg font-semibold text-orange-400">
+                    {overallScores.totalMinorNC + overallScores.totalMajorNC}
+                  </div>
+                  <div className="text-gray-400">Total NCs</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Save/Cancel Actions */}
-      {isEditing && Object.keys(editingValues).length > 0 && (
-        <div className="flex justify-end gap-2 bg-gray-800 p-4 rounded-lg border border-gray-700">
-          <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 mr-auto">
-            {Object.keys(editingValues).length} unsaved changes
-          </Badge>
-          <Button
-            onClick={handleCancel}
-            variant="outline"
-            disabled={isSaving}
-            className="border-gray-600 text-gray-400 hover:text-white"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
-          >
-            {isSaving ? (
-              <>
-                <Save className="h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4" />
-                Save Changes
-              </>
+      {/* Vendor Rating Assessment Matrix */}
+      <Card className="bg-gray-800 border-gray-700">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calculator className="h-5 w-5" />
+              Vendor Rating Assessment Matrix
+            </div>
+            {hasPendingChanges && (
+              <div className="flex items-center gap-2 text-amber-300 text-sm">
+                <div className="w-2 h-2 bg-amber-300 rounded-full animate-pulse"></div>
+                Unsaved changes
+              </div>
             )}
-          </Button>
-        </div>
-      )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {!ratingData || ratingData.length === 0 ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center text-gray-400">
+                {isLoading ? 'Loading rating matrix...' : 'No rating data available'}
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-700">
+                    <th className="p-3 text-center bg-blue-100 text-black font-medium">S.no</th>
+                    <th className="p-3 text-center bg-blue-100 text-black font-medium">Category</th>
+                    <th className="p-3 text-center bg-blue-100 text-black font-medium">Assessment Aspects</th>
+                    <th className="p-3 text-center bg-blue-100 text-black font-medium">Section wise Capability %</th>
+                    <th className="p-3 text-center bg-blue-100 text-black font-medium">Risk Mitigation %</th>
+                    <th className="p-3 text-center bg-blue-100 text-black font-medium">No of Minor NC</th>
+                    <th className="p-3 text-center bg-blue-100 text-black font-medium">No of Major NC</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ratingData
+                    .sort((a, b) => (a.sortOrder || a.sNo || 0) - (b.sortOrder || b.sNo || 0))
+                    .map((item) => (
+                      <tr key={`row-${item.id}`} className="border-b border-gray-700">
+                        <td className="p-3 text-gray-300 text-center">{item.sNo}</td>
+                        <td className="p-3 text-gray-300 text-center">{item.category}</td>
+                        <td className="p-3 text-gray-300">{item.assessmentAspects}</td>
+                        <td className="p-3 text-center">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={getCurrentValue(item, 'sectionWiseCapabilityPercent')}
+                              onChange={(e) => handleFieldChange(item.id, 'sectionWiseCapabilityPercent', parseFloat(e.target.value) || 0)}
+                              className="w-20 h-8 text-center bg-gray-700 border border-gray-600 text-white rounded px-2"
+                            />
+                          ) : (
+                            <span className="text-gray-300">{getDisplayValue(item.sectionWiseCapabilityPercent)}%</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              value={getCurrentValue(item, 'riskMitigationPercent')}
+                              onChange={(e) => handleFieldChange(item.id, 'riskMitigationPercent', parseFloat(e.target.value) || 0)}
+                              className="w-20 h-8 text-center bg-gray-700 border border-gray-600 text-white rounded px-2"
+                            />
+                          ) : (
+                            <span className="text-gray-300">{getDisplayValue(item.riskMitigationPercent)}%</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              min="0"
+                              max="999"
+                              step="1"
+                              value={getCurrentValue(item, 'minorNC')}
+                              onChange={(e) => handleFieldChange(item.id, 'minorNC', parseInt(e.target.value) || 0)}
+                              className="w-16 h-8 text-center bg-gray-700 border border-gray-600 text-white rounded px-2"
+                            />
+                          ) : (
+                            <span className="text-gray-300">{item.minorNC || 0}</span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center">
+                          {isEditing ? (
+                            <input
+                              type="number"
+                              min="0"
+                              max="999"
+                              step="1"
+                              value={getCurrentValue(item, 'majorNC')}
+                              onChange={(e) => handleFieldChange(item.id, 'majorNC', parseInt(e.target.value) || 0)}
+                              className="w-16 h-8 text-center bg-gray-700 border border-gray-600 text-white rounded px-2"
+                            />
+                          ) : (
+                            <span className="text-gray-300">{item.majorNC || 0}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  
+                  <tr className="bg-yellow-200 border-t-2 border-gray-600">
+                    <td colSpan={3} className="p-3 text-black font-bold text-center">Overall Score</td>
+                    <td className="p-3 text-black font-bold text-center">{getCurrentOverallScores().sectionWiseCapability.toFixed(1)}%</td>
+                    <td className="p-3 text-black font-bold text-center">{getCurrentOverallScores().riskMitigation.toFixed(1)}%</td>
+                    <td className="p-3 text-black font-bold text-center">{getCurrentOverallScores().totalMinorNC}</td>
+                    <td className="p-3 text-black font-bold text-center">{getCurrentOverallScores().totalMajorNC}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
     </div>
   );
 }

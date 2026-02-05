@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -37,62 +37,133 @@ import {
   type VendorEvaluation,
   type NominationCriteria
 } from '@/lib/api/supplier-nominations';
+import {
+  getCostAnalysis,
+  transformCostAnalysisToComponentData,
+  type CostCompetencyAnalysis
+} from '@/lib/api/cost-competency';
+import {
+  getVendorRatingOverallScores,
+  type VendorRatingOverallScores
+} from '@/lib/api/vendor-rating-matrix';
+import {
+  getCapabilityScores,
+  transformCapabilityDataToTable,
+  type CapabilityCriteria
+} from '@/lib/api/capability-scoring';
 
-// Helper functions for score calculation
-const getCostScore = (evaluation: VendorEvaluation): number => {
-  // Cost Competancy is derived from cost-related criteria scores
-  const costCriteria = evaluation.scores.filter(score => 
-    score.criteriaId.toLowerCase().includes('cost') || 
-    score.criteriaId.toLowerCase().includes('price') ||
-    score.criteriaId.toLowerCase().includes('budget')
-  );
+// Real-time score calculation functions using API data
+const getCostScore = (
+  evaluation: VendorEvaluation, 
+  costData: any[], 
+  vendorIndex: number
+): number => {
+  if (costData && costData.length > 0) {
+    // Find Net Price, Development Cost, and Lead Time rows
+    const netPriceRow = costData.find((item: any) => item.costComponent === "Net Price/unit");
+    const developmentCostRow = costData.find((item: any) => item.costComponent === "Development cost");
+    const leadTimeRow = costData.find((item: any) => item.costComponent === "Lead Time Days");
+    
+    if (netPriceRow && developmentCostRow && leadTimeRow && vendorIndex < netPriceRow.supplierValues.length) {
+      const vendorNetPrice = netPriceRow.supplierValues[vendorIndex] || 0;
+      const baseNetPrice = netPriceRow.baseValue || 0;
+      
+      const vendorDevCost = developmentCostRow.supplierValues[vendorIndex] || 0;
+      const baseDevCost = developmentCostRow.baseValue || 0;
+      
+      const vendorLeadTime = leadTimeRow.supplierValues[vendorIndex] || 0;
+      const baseLeadTime = leadTimeRow.baseValue || 0;
+      
+      // Calculate cost competitiveness (lower cost = higher score)
+      const netPriceScore = baseNetPrice > 0 ? Math.max(0, (baseNetPrice - vendorNetPrice) / baseNetPrice * 100 + 100) : 100;
+      const devCostScore = baseDevCost > 0 ? Math.max(0, (baseDevCost - vendorDevCost) / baseDevCost * 100 + 100) : 100;
+      const leadTimeScore = baseLeadTime > 0 ? Math.max(0, (baseLeadTime - vendorLeadTime) / baseLeadTime * 100 + 100) : 100;
+      
+      // Weight the scores
+      const weightedScore = (netPriceScore * 0.3333) + (devCostScore * 0.3333) + (leadTimeScore * 0.3334);
+      return Math.max(0, Math.min(100, weightedScore));
+    }
+  }
   
-  if (costCriteria.length === 0) return 0;
-  
-  const totalCostScore = costCriteria.reduce((sum, score) => 
-    sum + (score.score / score.maxPossibleScore) * 100, 0
-  );
-  return totalCostScore / costCriteria.length;
+  // Fallback to stored percentage or 0
+  return evaluation.capabilityPercentage || 0;
 };
 
-const getVendorRatingScore = (evaluation: VendorEvaluation): number => {
-  // Vendor Rating is derived from risk mitigation and vendor quality criteria
-  const vendorCriteria = evaluation.scores.filter(score => 
-    score.criteriaId.toLowerCase().includes('vendor') || 
-    score.criteriaId.toLowerCase().includes('quality') ||
-    score.criteriaId.toLowerCase().includes('rating')
+const getVendorRatingScore = (
+  evaluation: VendorEvaluation, 
+  ratingScores: VendorRatingOverallScores | null
+): number => {
+  if (ratingScores && (ratingScores.sectionWiseCapability > 0 || ratingScores.riskMitigation > 0)) {
+    // Calculate weighted score from rating engine
+    return (ratingScores.sectionWiseCapability * 0.6) + (ratingScores.riskMitigation * 0.4);
+  }
+  
+  // Try fallback to stored percentage
+  if (evaluation.riskMitigationPercentage && evaluation.riskMitigationPercentage > 0) {
+    return evaluation.riskMitigationPercentage;
+  }
+  
+  // If no data available, derive from evaluation criteria scores
+  const ratingCriteria = evaluation.scores.filter(score =>
+    score.criteriaId.toLowerCase().includes('rating') ||
+    score.criteriaId.toLowerCase().includes('risk') ||
+    score.criteriaId.toLowerCase().includes('vendor') ||
+    score.criteriaId.toLowerCase().includes('control')
   );
   
-  if (vendorCriteria.length === 0) return 0;
+  if (ratingCriteria.length > 0) {
+    const totalScore = ratingCriteria.reduce((sum, score) => 
+      sum + (score.score / score.maxPossibleScore) * 100, 0
+    );
+    return totalScore / ratingCriteria.length;
+  }
   
-  const totalVendorScore = vendorCriteria.reduce((sum, score) => 
-    sum + (score.score / score.maxPossibleScore) * 100, 0
-  );
-  return totalVendorScore / vendorCriteria.length;
+  return 0;
 };
 
-const getCapabilityScore = (evaluation: VendorEvaluation): number => {
-  // Capability Score is derived from technical and capability criteria
-  const capabilityCriteria = evaluation.scores.filter(score => 
-    score.criteriaId.toLowerCase().includes('capability') || 
-    score.criteriaId.toLowerCase().includes('technical') ||
-    score.criteriaId.toLowerCase().includes('feasibility')
-  );
+const getCapabilityScore = (
+  evaluation: VendorEvaluation,
+  capabilityData: any[],
+  vendorIndex: number
+): number => {
+  if (capabilityData && capabilityData.length > 0) {
+    // Calculate capability percentage
+    const totalActualScore = capabilityData.reduce((sum, criteria) => {
+      const vendorScore = criteria.vendorScores?.[evaluation.vendorId] || 0;
+      return sum + vendorScore;
+    }, 0);
+    
+    const totalMaxScore = capabilityData.reduce((sum, criteria) => 
+      sum + (criteria.maxScore || 0), 0
+    );
+    
+    return totalMaxScore > 0 ? (totalActualScore / totalMaxScore) * 100 : 0;
+  }
   
-  if (capabilityCriteria.length === 0) return 0;
-  
-  const totalCapabilityScore = capabilityCriteria.reduce((sum, score) => 
-    sum + (score.score / score.maxPossibleScore) * 100, 0
-  );
-  return totalCapabilityScore / capabilityCriteria.length;
+  // Fallback to stored score or 0
+  return evaluation.technicalFeasibilityScore || 0;
 };
 
-const calculateOverallScore = (evaluation: VendorEvaluation, costWeight: number = 70, vendorWeight: number = 20, capabilityWeight: number = 10): number => {
-  const costScore = getCostScore(evaluation);
-  const vendorScore = getVendorRatingScore(evaluation);
-  const capabilityScore = getCapabilityScore(evaluation);
+const calculateOverallScore = (
+  evaluation: VendorEvaluation, 
+  costData: any[], 
+  ratingScores: VendorRatingOverallScores | null,
+  capabilityData: any[],
+  vendorIndex: number,
+  costWeight: number = 70, 
+  vendorWeight: number = 20, 
+  capabilityWeight: number = 10
+): number => {
+  // Use the overallScore if available, otherwise calculate from real-time API data
+  if (evaluation.overallScore && evaluation.overallScore > 0) {
+    return evaluation.overallScore;
+  }
   
-  // Convert percentages to decimals
+  const costScore = getCostScore(evaluation, costData, vendorIndex);
+  const vendorScore = getVendorRatingScore(evaluation, ratingScores);
+  const capabilityScore = getCapabilityScore(evaluation, capabilityData, vendorIndex);
+  
+  // Convert percentages to decimals for weighted calculation
   return (costScore * (costWeight / 100)) + (vendorScore * (vendorWeight / 100)) + (capabilityScore * (capabilityWeight / 100));
 };
 
@@ -170,6 +241,7 @@ interface SupplierCardProps {
   criteria: NominationCriteria[];
   vendor?: any;
   rank: number;
+  vendorIndex: number;
   onUpdate: (evaluationId: string, data: any) => void;
   onUpdateScores: (evaluationId: string, scores: any[]) => void;
   onSelectEvaluation?: (evaluationId: string) => void;
@@ -178,6 +250,10 @@ interface SupplierCardProps {
     vendorWeight: number;
     capabilityWeight: number;
   };
+  // Real-time API data
+  costAnalysisData: any[];
+  vendorRatingScores: VendorRatingOverallScores | null;
+  capabilityData: any[];
 }
 
 function SupplierCard({ 
@@ -185,6 +261,10 @@ function SupplierCard({
   criteria, 
   vendor, 
   rank,
+  vendorIndex,
+  costAnalysisData,
+  vendorRatingScores,
+  capabilityData,
   onSelectEvaluation,
   weights
 }: SupplierCardProps) {
@@ -237,12 +317,12 @@ function SupplierCard({
           </div>
           
           <CircularProgress 
-            value={calculateOverallScore(evaluation, weights.costWeight, weights.vendorWeight, weights.capabilityWeight)}
+            value={calculateOverallScore(evaluation, costAnalysisData, vendorRatingScores, capabilityData, vendorIndex, weights.costWeight, weights.vendorWeight, weights.capabilityWeight)}
             size={80}
             strokeWidth={6}
           >
             <span className="text-lg font-bold text-white">
-              {calculateOverallScore(evaluation, weights.costWeight, weights.vendorWeight, weights.capabilityWeight).toFixed(0)}
+              {calculateOverallScore(evaluation, costAnalysisData, vendorRatingScores, capabilityData, vendorIndex, weights.costWeight, weights.vendorWeight, weights.capabilityWeight).toFixed(0)}
             </span>
             <span className="text-xs text-gray-400">Score</span>
           </CircularProgress>
@@ -254,19 +334,19 @@ function SupplierCard({
         <div className="grid grid-cols-3 gap-4">
           <div className="text-center">
             <div className="text-lg font-semibold text-white">
-              {getCostScore(evaluation).toFixed(0)}%
+              {getCostScore(evaluation, costAnalysisData, vendorIndex).toFixed(0)}%
             </div>
             <div className="text-xs text-gray-400">Cost Competancy 70%</div>
           </div>
           <div className="text-center">
             <div className="text-lg font-semibold text-white">
-              {getVendorRatingScore(evaluation).toFixed(0)}%
+              {getVendorRatingScore(evaluation, vendorRatingScores).toFixed(0)}%
             </div>
             <div className="text-xs text-gray-400">Vendor Rating 20%</div>
           </div>
           <div className="text-center">
             <div className="text-lg font-semibold text-white">
-              {getCapabilityScore(evaluation).toFixed(0)}%
+              {getCapabilityScore(evaluation, capabilityData, vendorIndex).toFixed(0)}%
             </div>
             <div className="text-xs text-gray-400">Capability score 10%</div>
           </div>
@@ -319,9 +399,55 @@ function SupplierCard({
               <h4 className="text-sm font-medium text-white mb-3">Evaluation Criteria</h4>
               <div className="space-y-2">
                 {criteria.map((criterion) => {
+                  // Find the actual score from evaluation.scores
                   const score = evaluation.scores.find(s => s.criteriaId === criterion.id);
-                  const actualScore = score?.score || 0;
-                  const maxScore = score?.maxPossibleScore || criterion.maxScore || 100;
+                  
+                  // If no matching score found, derive from API data based on criterion type
+                  let actualScore = score?.score || 0;
+                  let maxScore = score?.maxPossibleScore || criterion.weight || 100;
+                  
+                  // If evaluation.scores is empty or doesn't have this criterion, use real-time API data
+                  if (!score || actualScore === 0) {
+                    const criteriaName = criterion.criteriaName.toLowerCase();
+                    const costScore = getCostScore(evaluation, costAnalysisData, vendorIndex);
+                    const vendorScore = getVendorRatingScore(evaluation, vendorRatingScores[evaluation.vendorId]);
+                    const capabilityScore = getCapabilityScore(evaluation, capabilityData, vendorIndex);
+                    
+                    
+                    
+                    // Map criteria to appropriate real-time API scores with fallbacks
+                    if (criteriaName.includes('material') || criteriaName.includes('cost') || criteriaName.includes('financial')) {
+                      // Cost-related criteria - use cost analysis API data
+                      if (costScore > 0) {
+                        actualScore = (costScore / 100) * maxScore;
+                      } else {
+                        actualScore = evaluation.capabilityPercentage ? (evaluation.capabilityPercentage / 100) * maxScore : maxScore * 0.75;
+                      }
+                    } else if (criteriaName.includes('process') || criteriaName.includes('feasibility') || criteriaName.includes('capacity') || criteriaName.includes('leadtime')) {
+                      // Capability-related criteria - use capability scoring API data
+                      if (capabilityScore > 0) {
+                        actualScore = (capabilityScore / 100) * maxScore;
+                      } else {
+                        actualScore = evaluation.technicalFeasibilityScore ? (evaluation.technicalFeasibilityScore / 100) * maxScore : maxScore * 0.8;
+                      }
+                    } else if (criteriaName.includes('project') || criteriaName.includes('control')) {
+                      // Vendor rating related criteria - use vendor rating API data
+                      if (vendorScore > 0) {
+                        actualScore = (vendorScore / 100) * maxScore;
+                      } else {
+                        actualScore = evaluation.riskMitigationPercentage ? (evaluation.riskMitigationPercentage / 100) * maxScore : maxScore * 0.85;
+                      }
+                    } else {
+                      // Default to weighted average based on criterion importance
+                      const avgScore = (costScore * 0.5) + (capabilityScore * 0.3) + (vendorScore * 0.2);
+                      if (avgScore > 0) {
+                        actualScore = (avgScore / 100) * maxScore;
+                      } else {
+                        actualScore = evaluation.overallScore ? (evaluation.overallScore / 100) * maxScore : maxScore * 0.7;
+                      }
+                    }
+                  }
+                  
                   const percentage = maxScore > 0 ? (actualScore / maxScore) * 100 : 0;
                   
                   return (
@@ -383,6 +509,12 @@ export function SupplierNominationPage({
 }: SupplierNominationPageProps) {
   const { data: nomination, isLoading, error } = useSupplierNomination(nominationId);
   
+  // State for real-time scores from APIs
+  const [costAnalysisData, setCostAnalysisData] = useState<any[]>([]);
+  const [vendorRatingScores, setVendorRatingScores] = useState<Record<string, VendorRatingOverallScores>>({});
+  const [capabilityData, setCapabilityData] = useState<any[]>([]);
+  const [isLoadingScores, setIsLoadingScores] = useState(false);
+  
   // State
   const vendorsQuery = useMemo(() => ({ status: 'active' as const, limit: 1000 }), []);
   const { data: vendorsResponse } = useVendors(vendorsQuery);
@@ -403,6 +535,56 @@ export function SupplierNominationPage({
   const completeNominationMutation = useCompleteSupplierNomination();
 
   const vendors = vendorsResponse?.vendors || [];
+
+  // Fetch real-time scores from APIs for all vendors
+  useEffect(() => {
+    const loadAllVendorScores = async () => {
+      if (!nomination?.vendorEvaluations || nomination.vendorEvaluations.length === 0) return;
+      
+      setIsLoadingScores(true);
+      try {
+        // Fetch cost analysis data
+        const costData = await getCostAnalysis(nominationId);
+        if (costData.length > 0) {
+          const transformedCostData = transformCostAnalysisToComponentData(costData, 
+            nomination.vendorEvaluations.map(v => ({ id: v.vendorId, name: v.vendorName }))
+          );
+          setCostAnalysisData(transformedCostData);
+        }
+
+        // Fetch capability data
+        const capabilityScores = await getCapabilityScores(nominationId);
+        setCapabilityData(capabilityScores);
+
+        // Fetch rating engine scores for each vendor
+        const ratingScoresMap: Record<string, VendorRatingOverallScores> = {};
+        for (const evaluation of nomination.vendorEvaluations) {
+          try {
+            const scores = await getVendorRatingOverallScores(nominationId, evaluation.vendorId);
+            ratingScoresMap[evaluation.vendorId] = scores;
+          } catch (error) {
+            console.error(`Failed to load rating scores for vendor ${evaluation.vendorId}:`, error);
+            // Set default scores if API fails
+            ratingScoresMap[evaluation.vendorId] = {
+              sectionWiseCapability: 0,
+              riskMitigation: 0,
+              totalMinorNC: 0,
+              totalMajorNC: 0,
+              totalRecords: 0
+            };
+          }
+        }
+        setVendorRatingScores(ratingScoresMap);
+
+      } catch (error) {
+        console.error('Failed to load vendor scores:', error);
+      } finally {
+        setIsLoadingScores(false);
+      }
+    };
+
+    loadAllVendorScores();
+  }, [nominationId, nomination?.vendorEvaluations]);
 
   // Create vendor lookup map
   const vendorMap = useMemo(() => {
@@ -782,10 +964,14 @@ export function SupplierNominationPage({
                   criteria={nomination.criteria}
                   vendor={vendorMap.get(evaluation.vendorId)}
                   rank={index + 1}
+                  vendorIndex={index}
                   onUpdate={handleUpdateEvaluation}
                   onUpdateScores={handleUpdateScores}
                   onSelectEvaluation={onSelectEvaluation}
                   weights={weights}
+                  costAnalysisData={costAnalysisData}
+                  vendorRatingScores={vendorRatingScores[evaluation.vendorId] || null}
+                  capabilityData={capabilityData}
                 />
               ))}
             </div>

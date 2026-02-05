@@ -57,7 +57,7 @@ interface CostCompetencyAnalysisProps {
   vendors?: Array<{ id: string; name: string; }>;
 }
 
-export function CostCompetencyAnalysis({ nominationId, vendors = [] }: CostCompetencyAnalysisProps) {
+export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdate }: CostCompetencyAnalysisProps) {
   // Create empty cost data structure for real data input
   const createEmptyCostData = () => {
     const numVendors = vendors.length || 0;
@@ -213,6 +213,9 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [] }: CostCompe
     const loadCostAnalysisData = async () => {
       if (!nominationId || vendors.length === 0) return;
 
+      // Prevent duplicate calls
+      if (isLoadingCostData || isLoadingWeights) return;
+
       try {
         setIsLoadingCostData(true);
         setIsLoadingWeights(true);
@@ -246,29 +249,36 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [] }: CostCompe
 
       } catch (error) {
         console.error('Failed to load cost analysis data:', error);
-        // Fallback to empty data structure
-        const fallbackData = createEmptyCostData();
-        setCostData(fallbackData);
+        // Fallback to empty data structure only if no data exists
+        if (costData.length === 0) {
+          const fallbackData = createEmptyCostData();
+          setCostData(fallbackData);
+        }
       } finally {
         setIsLoadingCostData(false);
         setIsLoadingWeights(false);
       }
     };
 
-    loadCostAnalysisData();
-  }, [nominationId, vendors]);
+    // Only load once when component mounts or nominationId changes
+    if (nominationId && vendors.length > 0 && costData.length === 0) {
+      loadCostAnalysisData();
+    }
+  }, [nominationId, vendors.length]); // Stable dependencies
 
   // Clean up duplicates on initial mount
   React.useEffect(() => {
     setCostData(prevData => removeDuplicateEntries(prevData));
   }, []);
 
-  // Update cost data when vendors change
+  // Update cost data when vendors change - memoized to prevent loops
   React.useEffect(() => {
-    const newData = createEmptyCostData();
-    const cleanData = removeDuplicateEntries(newData);
-    setCostData(cleanData);
-  }, [vendors]);
+    if (vendors.length > 0 && costData.length === 0) {
+      const newData = createEmptyCostData();
+      const cleanData = removeDuplicateEntries(newData);
+      setCostData(cleanData);
+    }
+  }, [vendors.length]); // Only depend on vendor count, not vendor objects
 
   // Calculate rankings based on cost data - REAL-TIME WITH EDITING VALUES
   React.useEffect(() => {
@@ -391,6 +401,24 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [] }: CostCompe
       return newData;
     });
   }, [factorWeights, editingCostValues]);
+
+  // Call onDataUpdate when costData changes - memoized to prevent loops
+  const memoizedOnDataUpdate = React.useCallback((data: CostCompetencyData[]) => {
+    if (onDataUpdate) {
+      onDataUpdate(data);
+    }
+  }, [onDataUpdate]);
+
+  React.useEffect(() => {
+    if (costData.length > 0) {
+      // Debounce the callback to prevent excessive calls
+      const timeoutId = setTimeout(() => {
+        memoizedOnDataUpdate(costData);
+      }, 100);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [costData, memoizedOnDataUpdate]);
 
   // ENTERPRISE BEST PRACTICE: Local updates without API calls
   const updateSupplierValueLocal = (rowId: number, supplierIndex: number, value: number) => {

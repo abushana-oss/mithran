@@ -69,22 +69,23 @@ export async function getVendorRatingMatrix(
     // Extract data - API client returns direct array
     const data = Array.isArray(response) ? response : [];
     
-    // Transform database format to component format (proper camelCase conversion)
+    
+    // API already returns camelCase format, use directly
     const transformed = data.map((item: any) => {
       return {
         id: item.id,
-        nominationEvaluationId: item.nomination_evaluation_id || item.nominationEvaluationId,
-        vendorId: item.vendor_id || item.vendorId,
-        sNo: item.s_no || item.sNo,
+        nominationEvaluationId: item.nominationEvaluationId,
+        vendorId: item.vendorId,
+        sNo: item.sNo,
         category: item.category,
-        assessmentAspects: item.assessment_aspects || item.assessmentAspects,
-        sectionWiseCapabilityPercent: item.section_wise_capability_percent || item.sectionWiseCapabilityPercent || 0,
-        riskMitigationPercent: item.risk_mitigation_percent || item.riskMitigationPercent || 0,
-        minorNC: item.minor_nc || item.minorNC || 0,
-        majorNC: item.major_nc || item.majorNC || 0,
-        sortOrder: item.sort_order || item.sortOrder,
-        createdAt: item.created_at || item.createdAt,
-        updatedAt: item.updated_at || item.updatedAt
+        assessmentAspects: item.assessmentAspects,
+        sectionWiseCapabilityPercent: item.sectionWiseCapabilityPercent !== undefined ? item.sectionWiseCapabilityPercent : 0,
+        riskMitigationPercent: item.riskMitigationPercent !== undefined ? item.riskMitigationPercent : 0,
+        minorNC: item.minorNc !== undefined ? item.minorNc : 0,  // Note: API returns 'minorNc', component expects 'minorNC'
+        majorNC: item.majorNc !== undefined ? item.majorNc : 0,  // Note: API returns 'majorNc', component expects 'majorNC'
+        sortOrder: item.sortOrder,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt
       };
     });
     
@@ -133,18 +134,18 @@ export async function initializeVendorRatingMatrix(
       // Transform database format to component format
       const transformed = dataArray.map((item: any) => ({
         id: item.id,
-        nominationEvaluationId: item.nomination_evaluation_id,
-        vendorId: item.vendor_id,
-        sNo: item.s_no,
+        nominationEvaluationId: item.nominationEvaluationId,
+        vendorId: item.vendorId,
+        sNo: item.sNo,
         category: item.category,
-        assessmentAspects: item.assessment_aspects,
-        sectionWiseCapabilityPercent: item.section_wise_capability_percent || 0,
-        riskMitigationPercent: item.risk_mitigation_percent || 0,
-        minorNC: item.minor_nc || 0,
-        majorNC: item.major_nc || 0,
-        sortOrder: item.sort_order,
-        createdAt: item.created_at,
-        updatedAt: item.updated_at
+        assessmentAspects: item.assessmentAspects,
+        sectionWiseCapabilityPercent: item.sectionWiseCapabilityPercent !== undefined ? item.sectionWiseCapabilityPercent : 0,
+        riskMitigationPercent: item.riskMitigationPercent !== undefined ? item.riskMitigationPercent : 0,
+        minorNC: item.minorNc !== undefined ? item.minorNc : 0,
+        majorNC: item.majorNc !== undefined ? item.majorNc : 0,
+        sortOrder: item.sortOrder,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt
       }));
       
       return transformed;
@@ -213,31 +214,40 @@ class VendorRatingDataTransformer {
       let hasChanges = false;
       
       // Only include fields that are actually defined and valid
+      // Send in both camelCase and snake_case formats to ensure backend compatibility
       if (update.sectionWiseCapabilityPercent !== undefined && 
           update.sectionWiseCapabilityPercent !== null &&
           !isNaN(Number(update.sectionWiseCapabilityPercent))) {
-        transformed.sectionWiseCapabilityPercent = Number(update.sectionWiseCapabilityPercent);
+        const value = Number(update.sectionWiseCapabilityPercent);
+        transformed.sectionWiseCapabilityPercent = value;
+        transformed.section_wise_capability_percent = value;  // Backend compatibility
         hasChanges = true;
       }
       
       if (update.riskMitigationPercent !== undefined && 
           update.riskMitigationPercent !== null &&
           !isNaN(Number(update.riskMitigationPercent))) {
-        transformed.riskMitigationPercent = Number(update.riskMitigationPercent);
+        const value = Number(update.riskMitigationPercent);
+        transformed.riskMitigationPercent = value;
+        transformed.risk_mitigation_percent = value;  // Backend compatibility
         hasChanges = true;
       }
       
       if (update.minorNC !== undefined && 
           update.minorNC !== null &&
           Number.isInteger(Number(update.minorNC))) {
-        transformed.minorNC = Number(update.minorNC);
+        const value = Number(update.minorNC);
+        transformed.minorNC = value;
+        transformed.minor_nc = value;  // Backend compatibility
         hasChanges = true;
       }
       
       if (update.majorNC !== undefined && 
           update.majorNC !== null &&
           Number.isInteger(Number(update.majorNC))) {
-        transformed.majorNC = Number(update.majorNC);
+        const value = Number(update.majorNC);
+        transformed.majorNC = value;
+        transformed.major_nc = value;  // Backend compatibility
         hasChanges = true;
       }
       
@@ -365,6 +375,14 @@ export async function batchUpdateVendorRatingMatrix(
     // ENTERPRISE: Type-safe transformation and validation
     payload = VendorRatingDataTransformer.transformToDto(updates);
     
+    // Debug: Log what's being sent to the API
+    console.log('Batch update payload being sent:', {
+      originalUpdates: updates,
+      transformedPayload: payload,
+      updateCount: payload.updates.length,
+      sampleUpdate: payload.updates[0]
+    });
+    
     // If no valid updates after transformation, don't proceed
     if (!payload.updates || payload.updates.length === 0) {
       console.warn('No valid updates found after transformation');
@@ -387,18 +405,18 @@ export async function batchUpdateVendorRatingMatrix(
     if (responseData.length > 0) {
       const transformedData = responseData.map((item: any) => ({
         id: item.id,
-        nominationEvaluationId: item.nomination_evaluation_id || item.nominationEvaluationId,
-        vendorId: item.vendor_id || item.vendorId,
-        sNo: item.s_no || item.sNo,
+        nominationEvaluationId: item.nominationEvaluationId,
+        vendorId: item.vendorId,
+        sNo: item.sNo,
         category: item.category,
-        assessmentAspects: item.assessment_aspects || item.assessmentAspects,
-        sectionWiseCapabilityPercent: item.section_wise_capability_percent || item.sectionWiseCapabilityPercent,
-        riskMitigationPercent: item.risk_mitigation_percent || item.riskMitigationPercent,
-        minorNC: item.minor_nc || item.minorNC,
-        majorNC: item.major_nc || item.majorNC,
-        sortOrder: item.sort_order || item.sortOrder,
-        createdAt: item.created_at || item.createdAt,
-        updatedAt: item.updated_at || item.updatedAt
+        assessmentAspects: item.assessmentAspects,
+        sectionWiseCapabilityPercent: item.sectionWiseCapabilityPercent !== undefined ? item.sectionWiseCapabilityPercent : 0,
+        riskMitigationPercent: item.riskMitigationPercent !== undefined ? item.riskMitigationPercent : 0,
+        minorNC: item.minorNc !== undefined ? item.minorNc : 0,
+        majorNC: item.majorNc !== undefined ? item.majorNc : 0,
+        sortOrder: item.sortOrder,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt
       }));
       
       apiLogger.info('Batch update completed successfully', {

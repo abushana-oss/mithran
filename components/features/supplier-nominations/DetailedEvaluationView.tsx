@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -55,6 +55,10 @@ import {
 import { VendorRatingEngine } from './VendorRatingEngine';
 import { CostCompetencyAnalysis } from './CostCompetencyAnalysis';
 import { SupplierEvaluationDashboard } from './SupplierEvaluationDashboard';
+import {
+  getVendorRatingOverallScores,
+  type VendorRatingOverallScores
+} from '@/lib/api/vendor-rating-matrix';
 
 interface DetailedEvaluationViewProps {
   evaluation: VendorEvaluation;
@@ -108,10 +112,70 @@ export function DetailedEvaluationView({
   const [editingCapabilityScores, setEditingCapabilityScores] = useState<Record<string, Record<string, number>>>({});
   const [isSavingCapability, setIsSavingCapability] = useState(false);
 
+  // State for real-time score tracking
+  const [ratingEngineScores, setRatingEngineScores] = useState<VendorRatingOverallScores>({
+    sectionWiseCapability: 0,
+    riskMitigation: 0,
+    totalMinorNC: 0,
+    totalMajorNC: 0,
+    totalRecords: 0
+  });
+  const [costAnalysisScore, setCostAnalysisScore] = useState(0);
+
   const updateEvaluationMutation = useUpdateVendorEvaluation(nominationId);
 
   // Fetch full nomination data to get all vendors
   const { data: fullNomination } = useSupplierNomination(nominationId);
+
+  // Memoized callback for cost data updates
+  const handleCostDataUpdate = React.useCallback((data: any) => {
+    // Update cost analysis score when CostCompetencyAnalysis updates
+    if (data && Array.isArray(data)) {
+      // Find current vendor index
+      const currentVendorIndex = fullNomination?.vendorEvaluations?.findIndex(
+        v => v.vendorId === evaluation.vendorId
+      ) || 0;
+      
+      // Calculate cost competitiveness based on actual cost values vs base/reference
+      const netPriceRow = data.find((item: any) => item.costComponent === "Net Price/unit");
+      const developmentCostRow = data.find((item: any) => item.costComponent === "Development cost");
+      const leadTimeRow = data.find((item: any) => item.costComponent === "Lead Time Days");
+      
+      if (netPriceRow && developmentCostRow && leadTimeRow) {
+        const vendorNetPrice = netPriceRow.supplierValues?.[currentVendorIndex] || 0;
+        const baseNetPrice = netPriceRow.baseValue || 0;
+        
+        const vendorDevCost = developmentCostRow.supplierValues?.[currentVendorIndex] || 0;
+        const baseDevCost = developmentCostRow.baseValue || 0;
+        
+        const vendorLeadTime = leadTimeRow.supplierValues?.[currentVendorIndex] || 0;
+        const baseLeadTime = leadTimeRow.baseValue || 0;
+        
+        // Calculate cost competitiveness for each factor (lower cost = higher score)
+        const netPriceScore = baseNetPrice > 0 ? Math.max(0, (baseNetPrice - vendorNetPrice) / baseNetPrice * 100 + 100) : 100;
+        const devCostScore = baseDevCost > 0 ? Math.max(0, (baseDevCost - vendorDevCost) / baseDevCost * 100 + 100) : 100;
+        const leadTimeScore = baseLeadTime > 0 ? Math.max(0, (baseLeadTime - vendorLeadTime) / baseLeadTime * 100 + 100) : 100;
+        
+        // Weight the scores: Cost Factor 33.33%, Development Cost 33.33%, Lead Time 33.34%
+        const weightedScore = (netPriceScore * 0.3333) + (devCostScore * 0.3333) + (leadTimeScore * 0.3334);
+        
+        // Normalize to 0-100% range
+        const finalScore = Math.max(0, Math.min(100, weightedScore));
+        
+        setCostAnalysisScore(finalScore);
+      } else {
+        // Fallback: use ranking-based calculation if cost data not available
+        const totalScoreRow = data.find((item: any) => item.costComponent === "Total Score");
+        if (totalScoreRow && totalScoreRow.supplierValues) {
+          const totalScore = totalScoreRow.supplierValues[currentVendorIndex] || 0;
+          const numVendors = totalScoreRow.supplierValues.length;
+          const scorePercentage = totalScore > 0 ? 
+            Math.max(0, Math.min(100, ((numVendors - totalScore + 1) / numVendors) * 100)) : 0;
+          setCostAnalysisScore(scorePercentage);
+        }
+      }
+    }
+  }, [fullNomination?.vendorEvaluations, evaluation.vendorId]);
 
   // Fetch all vendors to get names
   // const { data: allVendors } = useVendors();
@@ -124,6 +188,22 @@ export function DetailedEvaluationView({
   //   });
   //   return map;
   // }, [evaluation.scores]);
+
+  // Load rating engine scores for real-time display
+  useEffect(() => {
+    const loadRatingEngineScores = async () => {
+      if (!nominationId || !evaluation.vendorId) return;
+      
+      try {
+        const scores = await getVendorRatingOverallScores(nominationId, evaluation.vendorId);
+        setRatingEngineScores(scores);
+      } catch (error) {
+        console.error('Failed to load rating engine scores:', error);
+      }
+    };
+
+    loadRatingEngineScores();
+  }, [nominationId, evaluation.vendorId]);
 
   // ENTERPRISE OPTIMIZATION: Load capability scores only once with efficient caching
   useEffect(() => {
@@ -662,7 +742,7 @@ export function DetailedEvaluationView({
             <div className="text-3xl font-bold text-white">
               {(() => {
                 if (activeTab === 'capability' && capabilityScores.criteria.length > 0) {
-                  // Calculate capability score percentage for current vendor
+                  // Real-time capability score calculation
                   const totalActualScore = capabilityScores.criteria.reduce((sum, _criteria, criteriaIndex) => {
                     const currentScore = getCurrentCapabilityScore(criteriaIndex);
                     return sum + currentScore;
@@ -673,13 +753,71 @@ export function DetailedEvaluationView({
 
                   const capabilityPercentage = totalMaxScore > 0 ? (totalActualScore / totalMaxScore) * 100 : 0;
                   return capabilityPercentage.toFixed(1);
+                } else if (activeTab === 'dashboard') {
+                  // Real-time overall score calculation from all components
+                  const capabilityWeight = 0.4;
+                  const ratingWeight = 0.4;
+                  const costWeight = 0.2;
+                  
+                  // Get capability score
+                  let capabilityScore = 0;
+                  if (capabilityScores.criteria.length > 0) {
+                    const totalActual = capabilityScores.criteria.reduce((sum, _criteria, criteriaIndex) => {
+                      return sum + getCurrentCapabilityScore(criteriaIndex);
+                    }, 0);
+                    const totalMax = capabilityScores.criteria.reduce((sum, criteria) => sum + (criteria.maxScore || 0), 0);
+                    capabilityScore = totalMax > 0 ? (totalActual / totalMax) * 100 : 0;
+                  }
+                  
+                  // Get rating engine score (weighted average of section capability and risk mitigation)
+                  const ratingScore = ratingEngineScores.sectionWiseCapability * 0.6 + ratingEngineScores.riskMitigation * 0.4;
+                  
+                  // Get cost analysis score
+                  const costScore = costAnalysisScore;
+                  
+                  const overallScore = (capabilityScore * capabilityWeight) + 
+                                      (ratingScore * ratingWeight) + 
+                                      (costScore * costWeight);
+                  
+                  return overallScore.toFixed(1);
+                } else if (activeTab === 'cost') {
+                  // Real-time cost analysis score
+                  return costAnalysisScore.toFixed(1);
+                } else if (activeTab === 'rating') {
+                  // Real-time rating engine score (weighted combination)
+                  const ratingScore = ratingEngineScores.sectionWiseCapability * 0.6 + ratingEngineScores.riskMitigation * 0.4;
+                  return ratingScore.toFixed(1);
                 } else {
-                  return evaluation.overallScore.toFixed(1);
+                  // Default - same as dashboard calculation
+                  const capabilityWeight = 0.4;
+                  const ratingWeight = 0.4;
+                  const costWeight = 0.2;
+                  
+                  let capabilityScore = 0;
+                  if (capabilityScores.criteria.length > 0) {
+                    const totalActual = capabilityScores.criteria.reduce((sum, _criteria, criteriaIndex) => {
+                      return sum + getCurrentCapabilityScore(criteriaIndex);
+                    }, 0);
+                    const totalMax = capabilityScores.criteria.reduce((sum, criteria) => sum + (criteria.maxScore || 0), 0);
+                    capabilityScore = totalMax > 0 ? (totalActual / totalMax) * 100 : 0;
+                  }
+                  
+                  const ratingScore = ratingEngineScores.sectionWiseCapability * 0.6 + ratingEngineScores.riskMitigation * 0.4;
+                  const costScore = costAnalysisScore;
+                  
+                  const overallScore = (capabilityScore * capabilityWeight) + 
+                                      (ratingScore * ratingWeight) + 
+                                      (costScore * costWeight);
+                  
+                  return overallScore.toFixed(1);
                 }
               })()}%
             </div>
             <div className="text-sm text-gray-400">
-              {activeTab === 'capability' ? 'Capability Score' : 'Overall Score'}
+              {activeTab === 'capability' ? 'Capability Score' : 
+               activeTab === 'dashboard' ? 'Overall Score' : 
+               activeTab === 'cost' ? 'Cost Analysis Score' :
+               activeTab === 'rating' ? 'Rating Engine Score' : 'Overall Score'}
             </div>
           </div>
         </div>
@@ -718,6 +856,13 @@ export function DetailedEvaluationView({
             <SupplierEvaluationDashboard
               supplierId={evaluation.vendorId}
               nominationId={nominationId}
+              costScore={costAnalysisScore}
+              ratingEngineScore={ratingEngineScores.sectionWiseCapability * 0.6 + ratingEngineScores.riskMitigation * 0.4}
+              capabilityScore={capabilityScores.criteria.length > 0 ? 
+                (capabilityScores.criteria.reduce((sum, _criteria, criteriaIndex) => {
+                  return sum + getCurrentCapabilityScore(criteriaIndex);
+                }, 0) / capabilityScores.criteria.reduce((sum, criteria) => sum + (criteria.maxScore || 0), 0)) * 100 : 0
+              }
             />
           )}
           {activeTab === 'capability' && renderCapabilityTab()}
@@ -725,10 +870,16 @@ export function DetailedEvaluationView({
           {activeTab === 'rating' && (
             <VendorRatingEngine
               vendorId={evaluation.vendorId}
+              vendorName={vendor?.name}
               nominationId={nominationId}
-              onScoreUpdate={(scores) => {
-                console.log('Updated scores:', scores);
-                // Handle score updates here if needed
+              onScoreUpdate={async (scores) => {
+                // Refresh rating engine scores when VendorRatingEngine updates
+                try {
+                  const updatedScores = await getVendorRatingOverallScores(nominationId, evaluation.vendorId);
+                  setRatingEngineScores(updatedScores);
+                } catch (error) {
+                  console.error('Failed to refresh rating engine scores:', error);
+                }
               }}
             />
           )}
@@ -741,10 +892,7 @@ export function DetailedEvaluationView({
                   name: v.vendorName || `Vendor ${v.vendorId.slice(-4)}`
                 })) : []
               }
-              onDataUpdate={(data) => {
-                console.log('Updated cost data:', data);
-                // Handle cost data updates here if needed
-              }}
+              onDataUpdate={handleCostDataUpdate}
             />
           )}
         </div>

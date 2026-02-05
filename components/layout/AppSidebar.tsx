@@ -12,6 +12,7 @@ import {
   Sigma,
   FileSpreadsheet,
   ShieldCheck,
+  Factory,
 } from 'lucide-react';
 import { NavLink } from '@/components/common/nav-link';
 import { useAuth } from '@/lib/providers/auth';
@@ -131,6 +132,20 @@ export function AppSidebar() {
                   >
                     <ShieldCheck className={`h-4 w-4 shrink-0 transition-colors ${isActive('/supplier-evaluation') ? 'text-primary' : 'text-sidebar-foreground/60 group-hover:text-sidebar-foreground'}`} />
                     {!collapsed && <span className="text-sm">Supplier Evaluation</span>}
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              {/* Production Planning */}
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={isActive('/production-planning')}>
+                  <NavLink
+                    to="/production-planning"
+                    className={`sidebar-item group ${isActive('/production-planning') ? 'sidebar-item-active' : ''}`}
+                    activeClassName="sidebar-item-active"
+                  >
+                    <Factory className={`h-4 w-4 shrink-0 transition-colors ${isActive('/production-planning') ? 'text-primary' : 'text-sidebar-foreground/60 group-hover:text-sidebar-foreground'}`} />
+                    {!collapsed && <span className="text-sm">Production Planning</span>}
                   </NavLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>

@@ -1,4 +1,13 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+  InternalServerErrorException,
+  UnauthorizedException,
+  ForbiddenException
+} from '@nestjs/common';
+import { FieldMappingService } from './services/field-mapping.service';
 import { SupabaseService } from '../../common/supabase/supabase.service';
 import { Logger } from '../../common/logger/logger.service';
 import {
@@ -41,6 +50,7 @@ export class SupplierNominationsService {
   constructor(
     private readonly supabaseService: SupabaseService,
     private readonly logger: Logger,
+    private readonly fieldMapping: FieldMappingService,
   ) { }
 
   async create(
@@ -188,7 +198,7 @@ export class SupplierNominationsService {
 
     try {
       // Debug logging removed for production security
-      
+
       // TEMPORARY: Get nomination without user check to debug
       const { data: basicNomination, error: basicError } = await client
         .from('supplier_nomination_evaluations')
@@ -202,9 +212,9 @@ export class SupplierNominationsService {
           .from('supplier_nomination_evaluations')
           .select('id, nomination_name, user_id, status')
           .limit(10);
-        
+
         console.log(`All nominations in table:`, JSON.stringify(allNominations));
-        
+
         // Return a fake response with debug info for now
         return {
           id: nominationId,
@@ -227,7 +237,7 @@ export class SupplierNominationsService {
           .from('supplier_nomination_evaluations')
           .select('id, nomination_name, user_id, status')
           .limit(10);
-        
+
         // Return a fake response with debug info for now
         return {
           id: nominationId,
@@ -281,7 +291,7 @@ export class SupplierNominationsService {
           .from('vendors')
           .select('id, name, supplier_code')
           .in('id', vendorIds);
-        
+
         // Map vendor names and scores to evaluations
         vendorEvaluations.forEach((evaluation: any) => {
           const vendor = vendors?.find((v: any) => v.id === evaluation.vendor_id);
@@ -395,7 +405,7 @@ export class SupplierNominationsService {
           .select('id, name, supplier_code')
           .eq('id', data.vendor_id)
           .single();
-        
+
         data.vendors = vendor || null;
       }
 
@@ -666,7 +676,7 @@ export class SupplierNominationsService {
         .from('vendors')
         .select('id, name, supplier_code')
         .in('id', vendorIds);
-      
+
       // Map vendor names to evaluations
       if (vendors) {
         data.forEach((evaluation: any) => {
@@ -779,7 +789,7 @@ export class SupplierNominationsService {
 
   private mapToBomPartDto(data: any): BomPartDto {
     const vendorIds = (data.supplier_nomination_bom_part_vendors || []).map((v: any) => v.vendor_id);
-    
+
     return {
       bomItemId: data.bom_item_id,
       bomItemName: data.bom_item_name,
@@ -1172,7 +1182,7 @@ export class SupplierNominationsService {
 
       // data is now a JSON array returned directly from the function
       const rankings = Array.isArray(data) ? data : (data || []);
-      
+
       return rankings.map((row: any) => ({
         vendorId: row.vendorId || row.vendor_id,
         costRank: parseInt(row.costRank || row.cost_rank),
@@ -1438,7 +1448,7 @@ export class SupplierNominationsService {
     // For now, use the same implementation as regular updateCostAnalysis
     // In the future, this can be optimized with database transactions
     this.logger.log(`Batch updating cost analysis for nomination ${nominationId} - ENTERPRISE BEST PRACTICE`);
-    
+
     return this.updateCostAnalysis(userId, nominationId, updateDto, accessToken);
   }
 
@@ -1539,8 +1549,8 @@ export class SupplierNominationsService {
 
       // Get capability data using the database function
       const { data, error } = await client
-        .rpc('get_capability_data', { 
-          p_nomination_evaluation_id: nominationId 
+        .rpc('get_capability_data', {
+          p_nomination_evaluation_id: nominationId
         });
 
       if (error) {
@@ -1585,7 +1595,7 @@ export class SupplierNominationsService {
       }
 
       const vendorIds = vendorEvaluations?.map(v => v.vendor_id) || [];
-      
+
       if (vendorIds.length === 0) {
         throw new BadRequestException('No vendors found for this nomination');
       }
@@ -1694,7 +1704,7 @@ export class SupplierNominationsService {
 
       const { error } = await client
         .from('capability_criteria')
-        .update({ 
+        .update({
           criteria_name: criteriaName,
           updated_at: new Date().toISOString()
         })
@@ -1937,8 +1947,6 @@ export class SupplierNominationsService {
     try {
       await this.verifyNominationOwnership(userId, nominationId, accessToken);
 
-      this.logger.log(`Fetching rating matrix for nomination: ${nominationId}, vendor: ${vendorId}`);
-
       const { data, error } = await client
         .from('vendor_rating_matrix')
         .select('*')
@@ -1947,11 +1955,8 @@ export class SupplierNominationsService {
         .order('sort_order', { ascending: true });
 
       if (error) {
-        this.logger.error(`Database error fetching rating matrix:`, error);
         throw new BadRequestException(`Failed to get rating matrix: ${error.message}`);
       }
-
-      this.logger.log(`Found ${data?.length || 0} rating matrix records`);
 
       // Transform snake_case to match DTO structure
       const transformedData = (data || []).map(item => ({
@@ -1970,7 +1975,6 @@ export class SupplierNominationsService {
         updated_at: item.updated_at
       }));
 
-      this.logger.log(`Returning ${transformedData.length} transformed records`);
       return transformedData;
     } catch (error) {
       this.logger.error('Failed to get vendor rating matrix:', error);
@@ -1994,9 +1998,8 @@ export class SupplierNominationsService {
 
       // First check if data already exists
       const existingData = await this.getVendorRatingMatrix(userId, nominationId, vendorId, accessToken);
-      
+
       if (existingData && existingData.length > 0) {
-        this.logger.log(`Rating matrix already exists for nomination ${nominationId}, vendor ${vendorId} - returning existing data`);
         return existingData;
       }
 
@@ -2011,14 +2014,10 @@ export class SupplierNominationsService {
         throw new BadRequestException(`Failed to initialize rating matrix: ${error.message}`);
       }
 
-      this.logger.log(`Initialized vendor rating matrix for nomination ${nominationId}, vendor ${vendorId}`);
-
       // Fetch and return the newly created data
       const newData = await this.getVendorRatingMatrix(userId, nominationId, vendorId, accessToken);
-      
+
       if (!newData || newData.length === 0) {
-        // If still no data after initialization, create it manually
-        this.logger.warn(`No data returned after initialization, attempting manual creation`);
         throw new BadRequestException('Failed to create rating matrix - please check database permissions and try again');
       }
 
@@ -2047,15 +2046,15 @@ export class SupplierNominationsService {
 
       // Convert camelCase to snake_case for database
       const dbData: any = {};
-      if (updateData.assessmentAspects !== undefined) 
+      if (updateData.assessmentAspects !== undefined)
         dbData.assessment_aspects = updateData.assessmentAspects;
-      if (updateData.sectionWiseCapabilityPercent !== undefined) 
+      if (updateData.sectionWiseCapabilityPercent !== undefined)
         dbData.section_wise_capability_percent = updateData.sectionWiseCapabilityPercent;
-      if (updateData.riskMitigationPercent !== undefined) 
+      if (updateData.riskMitigationPercent !== undefined)
         dbData.risk_mitigation_percent = updateData.riskMitigationPercent;
-      if (updateData.minorNC !== undefined) 
+      if (updateData.minorNC !== undefined)
         dbData.minor_nc = updateData.minorNC;
-      if (updateData.majorNC !== undefined) 
+      if (updateData.majorNC !== undefined)
         dbData.major_nc = updateData.majorNC;
 
       const { error } = await client
@@ -2077,7 +2076,7 @@ export class SupplierNominationsService {
   }
 
   /**
-   * ENTERPRISE BEST PRACTICE: Batch update vendor rating matrix
+   * ENTERPRISE BEST PRACTICE: Batch update vendor rating matrix with proper transaction safety
    */
   async batchUpdateVendorRatingMatrix(
     userId: string,
@@ -2088,12 +2087,14 @@ export class SupplierNominationsService {
   ): Promise<VendorRatingMatrixDto[]> {
     const client = this.supabaseService.getClient(accessToken);
 
+
     try {
       await this.verifyNominationOwnership(userId, nominationId, accessToken);
 
       if (!updates || updates.length === 0) {
         throw new BadRequestException('No updates provided');
       }
+
 
       // Validate all update IDs exist first
       const { data: existingRecords, error: validateError } = await client
@@ -2114,54 +2115,80 @@ export class SupplierNominationsService {
         throw new BadRequestException(`Invalid record IDs: ${invalidIds.join(', ')}`);
       }
 
-      // Process updates in batch with transaction-like behavior
-      let successfulUpdates = 0;
-      const errors: string[] = [];
+      // Validate field mappings first
+      const validationErrors: string[] = [];
+      updates.forEach((update, index) => {
+        const validation = this.fieldMapping.validateVendorRatingFields(update);
+        if (!validation.valid) {
+          validationErrors.push(`Update ${index} has invalid fields: ${validation.invalidFields.join(', ')}`);
+        }
+      });
 
-      for (const update of updates) {
-        try {
-          // Convert camelCase to snake_case for database
-          const dbData: any = { updated_at: new Date().toISOString() };
-          
-          if (update.assessmentAspects !== undefined) 
-            dbData.assessment_aspects = update.assessmentAspects;
-          if (update.sectionWiseCapabilityPercent !== undefined) 
-            dbData.section_wise_capability_percent = Number(update.sectionWiseCapabilityPercent);
-          if (update.riskMitigationPercent !== undefined) 
-            dbData.risk_mitigation_percent = Number(update.riskMitigationPercent);
-          if (update.minorNC !== undefined) 
-            dbData.minor_nc = Number(update.minorNC);
-          if (update.majorNC !== undefined) 
-            dbData.major_nc = Number(update.majorNC);
+      if (validationErrors.length > 0) {
+        throw new BadRequestException(`Field validation failed: ${validationErrors.join('; ')}`);
+      }
 
-          const { error } = await client
-            .from('vendor_rating_matrix')
-            .update(dbData)
-            .eq('id', update.id)
-            .eq('nomination_evaluation_id', nominationId)
-            .eq('vendor_id', vendorId);
+      // Use atomic RPC function for batch updates
+      try {
+        const { data: rpcResult, error: rpcError } = await client.rpc('update_vendor_rating_matrix_batch', {
+          p_nomination_evaluation_id: nominationId,
+          p_vendor_id: vendorId,
+          p_updates: JSON.stringify(updates)
+        });
 
-          if (error) {
-            errors.push(`Failed to update ${update.id}: ${error.message}`);
-          } else {
-            successfulUpdates++;
+        if (rpcError) {
+          throw new BadRequestException(`Atomic batch update failed: ${rpcError.message}`);
+        }
+
+        // Check if the batch was successful
+        if (!rpcResult.success) {
+          const errorMsg = `Batch update partially failed: ${rpcResult.updated_count}/${rpcResult.total_items} successful, ${rpcResult.error_count} errors`;
+
+          if (rpcResult.updated_count === 0) {
+            throw new BadRequestException(`All batch updates failed: ${errorMsg}`);
           }
-        } catch (updateError) {
-          errors.push(`Exception updating ${update.id}: ${updateError.message}`);
+        }
+
+      } catch (atomicError) {
+        // Fallback to individual updates if atomic function fails
+        const updatePromises = updates.map(async (update) => {
+          try {
+            // Use field mapping service for proper conversion
+            const { dbFields } = this.fieldMapping.mapVendorRatingFields(update);
+
+            const { error } = await client
+              .from('vendor_rating_matrix')
+              .update(dbFields)
+              .eq('id', update.id)
+              .eq('nomination_evaluation_id', nominationId)
+              .eq('vendor_id', vendorId);
+
+            if (error) {
+              throw new Error(`Failed to update ${update.id}: ${error.message}`);
+            }
+
+            return { success: true, id: update.id };
+          } catch (updateError) {
+            throw updateError;
+          }
+        });
+
+        // Execute fallback updates
+        const results = await Promise.allSettled(updatePromises);
+
+        const successful = results.filter(r => r.status === 'fulfilled').length;
+        const failed = results.filter(r => r.status === 'rejected');
+
+        if (failed.length > 0) {
+          const errors = failed.map((r, i) => `Update ${i}: ${r.reason?.message || 'Unknown error'}`);
+
+          if (successful === 0) {
+            throw new BadRequestException(`All updates failed: ${errors.join('; ')}`);
+          }
         }
       }
 
-      if (errors.length > 0 && successfulUpdates === 0) {
-        throw new BadRequestException(`All updates failed: ${errors.join('; ')}`);
-      }
-
-      if (errors.length > 0) {
-        this.logger.warn(`Partial batch update success: ${successfulUpdates}/${updates.length} succeeded. Errors: ${errors.join('; ')}`);
-      }
-
-      this.logger.log(`Batch updated ${successfulUpdates}/${updates.length} rating items for nomination ${nominationId}, vendor ${vendorId}`);
-
-      // Trigger overall scores recalculation (happens automatically via DB trigger, but ensure immediate consistency)
+      // Recalculate overall scores
       try {
         await client.rpc('calculate_vendor_rating_overall_scores', {
           p_nomination_evaluation_id: nominationId,
@@ -2169,14 +2196,41 @@ export class SupplierNominationsService {
         });
       } catch (scoreError) {
         this.logger.warn(`Failed to recalculate overall scores: ${scoreError.message}`);
-        // Don't fail the operation for score calculation issues
       }
 
       // Return the updated data
       return await this.getVendorRatingMatrix(userId, nominationId, vendorId, accessToken);
     } catch (error) {
       this.logger.error('Failed to batch update vendor rating matrix:', error);
-      throw error;
+
+      // Handle specific error types with appropriate HTTP status codes
+      if (error instanceof BadRequestException ||
+        error instanceof NotFoundException ||
+        error instanceof ConflictException ||
+        error instanceof UnauthorizedException ||
+        error instanceof ForbiddenException) {
+        throw error;
+      }
+
+      // Handle database-specific errors
+      if (error?.message?.includes('permission denied')) {
+        throw new ForbiddenException('Insufficient permissions to update rating matrix');
+      }
+
+      if (error?.message?.includes('not found') || error?.message?.includes('does not exist')) {
+        throw new NotFoundException('Rating matrix or related records not found');
+      }
+
+      if (error?.message?.includes('constraint') || error?.message?.includes('unique')) {
+        throw new ConflictException('Data constraint violation - check for duplicate entries');
+      }
+
+      if (error?.message?.includes('timeout') || error?.message?.includes('connection')) {
+        throw new InternalServerErrorException('Database connection error - please try again later');
+      }
+
+      // Generic fallback
+      throw new InternalServerErrorException('An unexpected error occurred during batch update');
     }
   }
 

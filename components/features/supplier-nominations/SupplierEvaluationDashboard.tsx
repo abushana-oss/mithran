@@ -23,8 +23,12 @@ import { Recommendation, getRiskLevelColor, getRecommendationColor, type VendorE
 import { toast } from 'sonner';
 
 // Helper functions for score calculation with evaluation data priority
-const getCostScore = (evaluation: VendorEvaluation, evaluationData?: any): number => {
-    // Priority: database evaluation data, then criteria scores, then fallback
+const getCostScore = (evaluation: VendorEvaluation, evaluationData?: any, realTimeCostScore?: number): number => {
+    // Priority: real-time score from CostCompetencyAnalysis, then database evaluation data, then criteria scores, then fallback
+    if (realTimeCostScore && realTimeCostScore > 0) {
+        return realTimeCostScore;
+    }
+
     if (evaluationData?.cost_analysis?.score) {
         return evaluationData.cost_analysis.score;
     }
@@ -44,8 +48,12 @@ const getCostScore = (evaluation: VendorEvaluation, evaluationData?: any): numbe
     return totalCostScore / costCriteria.length;
 };
 
-const getVendorRatingScore = (evaluation: VendorEvaluation, evaluationData?: any): number => {
-    // Priority: database evaluation data, then criteria scores, then fallback
+const getVendorRatingScore = (evaluation: VendorEvaluation, evaluationData?: any, realTimeRatingScore?: number): number => {
+    // Priority: real-time score from VendorRatingEngine, then database evaluation data, then criteria scores, then fallback
+    if (realTimeRatingScore && realTimeRatingScore > 0) {
+        return realTimeRatingScore;
+    }
+
     if (evaluationData?.rating_engine?.score) {
         return evaluationData.rating_engine.score;
     }
@@ -65,8 +73,12 @@ const getVendorRatingScore = (evaluation: VendorEvaluation, evaluationData?: any
     return totalVendorScore / vendorCriteria.length;
 };
 
-const getCapabilityScore = (evaluation: VendorEvaluation, evaluationData?: any): number => {
-    // Priority: database evaluation data, then criteria scores, then fallback
+const getCapabilityScore = (evaluation: VendorEvaluation, evaluationData?: any, realTimeCapabilityScore?: number): number => {
+    // Priority: real-time score from capability scoring, then database evaluation data, then criteria scores, then fallback
+    if (realTimeCapabilityScore && realTimeCapabilityScore > 0) {
+        return realTimeCapabilityScore;
+    }
+
     if (evaluationData?.capability?.score) {
         return evaluationData.capability.score;
     }
@@ -86,15 +98,24 @@ const getCapabilityScore = (evaluation: VendorEvaluation, evaluationData?: any):
     return totalCapabilityScore / capabilityCriteria.length;
 };
 
-const calculateOverallScore = (evaluation: VendorEvaluation, evaluationData?: any, costWeight: number = 70, vendorWeight: number = 20, capabilityWeight: number = 10): number => {
+const calculateOverallScore = (
+    evaluation: VendorEvaluation, 
+    evaluationData?: any, 
+    costWeight: number = 70, 
+    vendorWeight: number = 20, 
+    capabilityWeight: number = 10,
+    realTimeCostScore?: number,
+    realTimeRatingScore?: number,
+    realTimeCapabilityScore?: number
+): number => {
     // Priority: use overall score from database if available
     if (evaluationData?.overall_score) {
         return evaluationData.overall_score;
     }
 
-    const costScore = getCostScore(evaluation, evaluationData);
-    const vendorScore = getVendorRatingScore(evaluation, evaluationData);
-    const capabilityScore = getCapabilityScore(evaluation, evaluationData);
+    const costScore = getCostScore(evaluation, evaluationData, realTimeCostScore);
+    const vendorScore = getVendorRatingScore(evaluation, evaluationData, realTimeRatingScore);
+    const capabilityScore = getCapabilityScore(evaluation, evaluationData, realTimeCapabilityScore);
 
     // Convert percentages to decimals
     return (costScore * (costWeight / 100)) + (vendorScore * (vendorWeight / 100)) + (capabilityScore * (capabilityWeight / 100));
@@ -139,9 +160,18 @@ const calculateCompliance = (evaluation: VendorEvaluation, evaluationData?: any)
 interface SupplierEvaluationDashboardProps {
     supplierId: string;
     nominationId: string;
+    costScore?: number;
+    ratingEngineScore?: number;
+    capabilityScore?: number;
 }
 
-export function SupplierEvaluationDashboard({ supplierId, nominationId }: SupplierEvaluationDashboardProps) {
+export function SupplierEvaluationDashboard({ 
+    supplierId, 
+    nominationId, 
+    costScore = 0, 
+    ratingEngineScore = 0, 
+    capabilityScore = 0 
+}: SupplierEvaluationDashboardProps) {
     const { data: nomination, isLoading } = useSupplierNomination(nominationId);
     const updateEvaluationMutation = useUpdateVendorEvaluation(nominationId);
     // const storeEvaluationMutation = useStoreEvaluationData();
@@ -330,12 +360,12 @@ export function SupplierEvaluationDashboard({ supplierId, nominationId }: Suppli
                         <CardContent className="p-6">
                             <p className="text-sm text-gray-400 font-medium">Overall Score</p>
                             <div className="flex items-baseline gap-2 mt-2">
-                                <h3 className="text-3xl font-bold text-white">{calculateOverallScore(evaluation, evaluationData, weights.costWeight, weights.vendorWeight, weights.capabilityWeight).toFixed(1)}%</h3>
+                                <h3 className="text-3xl font-bold text-white">{calculateOverallScore(evaluation, evaluationData, weights.costWeight, weights.vendorWeight, weights.capabilityWeight, costScore, ratingEngineScore, capabilityScore).toFixed(1)}%</h3>
                                 <Badge variant="outline" className="text-[10px] border-blue-500/50 text-blue-400 font-bold">
                                     RANK #{evaluationData?.final_rank || evaluation.overallRank || 1}
                                 </Badge>
                             </div>
-                            <Progress value={calculateOverallScore(evaluation, evaluationData, weights.costWeight, weights.vendorWeight, weights.capabilityWeight)} className="h-1.5 mt-4 bg-gray-700" />
+                            <Progress value={calculateOverallScore(evaluation, evaluationData, weights.costWeight, weights.vendorWeight, weights.capabilityWeight, costScore, ratingEngineScore, capabilityScore)} className="h-1.5 mt-4 bg-gray-700" />
                         </CardContent>
                     </Card>
 
@@ -359,7 +389,7 @@ export function SupplierEvaluationDashboard({ supplierId, nominationId }: Suppli
                                 )}
                             </p>
                             <div className="flex items-baseline gap-2 mt-2">
-                                <h3 className="text-3xl font-bold text-white">{getCostScore(evaluation, evaluationData).toFixed(1)}%</h3>
+                                <h3 className="text-3xl font-bold text-white">{getCostScore(evaluation, evaluationData, costScore).toFixed(1)}%</h3>
                             </div>
                             <div className="flex items-center gap-1 mt-4 text-xs text-green-400">
                                 <TrendingUp className="h-3 w-3" />
@@ -388,7 +418,7 @@ export function SupplierEvaluationDashboard({ supplierId, nominationId }: Suppli
                                 )}
                             </p>
                             <div className="flex items-baseline gap-2 mt-2">
-                                <h3 className="text-3xl font-bold text-white">{getVendorRatingScore(evaluation, evaluationData).toFixed(1)}%</h3>
+                                <h3 className="text-3xl font-bold text-white">{getVendorRatingScore(evaluation, evaluationData, ratingEngineScore).toFixed(1)}%</h3>
                                 <Badge
                                     variant="outline"
                                     className={`text-[10px] border-${getRiskLevelColor(evaluationData?.overview?.risk_level || evaluation.riskLevel)}-500 text-${getRiskLevelColor(evaluationData?.overview?.risk_level || evaluation.riskLevel)}-400 font-bold`}
@@ -424,13 +454,13 @@ export function SupplierEvaluationDashboard({ supplierId, nominationId }: Suppli
                                 )}
                             </p>
                             <div className="flex items-baseline gap-2 mt-2">
-                                <h3 className="text-3xl font-bold text-white">{getCapabilityScore(evaluation, evaluationData).toFixed(0)}/100</h3>
+                                <h3 className="text-3xl font-bold text-white">{getCapabilityScore(evaluation, evaluationData, capabilityScore).toFixed(0)}/100</h3>
                             </div>
                             <div className="mt-4 flex gap-1">
                                 {[1, 2, 3, 4, 5].map(i => (
                                     <div
                                         key={i}
-                                        className={`h-1.5 flex-1 rounded-full ${i <= (getCapabilityScore(evaluation) / 20) ? 'bg-purple-500' : 'bg-gray-700'}`}
+                                        className={`h-1.5 flex-1 rounded-full ${i <= (getCapabilityScore(evaluation, evaluationData, capabilityScore) / 20) ? 'bg-purple-500' : 'bg-gray-700'}`}
                                     />
                                 ))}
                             </div>
