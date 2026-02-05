@@ -252,6 +252,7 @@ interface SupplierCardProps {
   vendor?: any;
   rank: number;
   vendorIndex: number;
+  nominationId: string;
   onUpdate: (evaluationId: string, data: any) => void;
   onUpdateScores: (evaluationId: string, scores: any[]) => void;
   onSelectEvaluation?: (evaluationId: string) => void;
@@ -272,6 +273,7 @@ function SupplierCard({
   vendor, 
   rank,
   vendorIndex,
+  nominationId,
   costAnalysisData,
   vendorRatingScores,
   capabilityData,
@@ -282,7 +284,7 @@ function SupplierCard({
   const [isUpdating, setIsUpdating] = useState(false);
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(0);
   const [remainingCooldown, setRemainingCooldown] = useState<number>(0);
-  const updateVendorEvaluation = useUpdateVendorEvaluation();
+  const updateVendorEvaluation = useUpdateVendorEvaluation(nominationId);
 
   // Rate limiting: minimum 2 seconds between requests
   const RATE_LIMIT_MS = 2000;
@@ -516,32 +518,6 @@ function SupplierCard({
                 size="sm"
                 onClick={() => handleQuickApproval(evaluation.id, 'approved')}
                 disabled={isUpdating || isRateLimited}
-                className="border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                title={isRateLimited ? `Please wait ${Math.ceil(remainingCooldown / 1000)} seconds` : 'Redo approval for this vendor'}
-              >
-                {isUpdating ? (
-                  <>
-                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-400 mr-1"></div>
-                    Processing...
-                  </>
-                ) : isRateLimited ? (
-                  <>
-                    <Clock className="h-3 w-3 mr-1" />
-                    Wait {Math.ceil(remainingCooldown / 1000)}s
-                  </>
-                ) : (
-                  <>
-                    <Redo2 className="h-3 w-3 mr-1" />
-                    Redo Approval
-                  </>
-                )}
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleQuickApproval(evaluation.id, 'approved')}
-                disabled={isUpdating || isRateLimited}
                 className="border-green-600 text-green-400 hover:bg-green-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 title={isRateLimited ? `Please wait ${Math.ceil(remainingCooldown / 1000)} seconds` : 'Approve this vendor'}
               >
@@ -558,10 +534,63 @@ function SupplierCard({
                 ) : (
                   <>
                     <CheckCircle className="h-3 w-3 mr-1" />
-                    Approve Vendor
+                    Approve
                   </>
                 )}
               </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleQuickApproval(evaluation.id, 'approved')}
+                  disabled={isUpdating || isRateLimited}
+                  className="border-green-600 text-green-400 hover:bg-green-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={isRateLimited ? `Please wait ${Math.ceil(remainingCooldown / 1000)} seconds` : 'Approve this vendor'}
+                >
+                  {isUpdating ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-400 mr-1"></div>
+                      Processing...
+                    </>
+                  ) : isRateLimited ? (
+                    <>
+                      <Clock className="h-3 w-3 mr-1" />
+                      Wait {Math.ceil(remainingCooldown / 1000)}s
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      Approve
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleQuickApproval(evaluation.id, 'rejected')}
+                  disabled={isUpdating || isRateLimited}
+                  className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={isRateLimited ? `Please wait ${Math.ceil(remainingCooldown / 1000)} seconds` : 'Reject this vendor'}
+                >
+                  {isUpdating ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-400 mr-1"></div>
+                      Processing...
+                    </>
+                  ) : isRateLimited ? (
+                    <>
+                      <Clock className="h-3 w-3 mr-1" />
+                      Wait {Math.ceil(remainingCooldown / 1000)}s
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="h-3 w-3 mr-1" />
+                      Reject
+                    </>
+                  )}
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -1202,6 +1231,7 @@ export function SupplierNominationPage({
                   vendor={vendorMap.get(evaluation.vendorId)}
                   rank={index + 1}
                   vendorIndex={index}
+                  nominationId={nominationId}
                   onUpdate={handleUpdateEvaluation}
                   onUpdateScores={handleUpdateScores}
                   onSelectEvaluation={onSelectEvaluation}

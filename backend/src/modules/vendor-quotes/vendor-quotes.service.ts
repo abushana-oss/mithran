@@ -4,17 +4,17 @@ import { CreateVendorQuoteDto, UpdateVendorQuoteDto, VendorQuoteLineItemDto, Ven
 
 @Injectable()
 export class VendorQuotesService {
-  constructor(@InjectKnex() private readonly knex: Knex) {}
+  constructor(@InjectKnex() private readonly knex: Knex) { }
 
   async createQuote(createQuoteDto: CreateVendorQuoteDto, userId: string) {
     const trx = await this.knex.transaction();
-    
+
     try {
       // Verify nomination access
       const nomination = await trx('supplier_nomination_evaluations')
         .where({ id: createQuoteDto.nominationEvaluationId, user_id: userId })
         .first();
-      
+
       if (!nomination) {
         throw new ForbiddenException('Access denied to this nomination');
       }
@@ -90,7 +90,7 @@ export class VendorQuotesService {
     const nomination = await this.knex('supplier_nomination_evaluations')
       .where({ id: nominationId, user_id: userId })
       .first();
-    
+
     if (!nomination) {
       throw new ForbiddenException('Access denied to this nomination');
     }
@@ -140,7 +140,7 @@ export class VendorQuotesService {
     const nomination = await this.knex('supplier_nomination_evaluations')
       .where({ id: quote.nomination_evaluation_id, user_id: userId })
       .first();
-    
+
     if (!nomination) {
       throw new ForbiddenException('Access denied to this quote');
     }
@@ -164,7 +164,7 @@ export class VendorQuotesService {
 
   async updateQuote(id: string, updateQuoteDto: UpdateVendorQuoteDto, userId: string) {
     const quote = await this.getQuoteById(id, userId);
-    
+
     // Don't allow updates if quote is approved
     if (quote.status === 'approved') {
       throw new BadRequestException('Cannot modify approved quotes');
@@ -183,20 +183,20 @@ export class VendorQuotesService {
 
   async deleteQuote(id: string, userId: string) {
     const quote = await this.getQuoteById(id, userId);
-    
+
     // Don't allow deletion if quote is approved
     if (quote.status === 'approved') {
       throw new BadRequestException('Cannot delete approved quotes');
     }
 
     await this.knex('vendor_quotes').where({ id }).delete();
-    
+
     return { message: 'Quote deleted successfully' };
   }
 
   async addLineItem(quoteId: string, lineItemDto: VendorQuoteLineItemDto, userId: string) {
     const quote = await this.getQuoteById(quoteId, userId);
-    
+
     // Get next line number
     const lastLineItem = await this.knex('vendor_quote_line_items')
       .where({ vendor_quote_id: quoteId })
@@ -242,7 +242,7 @@ export class VendorQuotesService {
 
   async updateLineItem(quoteId: string, lineItemId: string, lineItemDto: VendorQuoteLineItemDto, userId: string) {
     const quote = await this.getQuoteById(quoteId, userId);
-    
+
     const [updatedLineItem] = await this.knex('vendor_quote_line_items')
       .where({ id: lineItemId, vendor_quote_id: quoteId })
       .update({
@@ -261,7 +261,7 @@ export class VendorQuotesService {
 
   async deleteLineItem(quoteId: string, lineItemId: string, userId: string) {
     const quote = await this.getQuoteById(quoteId, userId);
-    
+
     await this.knex('vendor_quote_line_items')
       .where({ id: lineItemId, vendor_quote_id: quoteId })
       .delete();
@@ -271,7 +271,7 @@ export class VendorQuotesService {
 
   async submitQuote(id: string, userId: string) {
     const quote = await this.getQuoteById(id, userId);
-    
+
     if (quote.status !== 'draft') {
       throw new BadRequestException('Only draft quotes can be submitted');
     }
@@ -289,7 +289,7 @@ export class VendorQuotesService {
 
   async approveQuote(id: string, userId: string, reviewNotes?: string) {
     const quote = await this.getQuoteById(id, userId);
-    
+
     if (quote.status !== 'submitted') {
       throw new BadRequestException('Only submitted quotes can be approved');
     }
@@ -309,7 +309,7 @@ export class VendorQuotesService {
 
   async rejectQuote(id: string, userId: string, reviewNotes: string) {
     const quote = await this.getQuoteById(id, userId);
-    
+
     if (quote.status !== 'submitted') {
       throw new BadRequestException('Only submitted quotes can be rejected');
     }
@@ -332,7 +332,7 @@ export class VendorQuotesService {
     const nomination = await this.knex('supplier_nomination_evaluations')
       .where({ id: nominationId, user_id: userId })
       .first();
-    
+
     if (!nomination) {
       throw new ForbiddenException('Access denied to this nomination');
     }
@@ -350,23 +350,23 @@ export class VendorQuotesService {
       quotes,
       summary: {
         total_quotes: quotes.length,
-        lowest_price: quotes.length > 0 ? Math.min(...quotes.map(q => q.unit_price)) : null,
-        highest_price: quotes.length > 0 ? Math.max(...quotes.map(q => q.unit_price)) : null,
-        fastest_delivery: quotes.length > 0 ? Math.min(...quotes.map(q => q.lead_time_days)) : null,
-        slowest_delivery: quotes.length > 0 ? Math.max(...quotes.map(q => q.lead_time_days)) : null,
+        lowest_price: quotes.length > 0 ? Math.min(...quotes.map((q: any) => q.unit_price)) : null,
+        highest_price: quotes.length > 0 ? Math.max(...quotes.map((q: any) => q.unit_price)) : null,
+        fastest_delivery: quotes.length > 0 ? Math.min(...quotes.map((q: any) => q.lead_time_days)) : null,
+        slowest_delivery: quotes.length > 0 ? Math.max(...quotes.map((q: any) => q.lead_time_days)) : null,
       },
     };
   }
 
   async assignVendorToBomPart(assignmentDto: VendorAssignmentDto, userId: string) {
     const trx = await this.knex.transaction();
-    
+
     try {
       // Verify access to nomination
       const nomination = await trx('supplier_nomination_evaluations')
         .where({ id: assignmentDto.nominationId, user_id: userId })
         .first();
-      
+
       if (!nomination) {
         throw new ForbiddenException('Access denied to this nomination');
       }
@@ -459,7 +459,7 @@ export class VendorQuotesService {
     const nomination = await this.knex('supplier_nomination_evaluations')
       .where({ id: nominationId, user_id: userId })
       .first();
-    
+
     if (!nomination) {
       throw new ForbiddenException('Access denied to this nomination');
     }
@@ -525,7 +525,7 @@ export class VendorQuotesService {
     const nomination = await this.knex('supplier_nomination_evaluations')
       .where({ id: assignment.nomination_evaluation_id, user_id: userId })
       .first();
-    
+
     if (!nomination) {
       throw new ForbiddenException('Access denied to this assignment');
     }
@@ -552,7 +552,7 @@ export class VendorQuotesService {
     const nomination = await this.knex('supplier_nomination_evaluations')
       .where({ id: nominationId, user_id: userId })
       .first();
-    
+
     if (!nomination) {
       throw new ForbiddenException('Access denied to this nomination');
     }
@@ -570,7 +570,7 @@ export class VendorQuotesService {
     const nomination = await this.knex('supplier_nomination_evaluations')
       .where({ id: nominationId, user_id: userId })
       .first();
-    
+
     if (!nomination) {
       throw new ForbiddenException('Access denied to this nomination');
     }
@@ -588,12 +588,12 @@ export class VendorQuotesService {
 
     // Calculate summary metrics
     const totalParts = bomParts.length;
-    const partsWithQuotes = new Set(assignments.filter(a => a.selected_quote_line_item_id).map(a => a.bom_item_id)).size;
-    const partsAssigned = new Set(assignments.filter(a => a.selection_status === 'selected').map(a => a.bom_item_id)).size;
+    const partsWithQuotes = new Set(assignments.filter((a: any) => a.selected_quote_line_item_id).map((a: any) => a.bom_item_id)).size;
+    const partsAssigned = new Set(assignments.filter((a: any) => a.selection_status === 'selected').map((a: any) => a.bom_item_id)).size;
 
-    const totalQuotedAmount = assignments.reduce((sum, a) => sum + (a.quoted_total_price || 0), 0);
-    const averageLeadTime = assignments.length > 0 
-      ? assignments.reduce((sum, a) => sum + (a.quoted_lead_time_days || 0), 0) / assignments.length 
+    const totalQuotedAmount = assignments.reduce((sum: number, a: any) => sum + (a.quoted_total_price || 0), 0);
+    const averageLeadTime = assignments.length > 0
+      ? assignments.reduce((sum: number, a: any) => sum + (a.quoted_lead_time_days || 0), 0) / assignments.length
       : 0;
 
     return {

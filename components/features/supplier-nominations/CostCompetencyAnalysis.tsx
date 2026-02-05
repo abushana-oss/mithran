@@ -418,6 +418,7 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdat
 
       return () => clearTimeout(timeoutId);
     }
+    return undefined;
   }, [costData, memoizedOnDataUpdate]);
 
   // ENTERPRISE BEST PRACTICE: Local updates without API calls

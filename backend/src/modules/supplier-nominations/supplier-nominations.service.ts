@@ -1299,22 +1299,19 @@ export class SupplierNominationsService {
     const client = this.supabaseService.getClient(accessToken);
 
     try {
-      // Build query to find approved vendors for this BOM part
+      // Build query to find approved vendors for this BOM part using the new relationship structure
       let query = client
-        .from('supplier_nomination_evaluations')
+        .from('vendor_nomination_evaluations')
         .select(`
-          id,
-          nomination_id,
           vendor_id,
-          vendor_name,
           overall_score,
           recommendation,
           updated_at,
-          supplier_nominations!inner (
+          supplier_nomination_evaluations!inner (
             id,
             nomination_name,
             project_id,
-            bom_parts
+            user_id
           ),
           vendors!inner (
             id,
@@ -1322,11 +1319,12 @@ export class SupplierNominationsService {
             supplier_code
           )
         `)
+        .eq('supplier_nomination_evaluations.user_id', userId)
         .eq('recommendation', 'approved');
 
       // If projectId is provided, filter by project
       if (projectId) {
-        query = query.eq('supplier_nominations.project_id', projectId);
+        query = query.eq('supplier_nomination_evaluations.project_id', projectId);
       }
 
       const { data: evaluations, error } = await query;
@@ -1335,24 +1333,39 @@ export class SupplierNominationsService {
         throw new BadRequestException(`Failed to get approved vendors: ${error.message}`);
       }
 
-      // Filter evaluations that include the specific BOM part
+      if (!evaluations || evaluations.length === 0) {
+        return [];
+      }
+
+      // Get BOM parts for each evaluation to filter by bomPartId
+      const evaluationIds = evaluations.map((evaluation: any) => evaluation.supplier_nomination_evaluations.id);
+      
+      const { data: bomParts, error: bomPartsError } = await client
+        .from('supplier_nomination_bom_parts')
+        .select('nomination_evaluation_id, bom_item_id')
+        .in('nomination_evaluation_id', evaluationIds)
+        .eq('bom_item_id', bomPartId);
+
+      if (bomPartsError) {
+        throw new BadRequestException(`Failed to get BOM parts: ${bomPartsError.message}`);
+      }
+
+      // Create a set of evaluation IDs that have the requested BOM part
+      const evaluationIdsWithBomPart = new Set(bomParts?.map(bp => bp.nomination_evaluation_id) || []);
+
+      // Filter and map the results
       const approvedVendors = evaluations
-        ?.filter((evaluation: any) => {
-          const bomParts = evaluation.supplier_nominations?.bom_parts || [];
-          return Array.isArray(bomParts) && bomParts.some((part: any) => 
-            part.bomItemId === bomPartId || part.id === bomPartId
-          );
-        })
+        .filter((evaluation: any) => evaluationIdsWithBomPart.has(evaluation.supplier_nomination_evaluations.id))
         .map((evaluation: any) => ({
           vendorId: evaluation.vendor_id,
-          vendorName: evaluation.vendor_name || evaluation.vendors?.name || 'Unknown Vendor',
+          vendorName: evaluation.vendors?.name || 'Unknown Vendor',
           supplierCode: evaluation.vendors?.supplier_code,
-          nominationId: evaluation.nomination_id,
-          nominationName: evaluation.supplier_nominations?.nomination_name || 'Unknown Nomination',
+          nominationId: evaluation.supplier_nomination_evaluations.id,
+          nominationName: evaluation.supplier_nomination_evaluations.nomination_name,
           overallScore: evaluation.overall_score || 0,
           recommendation: evaluation.recommendation,
           approvalDate: evaluation.updated_at
-        })) || [];
+        }));
 
       return approvedVendors;
     } catch (error) {

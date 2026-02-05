@@ -1,15 +1,14 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, ParseUUIDPipe, ValidationPipe } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { VendorQuotesService } from './vendor-quotes.service';
 import { CreateVendorQuoteDto, UpdateVendorQuoteDto, VendorQuoteLineItemDto, VendorAssignmentDto } from './dto/vendor-quotes.dto';
-import { Auth } from '../auth/decorators/auth.decorator';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Vendor Quotes')
+@ApiBearerAuth()
 @Controller('v1/vendor-quotes')
-@Auth()
 export class VendorQuotesController {
-  constructor(private readonly vendorQuotesService: VendorQuotesService) {}
+  constructor(private readonly vendorQuotesService: VendorQuotesService) { }
 
   @Post()
   @ApiOperation({ summary: 'Create vendor quote' })

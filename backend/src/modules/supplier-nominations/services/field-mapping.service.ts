@@ -8,7 +8,7 @@ import { Logger } from '../../../common/logger/logger.service';
  */
 @Injectable()
 export class FieldMappingService {
-  constructor(private readonly logger: Logger) {}
+  constructor(private readonly logger: Logger) { }
 
   /**
    * Vendor Rating Matrix field mappings
@@ -64,8 +64,8 @@ export class FieldMappingService {
       originalFields[key] = value;
 
       // Check if it's a camelCase field that needs mapping
-      let dbFieldName = FieldMappingService.VENDOR_RATING_FIELD_MAP[key as keyof typeof FieldMappingService.VENDOR_RATING_FIELD_MAP];
-      
+      let dbFieldName: string | undefined = FieldMappingService.VENDOR_RATING_FIELD_MAP[key as keyof typeof FieldMappingService.VENDOR_RATING_FIELD_MAP];
+
       // If not found, check if it's already a snake_case field
       if (!dbFieldName) {
         const snakeCaseFields = Object.values(FieldMappingService.VENDOR_RATING_FIELD_MAP) as string[];
@@ -73,10 +73,10 @@ export class FieldMappingService {
           dbFieldName = key; // Already in snake_case format
         }
       }
-      
+
       if (dbFieldName && value !== undefined && !processedFields.has(dbFieldName)) {
         processedFields.add(dbFieldName);
-        
+
         // Type conversion based on field type
         if (key.includes('Percent') || dbFieldName.includes('percent')) {
           dbFields[dbFieldName] = Number(value);
@@ -106,7 +106,7 @@ export class FieldMappingService {
       originalFields[key] = value;
 
       const dbFieldName = FieldMappingService.COST_COMPETENCY_FIELD_MAP[key as keyof typeof FieldMappingService.COST_COMPETENCY_FIELD_MAP];
-      
+
       if (dbFieldName && value !== undefined) {
         dbFields[dbFieldName] = Number(value);
         this.logger.log(`[FIELD_MAPPING] ${key}: ${value} -> ${dbFieldName}: ${dbFields[dbFieldName]}`);
@@ -131,7 +131,7 @@ export class FieldMappingService {
       originalFields[key] = value;
 
       const dbFieldName = FieldMappingService.VENDOR_ASSESSMENT_FIELD_MAP[key as keyof typeof FieldMappingService.VENDOR_ASSESSMENT_FIELD_MAP];
-      
+
       if (dbFieldName && value !== undefined) {
         // Type conversion based on field semantics
         if (key.includes('Score') || key.includes('Total')) {
@@ -157,14 +157,14 @@ export class FieldMappingService {
     const invalidFields: string[] = [];
     const camelCaseFields = Object.keys(FieldMappingService.VENDOR_RATING_FIELD_MAP);
     const snakeCaseFields = Object.values(FieldMappingService.VENDOR_RATING_FIELD_MAP);
-    
+
     Object.keys(update).forEach(key => {
       if (key === 'id') return;
-      
+
       // Accept both camelCase and snake_case formats
       const isValidCamelCase = camelCaseFields.includes(key);
       const isValidSnakeCase = (snakeCaseFields as string[]).includes(key);
-      
+
       if (!isValidCamelCase && !isValidSnakeCase) {
         invalidFields.push(key);
       }

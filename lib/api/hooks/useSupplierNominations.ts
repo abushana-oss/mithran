@@ -198,6 +198,22 @@ export function useUpdateVendorEvaluation(nominationId: string) {
         }
       );
 
+      // CRITICAL FIX: Invalidate the nominations list cache to refresh the UI
+      // This ensures that the approval status changes are reflected in the list view
+      queryClient.invalidateQueries({
+        queryKey: supplierNominationKeys.lists(),
+      });
+
+      // Also invalidate the specific nomination detail to ensure consistency
+      queryClient.invalidateQueries({
+        queryKey: supplierNominationKeys.detail(nominationId),
+      });
+
+      // Force refetch of the specific nomination to get updated summary data
+      queryClient.refetchQueries({
+        queryKey: supplierNominationKeys.detail(nominationId),
+      });
+
       toast.success('Vendor evaluation updated successfully');
     },
     onError: (error: any) => {
