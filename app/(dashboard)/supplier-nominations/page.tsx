@@ -41,10 +41,8 @@ export default function SupplierNominationsPage() {
     const allNominations = useMemo(() => {
         const nominations: Array<SupplierNominationSummary & { projectName?: string; projectId?: string }> = [];
 
-        projects.forEach(project => {
-            // We'll need to use the hook conditionally, so we'll handle this differently
-            // For now, we'll just return empty array and handle it in a better way
-        });
+        // Note: We can't use hooks conditionally in useMemo, so nominations are fetched
+        // per-project in the ProjectNominationsCard component below
 
         return nominations;
     }, [projects]);
@@ -358,7 +356,8 @@ interface ProjectNominationsCardProps {
 }
 
 function ProjectNominationsCard({ project, onSelectNomination, onViewProject }: ProjectNominationsCardProps) {
-    const { data: nominations = [], isLoading } = useSupplierNominations(project.id);
+    const { data: nominationsData = [], isLoading } = useSupplierNominations(project.id);
+    const nominations = Array.isArray(nominationsData) ? nominationsData : [];
 
     if (isLoading) {
         return (

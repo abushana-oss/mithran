@@ -11,8 +11,6 @@ import {
   Table,
   Sigma,
   FileSpreadsheet,
-  ShieldCheck,
-  Factory,
 } from 'lucide-react';
 import { NavLink } from '@/components/common/nav-link';
 import { useAuth } from '@/lib/providers/auth';
