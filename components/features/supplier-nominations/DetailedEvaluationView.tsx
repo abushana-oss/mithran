@@ -29,7 +29,12 @@ import {
   BarChart3,
   Zap,
   DollarSign,
-  Edit
+  Edit,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Undo2,
+  Redo2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -86,7 +91,7 @@ export function DetailedEvaluationView({
   nominationId,
   onBack
 }: DetailedEvaluationViewProps) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'capability' | 'technical' | 'rating' | 'cost'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'capability' | 'technical' | 'rating' | 'cost' | 'approval'>('dashboard');
   const [evaluationData, setEvaluationData] = useState({
     vendorType: evaluation.vendorType,
     recommendation: evaluation.recommendation,
@@ -99,6 +104,23 @@ export function DetailedEvaluationView({
     evaluationNotes: evaluation.evaluationNotes || '',
     technicalDiscussion: evaluation.technicalDiscussion || ''
   });
+  
+  // Approval workflow state
+  const [approvalData, setApprovalData] = useState({
+    status: evaluation.recommendation || 'pending',
+    approvalNotes: '',
+    approverComments: '',
+    approvalDate: null as Date | null,
+    rejectionReason: '',
+    conditionalRequirements: ''
+  });
+  
+  // Rate limiting state
+  const [isUpdatingApproval, setIsUpdatingApproval] = useState(false);
+  const [lastApprovalTime, setLastApprovalTime] = useState<number>(0);
+  const [approvalCooldown, setApprovalCooldown] = useState<number>(0);
+  
+  const APPROVAL_RATE_LIMIT_MS = 3000; // 3 seconds for detailed approval
 
   // Capability scores state - populated from API
   const [capabilityScores, setCapabilityScores] = useState<CapabilityTabState>({
@@ -462,6 +484,335 @@ export function DetailedEvaluationView({
     // Return edited score or original score for current vendor
     return editingCapabilityScores[criteriaId]?.[currentVendorId] ??
       criteria.vendorScores?.[currentVendorId] ?? 0;
+  };
+
+  // Approval cooldown timer
+  useEffect(() => {
+    if (lastApprovalTime === 0) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const timeSinceLastUpdate = now - lastApprovalTime;
+      const remaining = Math.max(0, APPROVAL_RATE_LIMIT_MS - timeSinceLastUpdate);
+      
+      setApprovalCooldown(remaining);
+      
+      if (remaining === 0) {
+        clearInterval(interval);
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [lastApprovalTime]);
+
+  // Approval workflow functions
+  const handleApprovalStatusChange = async (newStatus: string) => {
+    // Check rate limiting
+    const now = Date.now();
+    const timeSinceLastUpdate = now - lastApprovalTime;
+    
+    if (timeSinceLastUpdate < APPROVAL_RATE_LIMIT_MS) {
+      const waitTime = Math.ceil((APPROVAL_RATE_LIMIT_MS - timeSinceLastUpdate) / 1000);
+      toast.error(`Please wait ${waitTime} second${waitTime > 1 ? 's' : ''} before making another approval decision`);
+      return;
+    }
+
+    if (isUpdatingApproval) {
+      toast.error('Approval update already in progress. Please wait...');
+      return;
+    }
+
+    setIsUpdatingApproval(true);
+    setLastApprovalTime(now);
+    
+    try {
+      await updateVendorEvaluation.mutateAsync({
+        evaluationId: evaluation.id,
+        data: {
+          recommendation: newStatus as any,
+          evaluationNotes: approvalData.approverComments || `${newStatus} via detailed evaluation at ${new Date().toISOString()}`
+        }
+      });
+
+      setApprovalData(prev => ({
+        ...prev,
+        status: newStatus,
+        approvalDate: newStatus === 'approved' ? new Date() : null
+      }));
+
+      toast.success(`Vendor ${newStatus} successfully`);
+    } catch (error) {
+      console.error('Failed to update approval status:', error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('rate limit') || error.message.includes('too many requests')) {
+          toast.error('Rate limit exceeded. Please wait before trying again.');
+        } else {
+          toast.error(`Failed to update approval status: ${error.message}`);
+        }
+      } else {
+        toast.error('Failed to update approval status');
+      }
+    } finally {
+      setIsUpdatingApproval(false);
+    }
+  };
+
+  const handleApproveVendor = () => {
+    handleApprovalStatusChange('approved');
+  };
+
+  const handleRejectVendor = () => {
+    handleApprovalStatusChange('rejected');
+  };
+
+  const handleConditionalApproval = () => {
+    handleApprovalStatusChange('conditional');
+  };
+
+  const renderApprovalTab = () => {
+    // Calculate overall score for approval decision
+    const capabilityWeight = 0.4;
+    const ratingWeight = 0.4;
+    const costWeight = 0.2;
+    
+    let capabilityScore = 0;
+    if (capabilityScores.criteria.length > 0) {
+      const totalActual = capabilityScores.criteria.reduce((sum, _criteria, criteriaIndex) => {
+        return sum + getCurrentCapabilityScore(criteriaIndex);
+      }, 0);
+      const totalMax = capabilityScores.criteria.reduce((sum, criteria) => sum + (criteria.maxScore || 0), 0);
+      capabilityScore = totalMax > 0 ? (totalActual / totalMax) * 100 : 0;
+    }
+    
+    const ratingScore = ratingEngineScores.sectionWiseCapability * 0.6 + ratingEngineScores.riskMitigation * 0.4;
+    const costScore = costAnalysisScore;
+    
+    const overallScore = (capabilityScore * capabilityWeight) + 
+                        (ratingScore * ratingWeight) + 
+                        (costScore * costWeight);
+
+    const currentStatus = evaluationData.recommendation || approvalData.status;
+
+    return (
+      <div className="space-y-8">
+        {/* Evaluation Summary for Approval */}
+        <Card className="bg-gray-800 border-gray-700">
+          <CardHeader>
+            <CardTitle className="text-white">Evaluation Summary</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="text-center">
+                <div className="text-2xl font-bold text-white">{overallScore.toFixed(1)}%</div>
+                <div className="text-sm text-gray-400">Overall Score</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-400">{capabilityScore.toFixed(1)}%</div>
+                <div className="text-sm text-gray-400">Capability</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-green-400">{ratingScore.toFixed(1)}%</div>
+                <div className="text-sm text-gray-400">Rating Engine</div>
+              </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-yellow-400">{costScore.toFixed(1)}%</div>
+                <div className="text-sm text-gray-400">Cost Analysis</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Current Approval Status */}
+        <Card className="bg-gray-800 border-gray-700">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <CheckCircle className="h-5 w-5" />
+              Approval Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4 mb-4">
+              <div className="text-lg font-medium text-white">Current Status:</div>
+              <Badge 
+                variant="outline" 
+                className={`border-${getRecommendationColor(currentStatus as any)}-500 text-${getRecommendationColor(currentStatus as any)}-400 text-sm px-3 py-1`}
+              >
+                {currentStatus.toUpperCase()}
+              </Badge>
+            </div>
+            {approvalData.approvalDate && (
+              <div className="text-sm text-gray-400">
+                Approved on: {approvalData.approvalDate.toLocaleDateString()}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Approval Actions */}
+        <Card className="bg-gray-800 border-gray-700">
+          <CardHeader>
+            <CardTitle className="text-white">Approval Decision</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Approval Comments */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-white">Approval Comments</label>
+              <Textarea
+                value={approvalData.approverComments}
+                onChange={(e) => setApprovalData(prev => ({ ...prev, approverComments: e.target.value }))}
+                placeholder="Add comments about your approval decision..."
+                className="min-h-[100px] bg-gray-900 border-gray-600 text-white"
+              />
+            </div>
+
+            {/* Conditional Requirements (if conditional approval) */}
+            {(currentStatus === 'conditional' || approvalData.status === 'conditional') && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-white">Conditional Requirements</label>
+                <Textarea
+                  value={approvalData.conditionalRequirements}
+                  onChange={(e) => setApprovalData(prev => ({ ...prev, conditionalRequirements: e.target.value }))}
+                  placeholder="Specify conditions that must be met for full approval..."
+                  className="min-h-[100px] bg-gray-900 border-gray-600 text-white"
+                />
+              </div>
+            )}
+
+            {/* Rejection Reason (if rejected) */}
+            {(currentStatus === 'rejected' || approvalData.status === 'rejected') && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-white">Rejection Reason</label>
+                <Textarea
+                  value={approvalData.rejectionReason}
+                  onChange={(e) => setApprovalData(prev => ({ ...prev, rejectionReason: e.target.value }))}
+                  placeholder="Explain why this vendor was rejected..."
+                  className="min-h-[100px] bg-gray-900 border-gray-600 text-white"
+                />
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex gap-4 pt-4">
+              {currentStatus === 'approved' ? (
+                <Button
+                  onClick={handleRejectVendor}
+                  className="bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50"
+                  disabled={isUpdatingApproval || approvalCooldown > 0}
+                  title={approvalCooldown > 0 ? `Please wait ${Math.ceil(approvalCooldown / 1000)} seconds` : 'Undo approval and reject this vendor'}
+                >
+                  {isUpdatingApproval ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Processing...
+                    </>
+                  ) : approvalCooldown > 0 ? (
+                    <>
+                      <Clock className="h-4 w-4 mr-2" />
+                      Wait {Math.ceil(approvalCooldown / 1000)}s
+                    </>
+                  ) : (
+                    <>
+                      <Undo2 className="h-4 w-4 mr-2" />
+                      Undo Approval
+                    </>
+                  )}
+                </Button>
+              ) : currentStatus === 'rejected' ? (
+                <Button
+                  onClick={handleApproveVendor}
+                  className="bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50"
+                  disabled={isUpdatingApproval || approvalCooldown > 0}
+                  title={approvalCooldown > 0 ? `Please wait ${Math.ceil(approvalCooldown / 1000)} seconds` : 'Redo approval for this vendor'}
+                >
+                  {isUpdatingApproval ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Processing...
+                    </>
+                  ) : approvalCooldown > 0 ? (
+                    <>
+                      <Clock className="h-4 w-4 mr-2" />
+                      Wait {Math.ceil(approvalCooldown / 1000)}s
+                    </>
+                  ) : (
+                    <>
+                      <Redo2 className="h-4 w-4 mr-2" />
+                      Redo Approval
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    onClick={handleApproveVendor}
+                    className="bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                    disabled={isUpdatingApproval || approvalCooldown > 0}
+                    title={approvalCooldown > 0 ? `Please wait ${Math.ceil(approvalCooldown / 1000)} seconds` : 'Approve this vendor'}
+                  >
+                    {isUpdatingApproval ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Processing...
+                      </>
+                    ) : approvalCooldown > 0 ? (
+                      <>
+                        <Clock className="h-4 w-4 mr-2" />
+                        Wait {Math.ceil(approvalCooldown / 1000)}s
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Approve Vendor
+                      </>
+                    )}
+                  </Button>
+                  
+                  <Button
+                    onClick={handleRejectVendor}
+                    variant="destructive"
+                    disabled={isUpdatingApproval || approvalCooldown > 0}
+                    className="disabled:opacity-50"
+                    title={approvalCooldown > 0 ? `Please wait ${Math.ceil(approvalCooldown / 1000)} seconds` : 'Reject this vendor'}
+                  >
+                    {isUpdatingApproval ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Processing...
+                      </>
+                    ) : approvalCooldown > 0 ? (
+                      <>
+                        <Clock className="h-4 w-4 mr-2" />
+                        Wait {Math.ceil(approvalCooldown / 1000)}s
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-4 w-4 mr-2" />
+                        Reject Vendor
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
+            </div>
+
+            {/* Approval History */}
+            <div className="pt-6 border-t border-gray-600">
+              <h4 className="text-sm font-medium text-white mb-3">Evaluation History</h4>
+              <div className="space-y-2 text-sm text-gray-400">
+                <div>• Initial evaluation completed</div>
+                <div>• Cost analysis: {costScore.toFixed(1)}% score</div>
+                <div>• Rating engine: {ratingScore.toFixed(1)}% score</div>
+                <div>• Capability assessment: {capabilityScore.toFixed(1)}% score</div>
+                {currentStatus !== 'pending' && (
+                  <div>• Status updated to: {currentStatus.toUpperCase()}</div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
   };
 
   const renderCapabilityTab = () => {
@@ -830,7 +1181,8 @@ export function DetailedEvaluationView({
               { id: 'cost', label: 'Cost Analysis', icon: DollarSign },
               { id: 'rating', label: 'Rating Engine', icon: Zap },
               { id: 'capability', label: 'Capability', icon: TrendingUp },
-              { id: 'technical', label: 'Technical', icon: FileText }
+              { id: 'technical', label: 'Technical', icon: FileText },
+              { id: 'approval', label: 'Approval', icon: CheckCircle }
             ].map((tab) => {
               const Icon = tab.icon;
               return (
@@ -895,6 +1247,7 @@ export function DetailedEvaluationView({
               onDataUpdate={handleCostDataUpdate}
             />
           )}
+          {activeTab === 'approval' && renderApprovalTab()}
         </div>
       </div>
     </div>

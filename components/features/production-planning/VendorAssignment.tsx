@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -18,7 +18,7 @@ import {
   Edit,
   Calendar,
   DollarSign,
-  Truck
+  Package
 } from 'lucide-react';
 import {
   Dialog,
@@ -37,38 +37,45 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DatePicker } from '@/components/ui/date-picker';
+import { toast } from 'sonner';
+import { apiClient } from '@/lib/api/client';
+import { useAuth, useAuthReady } from '@/lib/providers/auth';
+import { getApprovedVendorsByBomPart, type ApprovedVendor } from '@/lib/api/supplier-nominations';
 
-interface VendorAssignment {
+interface LotBOMItem {
   id: string;
-  partId: string;
-  partNumber: string;
-  partName: string;
-  vendorId: string;
-  vendorName: string;
-  contactPerson: string;
-  contactEmail: string;
-  contactPhone: string;
-  quotedPrice: number;
-  negotiatedPrice: number | null;
-  leadTime: number;
-  deliveryDate: string;
-  orderStatus: 'PENDING' | 'ORDERED' | 'CONFIRMED' | 'SHIPPED' | 'DELIVERED';
-  paymentTerms: string;
-  qualityRating: number;
-  deliveryRating: number;
-  notes: string;
-  trackingNumber: string | null;
-  invoiceAmount: number | null;
+  bom_item_id: string;
+  bom_item_name: string;
+  part_number: string;
+  material: string;
+  quantity: number;
 }
 
 interface Vendor {
   id: string;
   name: string;
-  contactPerson: string;
-  email: string;
-  phone: string;
-  rating: number;
-  specialization: string[];
+  supplier_code: string;
+  contact_person?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  city?: string;
+  // Added from supplier nominations
+  nominationId?: string;
+  nominationName?: string;
+  overallScore?: number;
+  isApproved?: boolean;
+}
+
+interface VendorAssignment {
+  id: string;
+  bom_item_id: string;
+  vendor_id: string;
+  vendor_name: string;
+  quoted_price: number;
+  delivery_date: string;
+  lead_time_days: number;
+  assignment_reason: string;
+  assigned_at: string;
 }
 
 interface VendorAssignmentProps {
@@ -76,186 +83,214 @@ interface VendorAssignmentProps {
 }
 
 export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
-  const [assignments, setAssignments] = useState<VendorAssignment[]>([]);
+  const [lotBOMItems, setLotBOMItems] = useState<LotBOMItem[]>([]);
+  const [vendorAssignments, setVendorAssignments] = useState<VendorAssignment[]>([]);
   const [availableVendors, setAvailableVendors] = useState<Vendor[]>([]);
+  const [approvedVendorsByPart, setApprovedVendorsByPart] = useState<Record<string, ApprovedVendor[]>>({});
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [editingAssignment, setEditingAssignment] = useState<VendorAssignment | null>(null);
+  const [filterStatus, setFilterStatus] = useState('all');
   const [showNewAssignment, setShowNewAssignment] = useState(false);
+  const [selectedBOMItem, setSelectedBOMItem] = useState<string>('');
+  const [selectedVendor, setSelectedVendor] = useState<string>('');
+  const [quotedPrice, setQuotedPrice] = useState<string>('');
+  const [deliveryDate, setDeliveryDate] = useState<Date | undefined>(undefined);
+  const [leadTimeDays, setLeadTimeDays] = useState<string>('');
+  const [assignmentReason, setAssignmentReason] = useState<string>('');
+  
+  const { user } = useAuth();
+  const isAuthReady = useAuthReady();
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchLotData = async () => {
       try {
-        // Mock vendor assignments data
-        const mockAssignments: VendorAssignment[] = [
-          {
-            id: '1',
-            partId: '1',
-            partNumber: 'STL-001',
-            partName: 'Steel Plate',
-            vendorId: 'vendor-1',
-            vendorName: 'SteelCorp Industries',
-            contactPerson: 'John Smith',
-            contactEmail: 'john@steelcorp.com',
-            contactPhone: '+1-555-0101',
-            quotedPrice: 1500,
-            negotiatedPrice: 1450,
-            leadTime: 7,
-            deliveryDate: '2026-02-08',
-            orderStatus: 'CONFIRMED',
-            paymentTerms: 'Net 30',
-            qualityRating: 4.5,
-            deliveryRating: 4.2,
-            notes: 'Preferred vendor for steel materials. Good quality and on-time delivery.',
-            trackingNumber: 'TRK-12345',
-            invoiceAmount: 1450
-          },
-          {
-            id: '2',
-            partId: '3',
-            partNumber: 'ELC-003',
-            partName: 'Circuit Board',
-            vendorId: 'vendor-2',
-            vendorName: 'ElectronicsPlus',
-            contactPerson: 'Sarah Johnson',
-            contactEmail: 'sarah@electronicsplus.com',
-            contactPhone: '+1-555-0102',
-            quotedPrice: 2200,
-            negotiatedPrice: null,
-            leadTime: 10,
-            deliveryDate: '2026-02-12',
-            orderStatus: 'ORDERED',
-            paymentTerms: 'Net 15',
-            qualityRating: 4.8,
-            deliveryRating: 4.6,
-            notes: 'Specialist in custom PCB manufacturing. ISO certified.',
-            trackingNumber: null,
-            invoiceAmount: null
-          },
-          {
-            id: '3',
-            partId: '4',
-            partNumber: 'MSC-004',
-            partName: 'Mounting Screws',
-            vendorId: 'vendor-3',
-            vendorName: 'FastenerWorld',
-            contactPerson: 'Mike Chen',
-            contactEmail: 'mike@fastenerworld.com',
-            contactPhone: '+1-555-0103',
-            quotedPrice: 120,
-            negotiatedPrice: 115,
-            leadTime: 3,
-            deliveryDate: '2026-02-06',
-            orderStatus: 'DELIVERED',
-            paymentTerms: 'Net 7',
-            qualityRating: 4.0,
-            deliveryRating: 4.8,
-            notes: 'Fast delivery for standard hardware. Bulk pricing available.',
-            trackingNumber: 'TRK-67890',
-            invoiceAmount: 115
-          }
-        ];
-
-        // Mock available vendors
-        const mockVendors: Vendor[] = [
-          {
-            id: 'vendor-1',
-            name: 'SteelCorp Industries',
-            contactPerson: 'John Smith',
-            email: 'john@steelcorp.com',
-            phone: '+1-555-0101',
-            rating: 4.3,
-            specialization: ['Metal', 'Steel', 'Aluminum']
-          },
-          {
-            id: 'vendor-2',
-            name: 'ElectronicsPlus',
-            contactPerson: 'Sarah Johnson',
-            email: 'sarah@electronicsplus.com',
-            phone: '+1-555-0102',
-            rating: 4.7,
-            specialization: ['Electronic', 'PCB', 'Components']
-          },
-          {
-            id: 'vendor-3',
-            name: 'FastenerWorld',
-            contactPerson: 'Mike Chen',
-            email: 'mike@fastenerworld.com',
-            phone: '+1-555-0103',
-            rating: 4.4,
-            specialization: ['Hardware', 'Fasteners', 'Screws']
-          },
-          {
-            id: 'vendor-4',
-            name: 'PlasticWorks',
-            contactPerson: 'Lisa Williams',
-            email: 'lisa@plasticworks.com',
-            phone: '+1-555-0104',
-            rating: 4.1,
-            specialization: ['Plastic', 'Injection Molding', 'Polymer']
-          }
-        ];
+        // Fetch production lot details with BOM items
+        const lotResponse = await apiClient.get(`/production-planning/lots/${lotId}`);
+        const lotData = lotResponse.data;
         
-        setAssignments(mockAssignments);
-        setAvailableVendors(mockVendors);
+        console.log('Lot data:', lotData);
+        
+        // Extract BOM items from the lot data
+        const bomItems = lotData.selectedBomItems || [];
+        
+        // Transform BOM items for display
+        const lotBomItems = bomItems.map((bomItem: any) => ({
+          id: bomItem.id,
+          bom_item_id: bomItem.id,
+          bom_item_name: bomItem.description || bomItem.partNumber,
+          part_number: bomItem.partNumber,
+          material: bomItem.materialGrade || 'Not specified',
+          quantity: bomItem.quantity
+        }));
+        
+        console.log('Lot BOM items:', lotBomItems);
+        setLotBOMItems(lotBomItems);
+        
+        // Fetch approved vendors for each BOM part from supplier nominations
+        const approvedVendorsMap: Record<string, ApprovedVendor[]> = {};
+        for (const bomItem of lotBomItems) {
+          try {
+            const approvedVendors = await getApprovedVendorsByBomPart(bomItem.bom_item_id, lotData.projectId);
+            approvedVendorsMap[bomItem.bom_item_id] = approvedVendors;
+          } catch (error) {
+            console.log(`No approved vendors found for BOM item ${bomItem.bom_item_id}`);
+            approvedVendorsMap[bomItem.bom_item_id] = [];
+          }
+        }
+        
+        setApprovedVendorsByPart(approvedVendorsMap);
+        
+        // Convert approved vendors to vendor format for dropdown
+        const allApprovedVendors: Vendor[] = [];
+        Object.values(approvedVendorsMap).forEach(vendors => {
+          vendors.forEach(vendor => {
+            if (!allApprovedVendors.find(v => v.id === vendor.vendorId)) {
+              allApprovedVendors.push({
+                id: vendor.vendorId,
+                name: vendor.vendorName,
+                supplier_code: vendor.supplierCode || '',
+                nominationId: vendor.nominationId,
+                nominationName: vendor.nominationName,
+                overallScore: vendor.overallScore,
+                isApproved: true
+              });
+            }
+          });
+        });
+        
+        // Fallback: Also fetch all available vendors if no approved vendors found
+        const vendorsResponse = await apiClient.get('/vendors');
+        const fallbackVendors = (vendorsResponse.data?.vendors || []).map((v: any) => ({
+          ...v,
+          isApproved: false
+        }));
+        
+        // Combine approved and fallback vendors, prioritizing approved ones
+        const combinedVendors = [...allApprovedVendors, ...fallbackVendors.filter(
+          (fv: Vendor) => !allApprovedVendors.find(av => av.id === fv.id)
+        )];
+        
+        setAvailableVendors(combinedVendors);
+        
+        // Fetch existing vendor assignments for this lot
+        try {
+          const assignmentsResponse = await apiClient.get(`/production-planning/lots/${lotId}/vendor-assignments`);
+          const assignments = assignmentsResponse.data?.map((assignment: any) => ({
+            id: assignment.id,
+            bom_item_id: assignment.bomItemId || assignment.bom_item?.id,
+            vendor_id: assignment.vendorId || assignment.vendor?.id,
+            vendor_name: assignment.vendor?.name || 'Unknown Vendor',
+            quoted_price: assignment.quotedPrice || 0,
+            delivery_date: assignment.expectedDeliveryDate || assignment.deliveryDate,
+            lead_time_days: assignment.leadTimeDays || 0,
+            assignment_reason: assignment.remarks || '',
+            assigned_at: assignment.createdAt || assignment.created_at || new Date().toISOString()
+          })) || [];
+          
+          console.log('Vendor assignments:', assignments);
+          setVendorAssignments(assignments);
+        } catch (error) {
+          console.log('No existing vendor assignments found');
+          setVendorAssignments([]);
+        }
+        
         setLoading(false);
       } catch (error) {
-        console.error('Error fetching vendor assignment data:', error);
+        console.error('Error fetching lot data:', error);
+        toast.error('Failed to load production lot data');
         setLoading(false);
       }
     };
 
-    fetchData();
-  }, [lotId]);
+    if (lotId && isAuthReady) {
+      fetchLotData();
+    }
+  }, [lotId, isAuthReady]);
 
-  const getStatusColor = (status: string) => {
-    const colors = {
-      PENDING: 'bg-yellow-100 text-yellow-600',
-      ORDERED: 'bg-blue-100 text-blue-600',
-      CONFIRMED: 'bg-green-100 text-green-600',
-      SHIPPED: 'bg-purple-100 text-purple-600',
-      DELIVERED: 'bg-emerald-100 text-emerald-600'
-    };
-    return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-600';
+  // Reset vendor selection when BOM item changes
+  useEffect(() => {
+    setSelectedVendor('');
+  }, [selectedBOMItem]);
+
+  // Get vendors available for the selected BOM item (prioritize approved vendors)
+  const getVendorsForSelectedBOMItem = (): Vendor[] => {
+    if (!selectedBOMItem) return availableVendors;
+    
+    const approvedForThisPart = approvedVendorsByPart[selectedBOMItem] || [];
+    const approvedVendorIds = approvedForThisPart.map(v => v.vendorId);
+    
+    // Filter available vendors to show approved ones for this part first, then others
+    const approvedVendors = availableVendors.filter(v => approvedVendorIds.includes(v.id));
+    const otherVendors = availableVendors.filter(v => !approvedVendorIds.includes(v.id));
+    
+    return [...approvedVendors, ...otherVendors];
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'PENDING':
-        return <Clock className="h-4 w-4" />;
-      case 'ORDERED':
-        return <CheckCircle className="h-4 w-4" />;
-      case 'CONFIRMED':
-        return <CheckCircle className="h-4 w-4" />;
-      case 'SHIPPED':
-        return <Truck className="h-4 w-4" />;
-      case 'DELIVERED':
-        return <CheckCircle className="h-4 w-4" />;
-      default:
-        return <AlertTriangle className="h-4 w-4" />;
+  // Filter assignments based on search term
+  const filteredAssignments = vendorAssignments.filter(assignment => {
+    const bomItem = lotBOMItems.find(item => item.bom_item_id === assignment.bom_item_id);
+    const matchesSearch = searchTerm === '' || 
+      (bomItem?.bom_item_name?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (bomItem?.part_number?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      assignment.vendor_name.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    return matchesSearch;
+  });
+
+  const handleAssignVendor = async () => {
+    if (!selectedBOMItem || !selectedVendor || !quotedPrice || !deliveryDate) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      // Format the data to match CreateLotVendorAssignmentDto
+      const assignmentData = {
+        productionLotId: lotId,
+        bomItemId: selectedBOMItem,
+        vendorId: selectedVendor,
+        quotedPrice: parseFloat(quotedPrice),
+        expectedDeliveryDate: deliveryDate.toISOString().split('T')[0],
+        remarks: assignmentReason || 'Assigned via production planning'
+      };
+
+      console.log('Assigning vendor:', assignmentData);
+
+      const response = await apiClient.post(`/production-planning/lots/${lotId}/vendor-assignments`, assignmentData);
+
+      toast.success('Vendor assigned successfully');
+      setShowNewAssignment(false);
+      
+      // Reset form
+      setSelectedBOMItem('');
+      setSelectedVendor('');
+      setQuotedPrice('');
+      setDeliveryDate(undefined);
+      setLeadTimeDays('');
+      setAssignmentReason('');
+      
+      // Refresh assignments
+      const assignmentsResponse = await apiClient.get(`/production-planning/lots/${lotId}/vendor-assignments`);
+      const assignments = assignmentsResponse.data?.map((assignment: any) => ({
+        id: assignment.id,
+        bom_item_id: assignment.bomItemId || assignment.bom_item?.id,
+        vendor_id: assignment.vendorId || assignment.vendor?.id,
+        vendor_name: assignment.vendor?.name || 'Unknown Vendor',
+        quoted_price: assignment.quotedPrice || 0,
+        delivery_date: assignment.expectedDeliveryDate || assignment.deliveryDate,
+        lead_time_days: assignment.leadTimeDays || 0,
+        assignment_reason: assignment.remarks || '',
+        assigned_at: assignment.createdAt || assignment.created_at || new Date().toISOString()
+      })) || [];
+      
+      setVendorAssignments(assignments);
+    } catch (error) {
+      console.error('Error assigning vendor:', error);
+      toast.error('Failed to assign vendor');
     }
   };
 
-  const getRatingColor = (rating: number) => {
-    if (rating >= 4.5) return 'text-green-600';
-    if (rating >= 4.0) return 'text-yellow-600';
-    return 'text-red-600';
-  };
-
-  const filteredAssignments = assignments.filter(assignment => {
-    const matchesSearch = assignment.partName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         assignment.partNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         assignment.vendorName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = filterStatus === 'all' || assignment.orderStatus === filterStatus;
-    return matchesSearch && matchesStatus;
-  });
-
-  const totalQuotedAmount = assignments.reduce((sum, assignment) => sum + assignment.quotedPrice, 0);
-  const totalNegotiatedAmount = assignments.reduce((sum, assignment) => sum + (assignment.negotiatedPrice || assignment.quotedPrice), 0);
-  const savings = totalQuotedAmount - totalNegotiatedAmount;
-
-  if (loading) {
+  if (!isAuthReady || loading) {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
@@ -269,52 +304,60 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Vendors</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">BOM Parts</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{assignments.length}</div>
+            <div className="text-2xl font-bold">{lotBOMItems.length}</div>
             <p className="text-xs text-muted-foreground">
-              Assigned vendors
+              Parts in production lot
             </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Quoted Amount</CardTitle>
+            <CardTitle className="text-sm font-medium">Approved Vendors</CardTitle>
+            <CheckCircle className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              {(() => {
+                const uniqueApprovedVendors = new Set();
+                Object.values(approvedVendorsByPart).forEach(vendors => {
+                  vendors.forEach(v => uniqueApprovedVendors.add(v.vendorId));
+                });
+                return uniqueApprovedVendors.size;
+              })()}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              From supplier nominations
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Assigned</CardTitle>
+            <CheckCircle className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{vendorAssignments.length}</div>
+            <p className="text-xs text-muted-foreground">
+              Vendors assigned
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Value</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹{totalQuotedAmount.toLocaleString()}</div>
+            <div className="text-2xl font-bold">₹{vendorAssignments.reduce((sum, a) => sum + (a.quoted_price || 0), 0).toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              Initial quotes
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Negotiated Amount</CardTitle>
-            <DollarSign className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">₹{totalNegotiatedAmount.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              Final prices
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Cost Savings</CardTitle>
-            <div className="text-green-600">₹</div>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">₹{savings.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              {((savings / totalQuotedAmount) * 100).toFixed(1)}% reduction
+              Total quoted amount
             </p>
           </CardContent>
         </Card>
@@ -346,45 +389,99 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
                 </DialogHeader>
                 {/* New assignment form would go here */}
                 <div className="grid gap-4 py-4">
+                  {/* Select BOM Part */}
                   <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="part" className="text-right">Part</Label>
-                    <Select>
+                    <Label htmlFor="bom-part" className="text-right">BOM Part</Label>
+                    <Select value={selectedBOMItem} onValueChange={setSelectedBOMItem}>
                       <SelectTrigger className="col-span-3">
-                        <SelectValue placeholder="Select a part" />
+                        <SelectValue placeholder="Select a BOM part" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="part-1">PLT-002 - Plastic Housing</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="vendor" className="text-right">Vendor</Label>
-                    <Select>
-                      <SelectTrigger className="col-span-3">
-                        <SelectValue placeholder="Select a vendor" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableVendors.map(vendor => (
-                          <SelectItem key={vendor.id} value={vendor.id}>
-                            {vendor.name} - {vendor.specialization.join(', ')}
+                        {lotBOMItems.map(item => (
+                          <SelectItem key={item.bom_item_id} value={item.bom_item_id}>
+                            {item.part_number} - {item.bom_item_name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {/* Select Vendor */}
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="vendor" className="text-right">Vendor</Label>
+                    <Select value={selectedVendor} onValueChange={setSelectedVendor}>
+                      <SelectTrigger className="col-span-3">
+                        <SelectValue placeholder="Select a vendor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getVendorsForSelectedBOMItem().map(vendor => {
+                          const isApprovedForThisPart = selectedBOMItem && 
+                            approvedVendorsByPart[selectedBOMItem]?.some(av => av.vendorId === vendor.id);
+                          
+                          return (
+                            <SelectItem key={vendor.id} value={vendor.id}>
+                              <div className="flex items-center gap-2">
+                                {isApprovedForThisPart && (
+                                  <CheckCircle className="h-4 w-4 text-green-500" />
+                                )}
+                                <span>
+                                  {vendor.name} - {vendor.supplier_code || 'No Code'}
+                                </span>
+                                {isApprovedForThisPart && (
+                                  <Badge variant="outline" className="text-xs text-green-600 border-green-600">
+                                    Approved
+                                  </Badge>
+                                )}
+                                {vendor.overallScore && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {vendor.overallScore.toFixed(1)}%
+                                  </Badge>
+                                )}
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Quote Details */}
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="price" className="text-right">Quoted Price</Label>
-                    <Input id="price" placeholder="0" className="col-span-3" />
+                    <Input 
+                      id="price" 
+                      placeholder="0.00" 
+                      className="col-span-3" 
+                      value={quotedPrice}
+                      onChange={(e) => setQuotedPrice(e.target.value)}
+                      type="number"
+                      step="0.01"
+                    />
                   </div>
+
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="delivery" className="text-right">Delivery Date</Label>
                     <div className="col-span-3">
-                      <DatePicker />
+                      <DatePicker 
+                        date={deliveryDate}
+                        onDateChange={setDeliveryDate}
+                      />
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="reason" className="text-right">Assignment Reason</Label>
+                    <Textarea 
+                      id="reason" 
+                      placeholder="Why this vendor was selected..." 
+                      className="col-span-3"
+                      value={assignmentReason}
+                      onChange={(e) => setAssignmentReason(e.target.value)}
+                    />
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button type="submit">Assign Vendor</Button>
+                  <Button type="submit" onClick={handleAssignVendor}>Assign Vendor</Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -413,11 +510,10 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="PENDING">Pending</SelectItem>
-                  <SelectItem value="ORDERED">Ordered</SelectItem>
-                  <SelectItem value="CONFIRMED">Confirmed</SelectItem>
-                  <SelectItem value="SHIPPED">Shipped</SelectItem>
-                  <SelectItem value="DELIVERED">Delivered</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="selected">Selected</SelectItem>
+                  <SelectItem value="alternate">Alternate</SelectItem>
+                  <SelectItem value="rejected">Rejected</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -428,117 +524,137 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Part Details</TableHead>
+                  <TableHead>BOM Part</TableHead>
                   <TableHead>Vendor</TableHead>
-                  <TableHead>Pricing</TableHead>
+                  <TableHead>Quote</TableHead>
                   <TableHead>Delivery</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Ratings</TableHead>
+                  <TableHead>Assigned</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredAssignments.map((assignment) => (
-                  <TableRow key={assignment.id}>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="font-medium">{assignment.partName}</div>
-                        <div className="text-sm text-muted-foreground">{assignment.partNumber}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="font-medium">{assignment.vendorName}</div>
-                        <div className="text-sm text-muted-foreground">{assignment.contactPerson}</div>
-                        <div className="text-xs text-muted-foreground">{assignment.contactEmail}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="text-sm text-muted-foreground line-through">
-                          ₹{assignment.quotedPrice.toLocaleString()}
+                {filteredAssignments.map((assignment) => {
+                  const bomItem = lotBOMItems.find(item => item.bom_item_id === assignment.bom_item_id);
+                  return (
+                    <TableRow key={assignment.id}>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="font-medium">{bomItem?.bom_item_name || 'Unknown Part'}</div>
+                          <div className="text-sm text-muted-foreground">{bomItem?.part_number || 'N/A'}</div>
+                          <div className="text-xs text-muted-foreground">{bomItem?.material || 'Material not specified'}</div>
                         </div>
-                        <div className="font-medium">
-                          ₹{(assignment.negotiatedPrice || assignment.quotedPrice).toLocaleString()}
-                        </div>
-                        {assignment.negotiatedPrice && assignment.negotiatedPrice < assignment.quotedPrice && (
-                          <div className="text-xs text-green-600">
-                            Saved ₹{(assignment.quotedPrice - assignment.negotiatedPrice).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <div className="font-medium">{assignment.vendor_name}</div>
+                            {(() => {
+                              const bomApprovedVendors = approvedVendorsByPart[assignment.bom_item_id] || [];
+                              const isApproved = bomApprovedVendors.some(av => av.vendorId === assignment.vendor_id);
+                              const approvedVendor = bomApprovedVendors.find(av => av.vendorId === assignment.vendor_id);
+                              
+                              if (isApproved) {
+                                return (
+                                  <Badge variant="outline" className="text-xs text-green-600 border-green-600">
+                                    <CheckCircle className="h-3 w-3 mr-1" />
+                                    Approved
+                                  </Badge>
+                                );
+                              } else {
+                                return (
+                                  <Badge variant="outline" className="text-xs text-gray-600">
+                                    Not Approved
+                                  </Badge>
+                                );
+                              }
+                            })()}
                           </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm">
-                            {new Date(assignment.deliveryDate).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {assignment.leadTime} days lead time
-                        </div>
-                        {assignment.trackingNumber && (
-                          <div className="text-xs text-blue-600">
-                            Track: {assignment.trackingNumber}
+                          <div className="text-sm text-muted-foreground">
+                            {(() => {
+                              const bomApprovedVendors = approvedVendorsByPart[assignment.bom_item_id] || [];
+                              const approvedVendor = bomApprovedVendors.find(av => av.vendorId === assignment.vendor_id);
+                              
+                              if (approvedVendor) {
+                                return `From: ${approvedVendor.nominationName} (Score: ${approvedVendor.overallScore.toFixed(1)}%)`;
+                              } else {
+                                return 'Assigned directly';
+                              }
+                            })()}
                           </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(assignment.orderStatus)}
-                        <Badge className={getStatusColor(assignment.orderStatus)}>
-                          {assignment.orderStatus}
-                        </Badge>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">Quality:</span>
-                          <span className={`text-xs font-medium ${getRatingColor(assignment.qualityRating)}`}>
-                            {assignment.qualityRating}/5
-                          </span>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-xs text-muted-foreground">Delivery:</span>
-                          <span className={`text-xs font-medium ${getRatingColor(assignment.deliveryRating)}`}>
-                            {assignment.deliveryRating}/5
-                          </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="font-medium">
+                            ₹{assignment.quoted_price.toLocaleString()}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            Total for {bomItem?.quantity || 1} units
+                          </div>
                         </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setEditingAssignment(assignment)}
-                      >
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm">
+                              {new Date(assignment.delivery_date).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {assignment.lead_time_days} days lead time
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                            <Badge className="bg-green-100 text-green-600">
+                              Assigned
+                            </Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {new Date(assignment.assigned_at).toLocaleDateString()}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            // Handle edit assignment
+                            toast.info('Edit functionality coming soon');
+                          }}
+                        >
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
 
-          {filteredAssignments.length === 0 && (
-            <div className="text-center py-8">
-              <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <div className="text-lg font-medium mb-2">No vendor assignments found</div>
-              <div className="text-muted-foreground">
-                {searchTerm || filterStatus !== 'all' 
-                  ? 'Try adjusting your search or filter criteria'
-                  : 'Assign vendors to parts to get started'
-                }
+          {/* Empty State */}
+          {vendorAssignments.length === 0 && (
+            <div className="text-center py-12">
+              <Users className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+              <div className="text-xl font-medium mb-2">No Vendor Assignments Yet</div>
+              <div className="text-muted-foreground mb-6 max-w-md mx-auto">
+                Start by selecting a BOM part from your production lot and assign vendors from your supplier nominations.
+              </div>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <div>• BOM Parts Available: {lotBOMItems.length}</div>
+                <div>• Vendors Available: {availableVendors.length}</div>
               </div>
             </div>
           )}
         </CardContent>
       </Card>
+
     </div>
   );
 };

@@ -462,6 +462,46 @@ export class SupplierNominationsController {
     return this.supplierNominationsService.getStoredRankings(userId, nominationId, token);
   }
 
+  @Get('approved-vendors/bom-part/:bomPartId')
+  @ApiOperation({ summary: 'Get approved vendors for a specific BOM part from supplier nominations' })
+  @ApiResponse({
+    status: 200,
+    description: 'Approved vendors retrieved successfully',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          vendorId: { type: 'string' },
+          vendorName: { type: 'string' },
+          supplierCode: { type: 'string' },
+          nominationId: { type: 'string' },
+          nominationName: { type: 'string' },
+          overallScore: { type: 'number' },
+          recommendation: { type: 'string' },
+          approvalDate: { type: 'string', format: 'date-time' }
+        }
+      }
+    }
+  })
+  getApprovedVendorsByBomPart(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('bomPartId') bomPartId: string,
+    @Query('projectId') projectId?: string
+  ): Promise<Array<{
+    vendorId: string;
+    vendorName: string;
+    supplierCode?: string;
+    nominationId: string;
+    nominationName: string;
+    overallScore: number;
+    recommendation: string;
+    approvalDate?: string;
+  }>> {
+    return this.supplierNominationsService.getApprovedVendorsByBomPart(userId, bomPartId, projectId, token);
+  }
+
   // Cost Competency Analysis Endpoints
   @Get(':id/cost-analysis')
   @ApiOperation({ summary: 'Get cost competency analysis data for nomination' })

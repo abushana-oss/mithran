@@ -1281,6 +1281,86 @@ export class SupplierNominationsService {
     }
   }
 
+  async getApprovedVendorsByBomPart(
+    userId: string,
+    bomPartId: string,
+    projectId?: string,
+    accessToken?: string
+  ): Promise<Array<{
+    vendorId: string;
+    vendorName: string;
+    supplierCode?: string;
+    nominationId: string;
+    nominationName: string;
+    overallScore: number;
+    recommendation: string;
+    approvalDate?: string;
+  }>> {
+    const client = this.supabaseService.getClient(accessToken);
+
+    try {
+      // Build query to find approved vendors for this BOM part
+      let query = client
+        .from('supplier_nomination_evaluations')
+        .select(`
+          id,
+          nomination_id,
+          vendor_id,
+          vendor_name,
+          overall_score,
+          recommendation,
+          updated_at,
+          supplier_nominations!inner (
+            id,
+            nomination_name,
+            project_id,
+            bom_parts
+          ),
+          vendors!inner (
+            id,
+            name,
+            supplier_code
+          )
+        `)
+        .eq('recommendation', 'approved');
+
+      // If projectId is provided, filter by project
+      if (projectId) {
+        query = query.eq('supplier_nominations.project_id', projectId);
+      }
+
+      const { data: evaluations, error } = await query;
+
+      if (error) {
+        throw new BadRequestException(`Failed to get approved vendors: ${error.message}`);
+      }
+
+      // Filter evaluations that include the specific BOM part
+      const approvedVendors = evaluations
+        ?.filter((evaluation: any) => {
+          const bomParts = evaluation.supplier_nominations?.bom_parts || [];
+          return Array.isArray(bomParts) && bomParts.some((part: any) => 
+            part.bomItemId === bomPartId || part.id === bomPartId
+          );
+        })
+        .map((evaluation: any) => ({
+          vendorId: evaluation.vendor_id,
+          vendorName: evaluation.vendor_name || evaluation.vendors?.name || 'Unknown Vendor',
+          supplierCode: evaluation.vendors?.supplier_code,
+          nominationId: evaluation.nomination_id,
+          nominationName: evaluation.supplier_nominations?.nomination_name || 'Unknown Nomination',
+          overallScore: evaluation.overall_score || 0,
+          recommendation: evaluation.recommendation,
+          approvalDate: evaluation.updated_at
+        })) || [];
+
+      return approvedVendors;
+    } catch (error) {
+      this.logger.error('Failed to get approved vendors by BOM part:', error);
+      throw error;
+    }
+  }
+
   // Cost Competency Analysis Methods
   async getCostAnalysis(
     userId: string,

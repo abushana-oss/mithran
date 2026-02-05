@@ -630,3 +630,36 @@ export async function getEvaluationScores(evaluationId: string): Promise<Evaluat
     throw error;
   }
 }
+
+// ============================================================================
+// APPROVED VENDORS API
+// ============================================================================
+
+export interface ApprovedVendor {
+  vendorId: string;
+  vendorName: string;
+  supplierCode?: string;
+  nominationId: string;
+  nominationName: string;
+  overallScore: number;
+  recommendation: string;
+  approvalDate?: string;
+}
+
+/**
+ * Get approved vendors for a specific BOM part from supplier nominations
+ */
+export async function getApprovedVendorsByBomPart(
+  bomPartId: string,
+  projectId?: string
+): Promise<ApprovedVendor[]> {
+  try {
+    const url = `/supplier-nominations/approved-vendors/bom-part/${bomPartId}`;
+    const params = projectId ? { projectId } : {};
+    const response = await apiClient.get(url, { params });
+    return response || [];
+  } catch (error) {
+    console.error('Failed to get approved vendors by BOM part:', error);
+    throw error;
+  }
+}

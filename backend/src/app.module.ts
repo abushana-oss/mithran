@@ -23,6 +23,7 @@ import { SupplierEvaluationModule } from './modules/supplier-evaluation/supplier
 import { SupplierEvaluationGroupsModule } from './modules/supplier-evaluation-groups/supplier-evaluation-groups.module';
 import { RfqModule } from './modules/rfq/rfq.module';
 import { SupplierNominationsModule } from './modules/supplier-nominations/supplier-nominations.module';
+import { VendorQuotesModule } from './modules/vendor-quotes/vendor-quotes.module';
 import { ProductionPlanningModule } from './modules/production-planning/production-planning.module';
 import { LoggerModule } from './common/logger/logger.module';
 import { SupabaseService } from './common/supabase/supabase.service';
@@ -75,6 +76,7 @@ import { validate } from './config/env.validation';
     SupplierEvaluationGroupsModule,
     RfqModule,
     SupplierNominationsModule,
+    VendorQuotesModule,
     ProductionPlanningModule,
   ],
   controllers: [],

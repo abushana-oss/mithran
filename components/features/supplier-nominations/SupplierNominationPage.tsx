@@ -5,6 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { 
   ArrowLeft, 
   Download,
@@ -15,7 +23,9 @@ import {
   DollarSign,
   Save,
   Plus,
-  Users
+  Users,
+  Undo2,
+  Redo2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
@@ -269,6 +279,85 @@ function SupplierCard({
   weights
 }: SupplierCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<number>(0);
+  const [remainingCooldown, setRemainingCooldown] = useState<number>(0);
+  const updateVendorEvaluation = useUpdateVendorEvaluation();
+
+  // Rate limiting: minimum 2 seconds between requests
+  const RATE_LIMIT_MS = 2000;
+
+  // Cooldown timer effect
+  useEffect(() => {
+    if (lastUpdateTime === 0) return;
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const timeSinceLastUpdate = now - lastUpdateTime;
+      const remaining = Math.max(0, RATE_LIMIT_MS - timeSinceLastUpdate);
+      
+      setRemainingCooldown(remaining);
+      
+      if (remaining === 0) {
+        clearInterval(interval);
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [lastUpdateTime]);
+
+  // Check if rate limited
+  const isRateLimited = remainingCooldown > 0;
+
+  const handleQuickApproval = async (evaluationId: string, recommendation: string) => {
+    // Check rate limiting
+    const now = Date.now();
+    const timeSinceLastUpdate = now - lastUpdateTime;
+    
+    if (timeSinceLastUpdate < RATE_LIMIT_MS) {
+      const waitTime = Math.ceil((RATE_LIMIT_MS - timeSinceLastUpdate) / 1000);
+      toast.error(`Please wait ${waitTime} second${waitTime > 1 ? 's' : ''} before making another request`);
+      return;
+    }
+
+    // Check if already updating
+    if (isUpdating) {
+      toast.error('Update already in progress. Please wait...');
+      return;
+    }
+
+    setIsUpdating(true);
+    setLastUpdateTime(now);
+    
+    try {
+      await updateVendorEvaluation.mutateAsync({
+        evaluationId,
+        data: {
+          recommendation: recommendation as any,
+          evaluationNotes: `Quick ${recommendation} from nomination overview at ${new Date().toISOString()}`
+        }
+      });
+      
+      toast.success(`Vendor ${recommendation} successfully`);
+    } catch (error) {
+      console.error('Failed to update vendor approval:', error);
+      
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes('rate limit') || error.message.includes('too many requests')) {
+          toast.error('Rate limit exceeded. Please wait before trying again.');
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          toast.error('Network error. Please check your connection and try again.');
+        } else {
+          toast.error(`Failed to update vendor approval: ${error.message}`);
+        }
+      } else {
+        toast.error('Failed to update vendor approval. Please try again.');
+      }
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const getRecommendationIcon = (recommendation: Recommendation) => {
     switch (recommendation) {
@@ -386,6 +475,92 @@ function SupplierCard({
                 className="bg-blue-600 hover:bg-blue-700 text-white"
               >
                 Evaluate
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Approval Actions */}
+        <div className="flex items-center justify-between p-3 bg-gray-700/30 rounded-lg">
+          <div className="text-sm font-medium text-white">Quick Actions:</div>
+          <div className="flex gap-2">
+            {evaluation.recommendation === 'approved' ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleQuickApproval(evaluation.id, 'rejected')}
+                disabled={isUpdating || isRateLimited}
+                className="border-orange-600 text-orange-400 hover:bg-orange-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                title={isRateLimited ? `Please wait ${Math.ceil(remainingCooldown / 1000)} seconds` : 'Undo approval and reject this vendor'}
+              >
+                {isUpdating ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-orange-400 mr-1"></div>
+                    Processing...
+                  </>
+                ) : isRateLimited ? (
+                  <>
+                    <Clock className="h-3 w-3 mr-1" />
+                    Wait {Math.ceil(remainingCooldown / 1000)}s
+                  </>
+                ) : (
+                  <>
+                    <Undo2 className="h-3 w-3 mr-1" />
+                    Undo Approval
+                  </>
+                )}
+              </Button>
+            ) : evaluation.recommendation === 'rejected' ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleQuickApproval(evaluation.id, 'approved')}
+                disabled={isUpdating || isRateLimited}
+                className="border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                title={isRateLimited ? `Please wait ${Math.ceil(remainingCooldown / 1000)} seconds` : 'Redo approval for this vendor'}
+              >
+                {isUpdating ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-400 mr-1"></div>
+                    Processing...
+                  </>
+                ) : isRateLimited ? (
+                  <>
+                    <Clock className="h-3 w-3 mr-1" />
+                    Wait {Math.ceil(remainingCooldown / 1000)}s
+                  </>
+                ) : (
+                  <>
+                    <Redo2 className="h-3 w-3 mr-1" />
+                    Redo Approval
+                  </>
+                )}
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleQuickApproval(evaluation.id, 'approved')}
+                disabled={isUpdating || isRateLimited}
+                className="border-green-600 text-green-400 hover:bg-green-600 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                title={isRateLimited ? `Please wait ${Math.ceil(remainingCooldown / 1000)} seconds` : 'Approve this vendor'}
+              >
+                {isUpdating ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-400 mr-1"></div>
+                    Processing...
+                  </>
+                ) : isRateLimited ? (
+                  <>
+                    <Clock className="h-3 w-3 mr-1" />
+                    Wait {Math.ceil(remainingCooldown / 1000)}s
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    Approve Vendor
+                  </>
+                )}
               </Button>
             )}
           </div>
@@ -514,6 +689,7 @@ export function SupplierNominationPage({
   const [vendorRatingScores, setVendorRatingScores] = useState<Record<string, VendorRatingOverallScores>>({});
   const [capabilityData, setCapabilityData] = useState<any[]>([]);
   const [isLoadingScores, setIsLoadingScores] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'approved' | 'rejected'>('all');
   
   // State
   const vendorsQuery = useMemo(() => ({ status: 'active' as const, limit: 1000 }), []);
@@ -603,14 +779,29 @@ export function SupplierNominationPage({
     }));
   }, [nomination]);
 
-  // Sort evaluations by overall score (descending)
+  // Sort and filter evaluations by overall score (descending) and status filter
   const sortedEvaluations = useMemo(() => {
     if (!nomination?.vendorEvaluations) return [];
-    return [...nomination.vendorEvaluations].sort((a, b) => 
+    
+    let filtered = nomination.vendorEvaluations;
+    
+    // Apply status filter - simplified to approved or rejected (everything else)
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(evaluation => {
+        if (statusFilter === 'approved') {
+          return evaluation.recommendation === 'approved';
+        } else if (statusFilter === 'rejected') {
+          return evaluation.recommendation !== 'approved';
+        }
+        return true;
+      });
+    }
+    
+    return [...filtered].sort((a, b) => 
       calculateOverallScore(b, weights.costWeight, weights.vendorWeight, weights.capabilityWeight) - 
       calculateOverallScore(a, weights.costWeight, weights.vendorWeight, weights.capabilityWeight)
     );
-  }, [nomination?.vendorEvaluations, weights]);
+  }, [nomination?.vendorEvaluations, weights, statusFilter]);
 
   // Calculate summary statistics
   const summaryStats = useMemo(() => {
@@ -622,17 +813,14 @@ export function SupplierNominationPage({
       sum + calculateOverallScore(evaluation, weights.costWeight, weights.vendorWeight, weights.capabilityWeight), 0
     ) / totalVendors;
     
-    const approved = evaluations.filter(e => e.recommendation === Recommendation.APPROVED).length;
-    const conditional = evaluations.filter(e => e.recommendation === Recommendation.CONDITIONAL).length;
-    const rejected = evaluations.filter(e => e.recommendation === Recommendation.REJECTED).length;
+    const approved = evaluations.filter(e => e.recommendation === 'approved').length;
+    const rejected = evaluations.filter(e => e.recommendation !== 'approved').length;
 
     return {
       totalVendors,
       avgScore: avgScore || 0,
       approved,
-      conditional,
-      rejected,
-      pending: totalVendors - approved - conditional - rejected
+      rejected
     };
   }, [nomination?.vendorEvaluations, weights]);
 
@@ -785,8 +973,8 @@ export function SupplierNominationPage({
           </div>
         </div>
 
-        {/* BOM Details Section - Group Level */}
-        {groupBomParts && groupBomParts.length > 0 && (
+            {/* BOM Details Section - Group Level */}
+            {groupBomParts && groupBomParts.length > 0 && (
           <Card className="bg-gray-800 border-gray-700">
             <CardHeader>
               <CardTitle className="text-white flex items-center gap-2">
@@ -897,7 +1085,7 @@ export function SupplierNominationPage({
 
         {/* Summary Statistics */}
         {summaryStats && (
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Card className="bg-gray-800 border-gray-700">
               <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold text-white">{summaryStats.totalVendors}</div>
@@ -912,47 +1100,96 @@ export function SupplierNominationPage({
               </CardContent>
             </Card>
 
-            <Card className="bg-gray-800 border-gray-700">
+            <Card 
+              className={`bg-gray-800 border-gray-700 cursor-pointer transition-all hover:border-green-500 ${statusFilter === 'approved' ? 'border-green-500 bg-green-500/10' : ''}`}
+              onClick={() => setStatusFilter(statusFilter === 'approved' ? 'all' : 'approved')}
+            >
               <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold text-green-400">{summaryStats.approved}</div>
                 <div className="text-sm text-gray-400">Approved</div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gray-800 border-gray-700">
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-yellow-400">{summaryStats.conditional}</div>
-                <div className="text-sm text-gray-400">Conditional</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gray-800 border-gray-700">
+            <Card 
+              className={`bg-gray-800 border-gray-700 cursor-pointer transition-all hover:border-red-500 ${statusFilter === 'rejected' ? 'border-red-500 bg-red-500/10' : ''}`}
+              onClick={() => setStatusFilter(statusFilter === 'rejected' ? 'all' : 'rejected')}
+            >
               <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold text-red-400">{summaryStats.rejected}</div>
-                <div className="text-sm text-gray-400">Rejected</div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gray-800 border-gray-700">
-              <CardContent className="p-4 text-center">
-                <div className="text-2xl font-bold text-gray-400">{summaryStats.pending}</div>
-                <div className="text-sm text-gray-400">Pending</div>
+                <div className="text-sm text-gray-400">Not Approved</div>
               </CardContent>
             </Card>
           </div>
         )}
 
+        {/* Filter and Actions Bar */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <h2 className="text-xl font-semibold text-white">Supplier Evaluations</h2>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-400">Filter by status:</span>
+              <Select value={statusFilter} onValueChange={(value: any) => setStatusFilter(value)}>
+                <SelectTrigger className="w-40 bg-gray-800 border-gray-600 text-white">
+                  <SelectValue placeholder="All Vendors" />
+                </SelectTrigger>
+                <SelectContent className="bg-gray-800 border-gray-600">
+                  <SelectItem value="all" className="text-white hover:bg-gray-700">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                      All Vendors ({nomination?.vendorEvaluations?.length || 0})
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="approved" className="text-white hover:bg-gray-700">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-green-400"></div>
+                      Approved ({summaryStats?.approved || 0})
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="rejected" className="text-white hover:bg-gray-700">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-red-400"></div>
+                      Not Approved ({summaryStats?.rejected || 0})
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          
+          <div className="text-sm text-gray-400">
+            Showing {sortedEvaluations.length} of {nomination?.vendorEvaluations?.length || 0} vendors
+          </div>
+        </div>
+
         {/* Supplier Evaluation Cards */}
         <div>
-          <h2 className="text-xl font-semibold text-white mb-4">Supplier Evaluations</h2>
           {sortedEvaluations.length === 0 ? (
             <Card className="bg-gray-800 border-gray-700">
               <CardContent className="flex flex-col items-center justify-center py-12 text-center">
                 <Users className="h-12 w-12 text-gray-600 mb-4" />
-                <h3 className="text-lg font-medium text-white mb-2">No Vendor Evaluations</h3>
+                <h3 className="text-lg font-medium text-white mb-2">
+                  {statusFilter === 'all' ? 'No Vendor Evaluations' : 
+                   statusFilter === 'approved' ? 'No Approved Vendors' : 
+                   'No Vendors to Approve'}
+                </h3>
                 <p className="text-gray-400 max-w-md">
-                  This nomination currently has no vendor evaluations. Vendors should be added during nomination creation.
+                  {statusFilter === 'all' 
+                    ? 'This nomination currently has no vendor evaluations. Vendors should be added during nomination creation.'
+                    : statusFilter === 'approved'
+                    ? 'No vendors have been approved yet. Use the "Approve Vendor" button to approve vendors.'
+                    : 'All vendors have been approved! Great work on completing the evaluation process.'
+                  }
                 </p>
+                {statusFilter !== 'all' && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setStatusFilter('all')}
+                    className="mt-4 border-gray-600 text-gray-300 hover:bg-gray-700"
+                  >
+                    Show All Vendors
+                  </Button>
+                )}
               </CardContent>
             </Card>
           ) : (
