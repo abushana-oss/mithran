@@ -2,8 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException } from '@nes
 import { SupabaseService } from '../../../common/supabase/supabase.service';
 import { 
   RfqTrackingResponseDto, 
-  RfqTrackingStatsDto, 
-  CreateRfqTrackingDto,
+  RfqTrackingStatsDto,
   RfqTrackingStatus 
 } from '../dto/rfq-tracking.dto';
 
@@ -28,42 +27,6 @@ export interface CreateRfqTrackingData {
   }>;
 }
 
-export interface RfqTrackingRecord {
-  id: string;
-  rfqId: string;
-  userId: string;
-  projectId?: string;
-  rfqName: string;
-  rfqNumber: string;
-  status: string;
-  vendorCount: number;
-  partCount: number;
-  responseCount: number;
-  sentAt: Date;
-  firstResponseAt?: Date;
-  lastResponseAt?: Date;
-  completedAt?: Date;
-  vendors: Array<{
-    id: string;
-    name: string;
-    email?: string;
-    responded: boolean;
-    responseReceivedAt?: Date;
-    quoteAmount?: number;
-    leadTimeDays?: number;
-  }>;
-  parts: Array<{
-    id: string;
-    partNumber: string;
-    description: string;
-    process: string;
-    quantity: number;
-    file2dPath?: string;
-    file3dPath?: string;
-    has2dFile: boolean;
-    has3dFile: boolean;
-  }>;
-}
 
 export interface UpdateVendorResponseData {
   responded: boolean;
@@ -79,18 +42,22 @@ export class RfqTrackingService {
 
   /**
    * Create RFQ tracking record when RFQ is sent
+   * Industry Standard: Enforce project isolation
    */
   async createTracking(
     userId: string,
     accessToken: string,
     data: CreateRfqTrackingData
   ): Promise<RfqTrackingResponseDto> {
-    this.logger.log(`Creating RFQ tracking for RFQ: ${data.rfqId}`);
+    // Validate project_id is provided (security requirement)
+    if (!data.projectId) {
+      throw new BadRequestException('Project ID is required for RFQ tracking creation');
+    }
 
     const client = this.supabaseService.getClient(accessToken);
 
     try {
-      // Start transaction
+      // Create main tracking record
       const { data: trackingRecord, error: trackingError } = await client
         .from('rfq_tracking')
         .insert({
@@ -124,8 +91,7 @@ export class RfqTrackingService {
           .insert(vendorRecords);
 
         if (vendorError) {
-          this.logger.error(`Failed to insert vendor tracking: ${vendorError.message}`);
-          // Continue execution - main tracking record is created
+          throw new BadRequestException(`Failed to insert vendor tracking: ${vendorError.message}`);
         }
       }
 
@@ -147,8 +113,7 @@ export class RfqTrackingService {
           .insert(partRecords);
 
         if (partError) {
-          this.logger.error(`Failed to insert part tracking: ${partError.message}`);
-          // Continue execution - main tracking record is created
+          throw new BadRequestException(`Failed to insert part tracking: ${partError.message}`);
         }
       }
 
@@ -156,32 +121,6 @@ export class RfqTrackingService {
       return this.getTrackingById(trackingRecord.id, userId, accessToken);
 
     } catch (error) {
-      // If the table doesn't exist yet, log warning but don't throw error
-      if (error.code === 'PGRST116' || error.message.includes('does not exist')) {
-        this.logger.warn(`RFQ tracking tables not found. Please run the database migration. RFQ tracking will be skipped.`, 'RfqTrackingService');
-        // Return a minimal tracking response so the RFQ send doesn't fail
-        return {
-          id: 'temp',
-          rfqId: data.rfqId,
-          userId,
-          projectId: data.projectId,
-          rfqName: data.rfqName,
-          rfqNumber: data.rfqNumber,
-          status: RfqTrackingStatus.SENT,
-          vendorCount: data.vendors.length,
-          partCount: data.parts.length,
-          responseCount: 0,
-          sentAt: new Date(),
-          vendors: data.vendors.map(v => ({ ...v, responded: false })),
-          parts: data.parts.map(p => ({ 
-            ...p, 
-            quantity: p.quantity || 1,
-            has2dFile: !!p.file2dPath,
-            has3dFile: !!p.file3dPath 
-          }))
-        } as RfqTrackingResponseDto;
-      }
-      this.logger.error(`Error creating RFQ tracking: ${error.message}`);
       throw new BadRequestException(`Failed to create RFQ tracking: ${error.message}`);
     }
   }
@@ -212,33 +151,41 @@ export class RfqTrackingService {
 
   /**
    * Get all RFQ tracking records for a user
+   * Industry Standard: Always filter by project for data isolation
    */
   async getTrackingByUser(
     userId: string,
     accessToken: string,
-    projectId?: string
+    projectId: string  // Made mandatory for security
   ): Promise<RfqTrackingResponseDto[]> {
+    // Validate inputs
+    if (!projectId) {
+      throw new BadRequestException('Project ID is required for data isolation');
+    }
+
+    this.logger.log(`Getting RFQ tracking for userId=${userId}, projectId=${projectId}`);
+
     const client = this.supabaseService.getClient(accessToken);
 
+    // Always filter by both user_id AND project_id for security
     let query = client
       .from('rfq_tracking_summary')
       .select('*')
       .eq('user_id', userId)
+      .eq('project_id', projectId)
       .order('sent_at', { ascending: false });
-
-    if (projectId) {
-      query = query.eq('project_id', projectId);
-    }
 
     const { data, error } = await query;
 
     if (error) {
-      // If the table doesn't exist yet, return empty array instead of throwing error
-      if (error.code === 'PGRST116' || error.message.includes('does not exist')) {
-        this.logger.warn(`RFQ tracking tables not found. Please run the database migration.`, 'RfqTrackingService');
-        return [];
-      }
+      this.logger.error(`Failed to fetch RFQ tracking: ${error.message}`);
       throw new BadRequestException(`Failed to fetch RFQ tracking: ${error.message}`);
+    }
+
+    this.logger.log(`RFQ tracking query returned ${(data || []).length} records`);
+    
+    if (data && data.length > 0) {
+      this.logger.log(`First record: ${JSON.stringify(data[0])}`);
     }
 
     return (data || []).map(record => this.mapToTrackingResponseDto(record));
@@ -381,37 +328,30 @@ export class RfqTrackingService {
 
   /**
    * Get RFQ tracking statistics for dashboard
+   * Industry Standard: Always scoped to specific project
    */
   async getTrackingStats(
     userId: string,
     accessToken: string,
-    projectId?: string
+    projectId: string  // Made mandatory for security
   ): Promise<RfqTrackingStatsDto> {
+    // Validate inputs
+    if (!projectId) {
+      throw new BadRequestException('Project ID is required for data isolation');
+    }
+
     const client = this.supabaseService.getClient(accessToken);
 
+    // Always filter by both user_id AND project_id
     let query = client
       .from('rfq_tracking')
       .select('status, sent_at, first_response_at')
-      .eq('user_id', userId);
-
-    if (projectId) {
-      query = query.eq('project_id', projectId);
-    }
+      .eq('user_id', userId)
+      .eq('project_id', projectId);
 
     const { data, error } = await query;
 
     if (error) {
-      // If the table doesn't exist yet, return default stats
-      if (error.code === 'PGRST116' || error.message.includes('does not exist')) {
-        this.logger.warn(`RFQ tracking tables not found. Please run the database migration.`, 'RfqTrackingService');
-        return {
-          totalSent: 0,
-          totalResponded: 0,
-          totalCompleted: 0,
-          avgResponseTime: 0,
-          recentActivity: 0
-        };
-      }
       throw new BadRequestException(`Failed to fetch tracking stats: ${error.message}`);
     }
 

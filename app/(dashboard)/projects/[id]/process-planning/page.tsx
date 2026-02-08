@@ -13,7 +13,8 @@ import { ModelViewer } from '@/components/ui/model-viewer';
 import { Viewer2D } from '@/components/ui/viewer-2d';
 import { apiClient } from '@/lib/api/client';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ArrowLeft, TrendingUp, DollarSign, Package, Cog, PieChart, BarChart3, Target, Calculator, FileDown } from 'lucide-react';
 
 // Reset circuit breaker on page load if it's stuck
 if (typeof window !== 'undefined') {
@@ -30,8 +31,95 @@ import { PackagingLogisticsSection } from '@/components/features/process-plannin
 import { ProcuredPartsSection } from '@/components/features/process-planning/ProcuredPartsSection';
 import { BomCostReport } from '@/components/features/process-planning/BomCostReport';
 import { ProjectBomCostSummary } from '@/components/features/process-planning/ProjectBomCostSummary';
+import { CostDataProvider, useCostData } from '@/lib/providers/cost-data-provider';
+import { costEngine } from '@/lib/services/cost-engine';
+import { CostAnalysisEngine } from '@/components/features/cost-analysis/CostAnalysisEngine';
+import { BomCostReportWrapper } from '@/components/features/cost-analysis/BomCostReportWrapper';
+import { WorkflowNavigation } from '@/components/features/workflow/WorkflowNavigation';
 
-export default function ProcessPlanningPage() {
+// Chart components - using a simple chart implementation
+const CustomPieChart = ({ data, colors }: { data: any[], colors: string[] }) => {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  let currentAngle = 0;
+  
+  return (
+    <div className="relative w-48 h-48 mx-auto">
+      <svg width="192" height="192" className="transform -rotate-90">
+        {data.map((item, index) => {
+          const percentage = item.value / total;
+          const angle = percentage * 360;
+          const startAngle = currentAngle;
+          const endAngle = currentAngle + angle;
+          
+          const startX = 96 + 80 * Math.cos((startAngle - 90) * Math.PI / 180);
+          const startY = 96 + 80 * Math.sin((startAngle - 90) * Math.PI / 180);
+          const endX = 96 + 80 * Math.cos((endAngle - 90) * Math.PI / 180);
+          const endY = 96 + 80 * Math.sin((endAngle - 90) * Math.PI / 180);
+          
+          const largeArcFlag = angle > 180 ? 1 : 0;
+          
+          const pathData = [
+            `M 96 96`,
+            `L ${startX} ${startY}`,
+            `A 80 80 0 ${largeArcFlag} 1 ${endX} ${endY}`,
+            'Z'
+          ].join(' ');
+          
+          currentAngle += angle;
+          
+          return (
+            <path
+              key={index}
+              d={pathData}
+              fill={colors[index % colors.length]}
+              className="hover:opacity-80 transition-opacity"
+            />
+          );
+        })}
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg font-bold">₹{total.toLocaleString()}</p>
+          <p className="text-xs text-muted-foreground">Total</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CustomBarChart = ({ data, colors }: { data: any[], colors: string[] }) => {
+  const maxValue = Math.max(...data.map(item => item.value));
+  
+  return (
+    <div className="space-y-3">
+      {data.map((item, index) => (
+        <div key={index} className="flex items-center gap-3">
+          <div className="w-24 text-xs font-medium truncate">{item.name}</div>
+          <div className="flex-1 relative">
+            <div className="bg-muted rounded-full h-6 relative overflow-hidden">
+              <div 
+                className="h-full rounded-full transition-all duration-300 flex items-center justify-end pr-2"
+                style={{ 
+                  width: `${(item.value / maxValue) * 100}%`,
+                  backgroundColor: colors[index % colors.length]
+                }}
+              >
+                <span className="text-xs font-medium text-white">
+                  ₹{item.value.toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="w-16 text-xs text-right">
+            {((item.value / maxValue) * 100).toFixed(1)}%
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+function ProcessPlanningPageContent() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
@@ -152,7 +240,7 @@ export default function ProcessPlanningPage() {
 
 
   // Navigation handlers
-  const tabs = ['overview', 'process', 'costing', 'reports'];
+  const tabs = ['overview', 'process', 'costing'];
   const currentTabIndex = tabs.indexOf(activeTab);
 
   const handlePrevious = () => {
@@ -294,10 +382,16 @@ export default function ProcessPlanningPage() {
           )}
         </div>
 
+        {/* WORKFLOW NAVIGATION */}
+        <WorkflowNavigation 
+          currentModuleId={activeTab === 'overview' ? 'bom' : activeTab === 'process' ? 'process' : 'costing'}
+          projectId={projectId}
+        />
+
         {/* TAB INTERFACE */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <div className="flex items-center justify-between">
-            <TabsList className="grid grid-cols-4 h-10">
+            <TabsList className="grid grid-cols-3 h-10">
               <TabsTrigger value="overview" className="text-xs">
                 Project Overview
               </TabsTrigger>
@@ -306,9 +400,6 @@ export default function ProcessPlanningPage() {
               </TabsTrigger>
               <TabsTrigger value="costing" className="text-xs">
                 Cost Analysis
-              </TabsTrigger>
-              <TabsTrigger value="reports" className="text-xs">
-                Reports & Export
               </TabsTrigger>
             </TabsList>
             <div className="flex items-center gap-2">
@@ -1018,10 +1109,6 @@ export default function ProcessPlanningPage() {
 
                 {/* Procured Parts Section */}
                 <ProcuredPartsSection bomItemId={selectedItem.id} />
-
-
-                {/* Cost Report Section */}
-                <BomCostReport bomId={selectedBomId} />
               </>
             ) : (
               <div className="text-center py-8 bg-card border-2 border-dashed border-border rounded-lg">
@@ -1034,101 +1121,62 @@ export default function ProcessPlanningPage() {
           </TabsContent>
 
           {/* TAB 3: COST ANALYSIS - For Cost Engineers */}
-          <TabsContent value="costing" className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Cost Breakdown */}
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Cost Breakdown Analysis</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-6">
-                    <p className="text-sm font-medium text-muted-foreground">Coming Soon</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Advanced cost analysis and scenario comparison tools
+          <TabsContent value="costing" className="space-y-6">
+            {selectedBomId ? (
+              <div className="space-y-6">
+                {/* Cost Analysis Engine - Overview and Charts */}
+                <CostAnalysisEngine 
+                  bomId={selectedBomId}
+                  bomName={boms.find(b => b.id === selectedBomId)?.name || "Assembly"}
+                  itemCount={bomItems.length || 2}
+                />
+                
+                {/* Detailed BOM Cost Report - Part-by-Part Breakdown */}
+                <div className="border-t border-border pt-6">
+                  <div className="mb-4">
+                    <h3 className="text-lg font-semibold text-foreground">Detailed BOM Cost Breakdown</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Comprehensive part-by-part cost analysis with raw materials, processes, and margins
                     </p>
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* Scenario Comparison */}
+                  <BomCostReportWrapper 
+                    bomId={selectedBomId} 
+                    bomName={boms.find(b => b.id === selectedBomId)?.name || "Assembly"} 
+                  />
+                </div>
+              </div>
+            ) : (
               <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Scenario Comparison</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-6">
-                    <p className="text-sm font-medium text-muted-foreground">Coming Soon</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Compare different manufacturing scenarios and their costs
+                <CardContent className="py-12">
+                  <div className="text-center">
+                    <DollarSign className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-semibold text-foreground mb-2">Select a BOM to Start Cost Analysis</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Go to Project Overview to select a BOM and the cost analysis engine will automatically calculate comprehensive cost breakdowns
                     </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Project Cost Summary - Always visible in costing tab too */}
-            <ProjectBomCostSummary projectId={projectId} />
-          </TabsContent>
-
-          {/* TAB 4: REPORTS & EXPORT - For All Users */}
-          <TabsContent value="reports" className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Report Templates</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <Button className="w-full justify-start" variant="outline" size="sm">
-                      Executive Summary
-                    </Button>
-                    <Button className="w-full justify-start" variant="outline" size="sm">
-                      Cost Analysis Report
-                    </Button>
-                    <Button className="w-full justify-start" variant="outline" size="sm">
-                      Process Documentation
+                    <Button 
+                      onClick={() => setActiveTab('overview')}
+                      variant="outline"
+                      className="mx-auto"
+                    >
+                      Go to Project Overview
                     </Button>
                   </div>
                 </CardContent>
               </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Export Options</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <Button className="w-full justify-start" variant="outline" size="sm">
-                      Export to Excel
-                    </Button>
-                    <Button className="w-full justify-start" variant="outline" size="sm">
-                      Export to PDF
-                    </Button>
-                    <Button className="w-full justify-start" variant="outline" size="sm">
-                      PowerBI Dashboard
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Scheduled Reports</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-4">
-                    <p className="text-sm font-medium text-muted-foreground">No Scheduled Reports</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Set up automated report delivery
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            )}
           </TabsContent>
         </Tabs>
       </div>
     </div>
+  );
+}
+
+// Wrapper component with CostDataProvider
+export default function ProcessPlanningPage() {
+  return (
+    <CostDataProvider>
+      <ProcessPlanningPageContent />
+    </CostDataProvider>
   );
 }

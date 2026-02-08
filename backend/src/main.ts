@@ -85,6 +85,12 @@ async function bootstrap() {
       // Idempotency headers
       'Idempotency-Key',
       'idempotency-key',
+      // Development auth bypass headers
+      'x-auth-bypass',
+      'x-mock-user',
+      'x-dev-mode',
+      'x-mock-user-id',
+      'x-mock-user-email',
     ],
     exposedHeaders: ['X-Request-ID', 'X-Correlation-ID'],
     maxAge: 3600, // Cache preflight for 1 hour
@@ -113,9 +119,12 @@ async function bootstrap() {
           }))
         }));
         
-        console.log('=== VALIDATION ERROR DETAILS ===');
-        console.log('Validation errors:', JSON.stringify(formattedErrors, null, 2));
-        console.log('================================');
+        // Log validation errors in development for principal engineer debugging
+        if (process.env.NODE_ENV === 'development') {
+          console.log('=== VALIDATION ERROR DETAILS ===');
+          console.log('Validation errors:', JSON.stringify(formattedErrors, null, 2));
+          console.log('================================');
+        }
         
         return new BadRequestException({
           message: 'DTO Validation failed',

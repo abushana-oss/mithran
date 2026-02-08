@@ -8,7 +8,8 @@ import {
   Patch,
   Delete,
   UseGuards,
-  HttpStatus 
+  HttpStatus,
+  BadRequestException
 } from '@nestjs/common';
 import { 
   ApiTags, 
@@ -96,42 +97,56 @@ export class RfqController {
   }
 
   @Get('tracking')
-  @ApiOperation({ summary: 'Get all RFQ tracking records for user' })
+  @ApiOperation({ summary: 'Get all RFQ tracking records for user in project' })
   @ApiQuery({
     name: 'projectId',
-    required: false,
-    description: 'Filter by project ID'
+    required: true,
+    description: 'Project ID (required for data isolation)'
   })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'RFQ tracking records retrieved successfully',
     type: [RfqTrackingResponseDto]
   })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Project ID is required'
+  })
   async getTracking(
     @CurrentUser() user: any,
     @AccessToken() token: string,
-    @Query('projectId') projectId?: string
+    @Query('projectId') projectId: string
   ): Promise<RfqTrackingResponseDto[]> {
+    if (!projectId) {
+      throw new BadRequestException('Project ID is required for data isolation');
+    }
     return this.rfqTrackingService.getTrackingByUser(user.id, token, projectId);
   }
 
   @Get('tracking/stats')
-  @ApiOperation({ summary: 'Get RFQ tracking statistics' })
+  @ApiOperation({ summary: 'Get RFQ tracking statistics for project' })
   @ApiQuery({
     name: 'projectId',
-    required: false,
-    description: 'Filter by project ID'
+    required: true,
+    description: 'Project ID (required for data isolation)'
   })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'RFQ tracking statistics retrieved successfully',
     type: RfqTrackingStatsDto
   })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Project ID is required'
+  })
   async getTrackingStats(
     @CurrentUser() user: any,
     @AccessToken() token: string,
-    @Query('projectId') projectId?: string
+    @Query('projectId') projectId: string
   ): Promise<RfqTrackingStatsDto> {
+    if (!projectId) {
+      throw new BadRequestException('Project ID is required for data isolation');
+    }
     return this.rfqTrackingService.getTrackingStats(user.id, token, projectId);
   }
 

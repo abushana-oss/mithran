@@ -848,12 +848,14 @@ export function DetailedEvaluationView({
           {activeTab === 'cost' && (
             <CostCompetencyAnalysis
               nominationId={nominationId}
+              projectId={fullNomination?.projectId} // Using projectId to get BOMs
               vendors={fullNomination?.vendorEvaluations ?
                 fullNomination.vendorEvaluations.map(v => ({
                   id: v.vendorId,
                   name: v.vendorName || `Vendor ${v.vendorId.slice(-4)}`
                 })) : []
               }
+              nominationBomParts={fullNomination?.bomParts} // Pass nomination BOM parts
               onDataUpdate={handleCostDataUpdate}
             />
           )}

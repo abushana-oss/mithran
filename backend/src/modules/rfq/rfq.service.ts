@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { SupabaseService } from '../../common/supabase/supabase.service';
 import { CreateRfqDto } from './dto/create-rfq.dto';
 import { RfqRecord, RfqSummary, RfqStatus } from './dto/rfq-response.dto';
@@ -107,8 +107,11 @@ export class RfqService {
   }
 
   async sendRfq(id: string, userId: string, accessToken?: string): Promise<void> {
+    this.logger.log(`Sending RFQ ${id} for user ${userId}, accessToken provided: ${!!accessToken}`);
+    
     // First validate the RFQ exists and belongs to the user
     const rfq = await this.findOne(id, userId);
+    this.logger.log(`RFQ details: ${JSON.stringify({ id: rfq.id, projectId: rfq.projectId, status: rfq.status })}`);
 
     if (rfq.status !== RfqStatus.DRAFT) {
       throw new BadRequestException('RFQ has already been sent');
@@ -122,12 +125,23 @@ export class RfqService {
       throw new BadRequestException(`Failed to send RFQ: ${error.message}`);
     }
 
+    this.logger.log(`RFQ ${id} marked as sent in database`);
+
     // Send RFQ emails to all vendors
     await this.rfqEmailService.sendRfqEmails(rfq);
 
-    // Always create tracking record - essential for production
+    // Create tracking record if access token provided
     if (accessToken) {
-      await this.createRfqTrackingRecord(rfq, userId, accessToken);
+      try {
+        this.logger.log(`Creating tracking record for RFQ ${rfq.id} in project ${rfq.projectId}`);
+        await this.createRfqTrackingRecord(rfq, userId, accessToken);
+        this.logger.log(`RFQ tracking record created successfully for RFQ ${rfq.id} in project ${rfq.projectId}`);
+      } catch (error) {
+        this.logger.error(`Failed to create RFQ tracking record for RFQ ${rfq.id}: ${error.message}`, error.stack);
+        // Don't throw here to prevent blocking the RFQ send process
+      }
+    } else {
+      this.logger.warn(`No access token provided for RFQ ${rfq.id} - tracking record will not be created`);
     }
   }
 
@@ -231,82 +245,44 @@ export class RfqService {
   }
 
   /**
-   * Production-grade RFQ tracking record creation
+   * Create RFQ tracking record
    */
   private async createRfqTrackingRecord(rfq: RfqRecord, userId: string, accessToken: string): Promise<void> {
-    try {
-      this.logger.log(`Creating RFQ tracking for RFQ: ${rfq.id}`, 'RfqService');
-      
-      // Get vendor and BOM details with fallbacks
-      const [vendorDetails, bomDetails] = await Promise.allSettled([
-        this.getVendorDetails(rfq.vendorIds, accessToken),
-        this.getBomItemDetails(rfq.bomItemIds, accessToken)
-      ]);
-
-      const vendors = vendorDetails.status === 'fulfilled' 
-        ? vendorDetails.value 
-        : rfq.vendorIds.map(id => ({ id, name: 'Unknown Vendor' }));
-
-      const parts = bomDetails.status === 'fulfilled' 
-        ? bomDetails.value 
-        : rfq.bomItemIds.map(id => ({
-            id,
-            partNumber: 'Unknown Part',
-            description: 'Part details unavailable',
-            process: 'Unknown Process'
-          }));
-
-      // Create tracking record with guaranteed data
-      const trackingRecord = await this.rfqTrackingService.createTracking(userId, accessToken, {
-        rfqId: rfq.id,
-        projectId: rfq.projectId,
-        rfqName: rfq.rfqName,
-        rfqNumber: rfq.rfqNumber,
-        vendors,
-        parts
-      });
-
-      this.logger.log(`Successfully created RFQ tracking: ${trackingRecord.id} for RFQ: ${rfq.id}`, 'RfqService');
-    } catch (error) {
-      this.logger.error(`Critical: Failed to create RFQ tracking for RFQ ${rfq.id}: ${error.message}`, 'RfqService');
-      
-      // Create minimal tracking record as fallback
-      try {
-        await this.createFallbackTrackingRecord(rfq, userId, accessToken);
-      } catch (fallbackError) {
-        this.logger.error(`Failed to create fallback tracking for RFQ ${rfq.id}: ${fallbackError.message}`, 'RfqService');
-        // Don't throw - RFQ send should still succeed
-      }
+    // Ensure project_id is set - critical for data isolation
+    if (!rfq.projectId) {
+      throw new BadRequestException('RFQ must have a project_id for tracking');
     }
-  }
 
-  /**
-   * Fallback tracking record creation with minimal data
-   */
-  private async createFallbackTrackingRecord(rfq: RfqRecord, userId: string, accessToken: string): Promise<void> {
-    const fallbackVendors = rfq.vendorIds.map(id => ({
-      id,
-      name: 'Unknown Vendor'
-    }));
+    // Get vendor and BOM details
+    const [vendorDetails, bomDetails] = await Promise.allSettled([
+      this.getVendorDetails(rfq.vendorIds, accessToken),
+      this.getBomItemDetails(rfq.bomItemIds, accessToken)
+    ]);
 
-    const fallbackParts = rfq.bomItemIds.map(id => ({
-      id,
-      partNumber: 'Unknown Part',
-      description: 'Part details unavailable',
-      process: 'Unknown Process'
-    }));
+    const vendors = vendorDetails.status === 'fulfilled' 
+      ? vendorDetails.value 
+      : rfq.vendorIds.map(id => ({ id, name: 'Unknown Vendor' }));
 
+    const parts = bomDetails.status === 'fulfilled' 
+      ? bomDetails.value 
+      : rfq.bomItemIds.map(id => ({
+          id,
+          partNumber: 'Unknown Part',
+          description: 'Part details unavailable',
+          process: 'Unknown Process'
+        }));
+
+    // Create tracking record
     await this.rfqTrackingService.createTracking(userId, accessToken, {
       rfqId: rfq.id,
       projectId: rfq.projectId,
       rfqName: rfq.rfqName,
       rfqNumber: rfq.rfqNumber,
-      vendors: fallbackVendors,
-      parts: fallbackParts
+      vendors,
+      parts
     });
-
-    this.logger.log(`Created fallback tracking record for RFQ: ${rfq.id}`, 'RfqService');
   }
+
 
   /**
    * Get vendor details for tracking
@@ -323,7 +299,6 @@ export class RfqService {
       .in('id', vendorIds);
 
     if (error) {
-      this.logger.warn(`Failed to fetch vendor details: ${error.message}`, 'RfqService');
       return vendorIds.map(id => ({ id, name: 'Unknown Vendor' }));
     }
 
@@ -353,7 +328,6 @@ export class RfqService {
       .in('id', bomItemIds);
 
     if (error) {
-      this.logger.warn(`Failed to fetch BOM item details: ${error.message}`, 'RfqService');
       return bomItemIds.map(id => ({
         id,
         partNumber: 'Unknown Part',

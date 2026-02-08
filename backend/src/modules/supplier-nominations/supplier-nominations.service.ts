@@ -44,6 +44,12 @@ import {
   UpdateVendorRatingDto,
   VendorRatingOverallScoresDto
 } from './dto/vendor-rating-matrix.dto';
+import { PartWiseCostAnalysisService } from './services/part-wise-cost-analysis.service';
+import {
+  PartWiseCostAnalysisDto,
+  PartWiseCostBaseDataDto,
+  BulkUpdatePartWiseCostAnalysisDto
+} from './dto/part-wise-cost-analysis.dto';
 
 @Injectable()
 export class SupplierNominationsService {
@@ -51,6 +57,7 @@ export class SupplierNominationsService {
     private readonly supabaseService: SupabaseService,
     private readonly logger: Logger,
     private readonly fieldMapping: FieldMappingService,
+    private readonly partWiseCostAnalysisService: PartWiseCostAnalysisService,
   ) { }
 
   async create(
@@ -213,12 +220,11 @@ export class SupplierNominationsService {
           .select('id, nomination_name, user_id, status')
           .limit(10);
 
-        console.log(`All nominations in table:`, JSON.stringify(allNominations));
 
         // Return a fake response with debug info for now
         return {
           id: nominationId,
-          nominationName: 'DEBUG: Nomination not found',
+          nominationName: 'Nomination not found',
           description: `Error: ${basicError.message}. Available nominations: ${JSON.stringify(allNominations)}`,
           nominationType: 'manufacturer',
           projectId: 'debug',
@@ -241,7 +247,7 @@ export class SupplierNominationsService {
         // Return a fake response with debug info for now
         return {
           id: nominationId,
-          nominationName: 'DEBUG: No data returned',
+          nominationName: 'No data returned',
           description: `Available nominations: ${JSON.stringify(allNominations)}`,
           nominationType: 'manufacturer',
           projectId: 'debug',
@@ -2341,7 +2347,7 @@ export class SupplierNominationsService {
     try {
       await this.verifyNominationOwnership(userId, nominationId, accessToken);
 
-      // Call the database function to calculate overall scores
+      // Call the database function to calculate overall scores (now returns table)
       const { data, error } = await client
         .rpc('get_vendor_rating_overall_scores', {
           p_nomination_evaluation_id: nominationId,
@@ -2352,8 +2358,23 @@ export class SupplierNominationsService {
         throw new BadRequestException(`Failed to calculate overall scores: ${error.message}`);
       }
 
-      // Return the scores or default values
-      return data || {
+      // Log the raw response for debugging
+      this.logger.log('Raw overall scores response:', data);
+      
+      // The function now returns a table (array with one row)
+      if (Array.isArray(data) && data.length > 0) {
+        const row = data[0];
+        return {
+          sectionWiseCapability: parseFloat(row.sectionwisecapability) || 0,
+          riskMitigation: parseFloat(row.riskmitigation) || 0,
+          totalMinorNC: parseInt(row.totalminornc) || 0,
+          totalMajorNC: parseInt(row.totalmajornc) || 0,
+          totalRecords: parseInt(row.totalrecords) || 0
+        };
+      }
+      
+      // Return default values if no data
+      return {
         sectionWiseCapability: 0,
         riskMitigation: 0,
         totalMinorNC: 0,
@@ -2364,5 +2385,79 @@ export class SupplierNominationsService {
       this.logger.error('Failed to get vendor rating overall scores:', error);
       throw error;
     }
+  }
+
+  // =======================================
+  // Part-wise Cost Analysis Methods (ENTERPRISE GRADE)
+  // =======================================
+
+  async getPartWiseCostAnalysis(
+    userId: string,
+    nominationId: string,
+    bomItemId: string,
+    accessToken: string
+  ): Promise<{
+    costAnalysis: PartWiseCostAnalysisDto[];
+    baseData: PartWiseCostBaseDataDto | null;
+  }> {
+    await this.verifyNominationOwnership(userId, nominationId, accessToken);
+    
+    return this.partWiseCostAnalysisService.getPartWiseCostAnalysis(
+      userId,
+      nominationId,
+      bomItemId,
+      accessToken
+    );
+  }
+
+  async initializePartWiseCostAnalysis(
+    userId: string,
+    nominationId: string,
+    bomItemId: string,
+    accessToken: string
+  ): Promise<void> {
+    await this.verifyNominationOwnership(userId, nominationId, accessToken);
+    
+    return this.partWiseCostAnalysisService.initializePartWiseCostAnalysis(
+      userId,
+      nominationId,
+      bomItemId,
+      accessToken
+    );
+  }
+
+  async bulkUpdatePartWiseCostAnalysis(
+    userId: string,
+    nominationId: string,
+    bomItemId: string,
+    updateDto: BulkUpdatePartWiseCostAnalysisDto,
+    accessToken: string
+  ): Promise<{
+    costAnalysis: PartWiseCostAnalysisDto[];
+    baseData: PartWiseCostBaseDataDto | null;
+  }> {
+    await this.verifyNominationOwnership(userId, nominationId, accessToken);
+    
+    return this.partWiseCostAnalysisService.bulkUpdatePartWiseCostAnalysis(
+      userId,
+      nominationId,
+      bomItemId,
+      updateDto,
+      accessToken
+    );
+  }
+
+  async getPartWiseAnalysisSummary(
+    userId: string,
+    nominationId: string,
+    accessToken: string
+  ): Promise<any[]> {
+    await this.verifyNominationOwnership(userId, nominationId, accessToken);
+    
+    return this.partWiseCostAnalysisService.getPartWiseAnalysisSummary(
+      userId,
+      nominationId,
+      accessToken
+    );
   }
 }

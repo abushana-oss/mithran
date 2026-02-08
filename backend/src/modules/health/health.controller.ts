@@ -46,6 +46,7 @@ export class HealthController {
       () => this.supabaseIndicator.checkDatabase('database'),
     ]);
   }
+
 }
 
 /**

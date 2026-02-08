@@ -4,6 +4,7 @@ import {
   Post,
   Put,
   Delete,
+  Patch,
   Body,
   Param,
   Query,
@@ -83,6 +84,45 @@ export class ProductionPlanningController {
     return createResponse(result);
   }
 
+  @Get('lots/:id/bom-items')
+  async getProductionLotBomItems(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ): Promise<ApiResponse<any[]>> {
+    const result = await this.productionPlanningService.getProductionLotBomItems(id, user.id);
+    return createResponse(result);
+  }
+
+  @Get('lots/:id/vendor-assignments')
+  async getProductionLotVendorAssignments(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ): Promise<ApiResponse<any[]>> {
+    const result = await this.productionPlanningService.getProductionLotVendorAssignments(id, user.id);
+    return createResponse(result);
+  }
+
+  @Post('lots/:id/vendor-assignments')
+  async createVendorAssignment(
+    @Param('id', ParseUUIDPipe) lotId: string,
+    @Body() assignmentData: any,
+    @CurrentUser() user: any,
+  ): Promise<ApiResponse<any>> {
+    const result = await this.productionPlanningService.createVendorAssignment(assignmentData, user.id);
+    return createResponse(result);
+  }
+
+  @Patch('lots/:id/vendor-assignments/:assignmentId')
+  async updateVendorAssignment(
+    @Param('id', ParseUUIDPipe) lotId: string,
+    @Param('assignmentId', ParseUUIDPipe) assignmentId: string,
+    @Body() updateData: any,
+    @CurrentUser() user: any,
+  ): Promise<ApiResponse<any>> {
+    const result = await this.productionPlanningService.updateVendorAssignment(assignmentId, updateData, user.id);
+    return createResponse(result);
+  }
+
   @Put('lots/:id')
   async updateProductionLot(
     @Param('id', ParseUUIDPipe) id: string,
@@ -102,57 +142,6 @@ export class ProductionPlanningController {
     return createResponse(undefined);
   }
 
-  // ============================================================================
-  // VENDOR ASSIGNMENTS ENDPOINTS
-  // ============================================================================
-
-  @Post('lots/:lotId/vendor-assignments')
-  async createVendorAssignment(
-    @Param('lotId', ParseUUIDPipe) lotId: string,
-    @Body() createDto: CreateLotVendorAssignmentDto,
-    @CurrentUser() user: any,
-  ): Promise<ApiResponse<any>> {
-    const result = await this.productionPlanningService.createVendorAssignment(createDto, user.id);
-    return createResponse(result);
-  }
-
-  @Post('lots/:lotId/vendor-assignments/bulk')
-  async bulkCreateVendorAssignments(
-    @Param('lotId', ParseUUIDPipe) lotId: string,
-    @Body() bulkDto: BulkVendorAssignmentDto,
-    @CurrentUser() user: any,
-  ): Promise<ApiResponse<any[]>> {
-    const result = await this.productionPlanningService.bulkCreateVendorAssignments(bulkDto, user.id);
-    return createResponse(result);
-  }
-
-  @Get('lots/:lotId/vendor-assignments')
-  async getVendorAssignments(
-    @Param('lotId', ParseUUIDPipe) lotId: string,
-    @CurrentUser() user: any,
-  ): Promise<ApiResponse<any[]>> {
-    const result = await this.productionPlanningService.getVendorAssignments(lotId, user.id);
-    return createResponse(result);
-  }
-
-  @Put('vendor-assignments/:id')
-  async updateVendorAssignment(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() updateDto: UpdateLotVendorAssignmentDto,
-    @CurrentUser() user: any,
-  ): Promise<ApiResponse<any>> {
-    const result = await this.productionPlanningService.updateVendorAssignment(id, updateDto, user.id);
-    return createResponse(result);
-  }
-
-  @Delete('vendor-assignments/:id')
-  async deleteVendorAssignment(
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: any,
-  ): Promise<ApiResponse<void>> {
-    await this.productionPlanningService.deleteVendorAssignment(id, user.id);
-    return createResponse(undefined);
-  }
 
   // ============================================================================
   // PRODUCTION PROCESSES ENDPOINTS
@@ -186,6 +175,15 @@ export class ProductionPlanningController {
   ): Promise<ApiResponse<any>> {
     const result = await this.productionPlanningService.updateProductionProcess(id, updateDto, user.id);
     return createResponse(result);
+  }
+
+  @Delete('processes/:id')
+  async deleteProductionProcess(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ): Promise<ApiResponse<void>> {
+    await this.productionPlanningService.deleteProductionProcess(id, user.id);
+    return createResponse(undefined);
   }
 
   // ============================================================================

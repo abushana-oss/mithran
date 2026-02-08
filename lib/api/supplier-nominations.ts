@@ -646,6 +646,116 @@ export interface ApprovedVendor {
   approvalDate?: string;
 }
 
+// ============================================================================
+// PART-WISE COST ANALYSIS API
+// ============================================================================
+
+export interface PartWiseCostAnalysis {
+  id: string;
+  nominationId: string;
+  bomItemId: string;
+  vendorId: string;
+  rawMaterialCost?: number;
+  processCost?: number;
+  overheadsProfit?: number;
+  packingForwardingCost?: number;
+  paymentTerms?: string;
+  netPriceUnit?: number;
+  developmentCost?: number;
+  financialRisk?: number;
+  costCompetencyScore?: number;
+  leadTimeDays?: number;
+  rankCost?: number;
+  rankDevelopmentCost?: number;
+  rankLeadTime?: number;
+  totalScore?: number;
+  overallRank?: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface PartWiseCostBaseData {
+  id: string;
+  nominationId: string;
+  bomItemId: string;
+  baseRawMaterialCost?: number;
+  baseProcessCost?: number;
+  baseOverheadsProfit?: number;
+  basePackingForwardingCost?: number;
+  basePaymentTerms?: string;
+  baseNetPriceUnit?: number;
+  baseDevelopmentCost?: number;
+  baseFinancialRisk?: number;
+  baseCostCompetencyScore?: number;
+  baseLeadTimeDays?: number;
+  costFactorWeight?: number;
+  developmentCostFactorWeight?: number;
+  leadTimeFactorWeight?: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface CreatePartWiseCostAnalysisData {
+  nominationId: string;
+  bomItemId: string;
+  vendorId: string;
+  rawMaterialCost?: number;
+  processCost?: number;
+  overheadsProfit?: number;
+  packingForwardingCost?: number;
+  paymentTerms?: string;
+  netPriceUnit?: number;
+  developmentCost?: number;
+  financialRisk?: number;
+  costCompetencyScore?: number;
+  leadTimeDays?: number;
+}
+
+export interface CreatePartWiseCostBaseData {
+  nominationId: string;
+  bomItemId: string;
+  baseRawMaterialCost?: number;
+  baseProcessCost?: number;
+  baseOverheadsProfit?: number;
+  basePackingForwardingCost?: number;
+  basePaymentTerms?: string;
+  baseNetPriceUnit?: number;
+  baseDevelopmentCost?: number;
+  baseFinancialRisk?: number;
+  baseCostCompetencyScore?: number;
+  baseLeadTimeDays?: number;
+  costFactorWeight?: number;
+  developmentCostFactorWeight?: number;
+  leadTimeFactorWeight?: number;
+}
+
+export interface BulkUpdatePartWiseCostAnalysisData {
+  vendorCostData: CreatePartWiseCostAnalysisData[];
+  baseData?: CreatePartWiseCostBaseData;
+}
+
+export interface PartWiseAnalysisSummary {
+  bomItemId: string;
+  bomItemName: string;
+  partNumber: string;
+  vendorCount: number;
+  vendors: Array<{
+    vendorId: string;
+    netPrice: number;
+    developmentCost: number;
+    leadTime: number;
+    totalScore: number;
+    rank: number;
+  }>;
+  lowestNetPrice: number | null;
+  lowestDevelopmentCost: number | null;
+  shortestLeadTime: number | null;
+  topVendor: {
+    vendorId: string;
+    totalScore: number;
+  } | null;
+}
+
 /**
  * Get approved vendors for a specific BOM part from supplier nominations
  */
@@ -660,6 +770,75 @@ export async function getApprovedVendorsByBomPart(
     return response || [];
   } catch (error) {
     console.error('Failed to get approved vendors by BOM part:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get part-wise cost analysis for a specific BOM part within nomination
+ */
+export async function getPartWiseCostAnalysis(
+  nominationId: string,
+  bomItemId: string
+): Promise<{
+  costAnalysis: PartWiseCostAnalysis[];
+  baseData: PartWiseCostBaseData | null;
+}> {
+  try {
+    const response = await apiClient.get(`/supplier-nominations/${nominationId}/parts/${bomItemId}/cost-analysis`);
+    return response || { costAnalysis: [], baseData: null };
+  } catch (error) {
+    console.error('Failed to get part-wise cost analysis:', error);
+    throw error;
+  }
+}
+
+/**
+ * Initialize part-wise cost analysis for a BOM part
+ */
+export async function initializePartWiseCostAnalysis(
+  nominationId: string,
+  bomItemId: string
+): Promise<void> {
+  try {
+    await apiClient.post(`/supplier-nominations/${nominationId}/parts/${bomItemId}/cost-analysis/init`);
+  } catch (error) {
+    console.error('Failed to initialize part-wise cost analysis:', error);
+    throw error;
+  }
+}
+
+/**
+ * Bulk update part-wise cost analysis data
+ */
+export async function bulkUpdatePartWiseCostAnalysis(
+  nominationId: string,
+  bomItemId: string,
+  updateData: BulkUpdatePartWiseCostAnalysisData
+): Promise<{
+  costAnalysis: PartWiseCostAnalysis[];
+  baseData: PartWiseCostBaseData | null;
+}> {
+  try {
+    const response = await apiClient.put(`/supplier-nominations/${nominationId}/parts/${bomItemId}/cost-analysis/bulk`, updateData);
+    return response || { costAnalysis: [], baseData: null };
+  } catch (error) {
+    console.error('Failed to bulk update part-wise cost analysis:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get part-wise analysis summary for dashboard
+ */
+export async function getPartWiseAnalysisSummary(
+  nominationId: string
+): Promise<PartWiseAnalysisSummary[]> {
+  try {
+    const response = await apiClient.get(`/supplier-nominations/${nominationId}/part-wise-analysis-summary`);
+    return response || [];
+  } catch (error) {
+    console.error('Failed to get part-wise analysis summary:', error);
     throw error;
   }
 }

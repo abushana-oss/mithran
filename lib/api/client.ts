@@ -16,6 +16,7 @@
 import { config as appConfig } from '../config';
 import { supabase } from '../supabase/client';
 import { authTokenManager } from '../auth/token-manager';
+import { AuthConfig } from '../config/auth.config';
 import { CircuitBreaker, CircuitBreakerError } from './circuit-breaker';
 import { requestMetrics } from './request-metrics';
 import { traceManager, getTraceHeaders, Span } from './distributed-tracing';
@@ -173,6 +174,11 @@ class ApiClient {
    * @returns Current access token or null
    */
   getAuthToken(): string | null {
+    // Skip auth token in development bypass mode
+    if (AuthConfig.shouldSkipAuth) {
+      return null; // No token needed when auth is bypassed
+    }
+
     try {
       const token = authTokenManager.getCurrentToken();
       return token;
@@ -500,7 +506,20 @@ class ApiClient {
       // Get token from single source of truth
       let token = this.getAuthToken();
 
-      if (token) {
+      // Add auth headers or dev bypass headers
+      if (AuthConfig.shouldSkipAuth) {
+        // Add development bypass headers
+        const mockUser = AuthConfig.getCurrentMockUser();
+        headers['x-mock-user'] = mockUser.role.toLowerCase();
+        headers['x-auth-bypass'] = 'true';
+        headers['x-dev-mode'] = 'true';
+        
+        // Optional: Add mock user info for debugging
+        if (process.env.NODE_ENV === 'development') {
+          headers['x-mock-user-id'] = mockUser.id;
+          headers['x-mock-user-email'] = mockUser.email;
+        }
+      } else if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
@@ -1203,6 +1222,17 @@ export class ApiError extends Error {
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, ApiError);
     }
+    
+    // Enhanced console logging for better debugging
+    console.error('ApiError created:', {
+      message: this.message,
+      statusCode: this.statusCode,
+      code: this.code,
+      details: this.details,
+      timestamp: this.timestamp,
+      isRetryable: this.isRetryable,
+      stack: this.stack
+    });
   }
 
   /**

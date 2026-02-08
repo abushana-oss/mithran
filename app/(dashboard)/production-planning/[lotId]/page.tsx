@@ -143,6 +143,11 @@ const LotDetailPage = ({ params }: LotDetailPageProps) => {
         </div>
       </div>
 
+      {/* INTEGRATED MONITORING & MATERIALS - TOP OF LOT DETAIL */}
+      <div className="mb-6">
+        <IntegratedMonitoringBOM lotId={lotId} />
+      </div>
+
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -228,19 +233,14 @@ const LotDetailPage = ({ params }: LotDetailPageProps) => {
       </Card>
 
       {/* Main Content Tabs */}
-      <Tabs defaultValue="integrated" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="integrated">Monitoring & Materials</TabsTrigger>
+      <Tabs defaultValue="vendors" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="vendors">Vendors</TabsTrigger>
           <TabsTrigger value="processes">Processes</TabsTrigger>
           <TabsTrigger value="schedule">Schedule</TabsTrigger>
           <TabsTrigger value="production">Production</TabsTrigger>
           <TabsTrigger value="remarks">Remarks</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="integrated">
-          <IntegratedMonitoringBOM lotId={lotId} />
-        </TabsContent>
 
         <TabsContent value="vendors">
           <VendorAssignment lotId={lotId} />

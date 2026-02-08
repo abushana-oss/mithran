@@ -64,15 +64,23 @@ export function VendorRatingEngine({ vendorId, vendorName, nominationId, onScore
         // SINGLE API CALL - Get existing data first, minimize requests
         let data = await getVendorRatingMatrix(nominationId, vendorId);
         
+        // If no data exists, try to initialize it
+        if (!data || data.length === 0) {
+          try {
+            await initializeVendorRatingMatrix(nominationId, vendorId);
+            data = await getVendorRatingMatrix(nominationId, vendorId);
+          } catch (initError) {
+            console.log('Failed to initialize rating matrix:', initError);
+            // Continue with empty data - user will see "no data available"
+          }
+        }
+        
         // BATCH LOAD: Get scores and data together to minimize API calls
         const [scores] = await Promise.all([
           getVendorRatingOverallScores(nominationId, vendorId)
         ]);
         
-        
-        // Data already exists in database, no need to initialize
-        
-        setRatingData(data);
+        setRatingData(data || []);
         setOverallScores(scores);
         
       } catch (error) {
@@ -235,33 +243,87 @@ export function VendorRatingEngine({ vendorId, vendorName, nominationId, onScore
 
       // Save to backend with proper error handling
       try {
-        await batchUpdateVendorRatingMatrix(nominationId, vendorId, updates);
+        console.log('Saving updates:', updates);
+        const saveResult = await batchUpdateVendorRatingMatrix(nominationId, vendorId, updates);
+        console.log('Save result:', saveResult);
         
         // Add a small delay to allow database triggers to complete
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Refresh data from backend
-        const [freshData, updatedScores] = await Promise.all([
-          getVendorRatingMatrix(nominationId, vendorId),
-          getVendorRatingOverallScores(nominationId, vendorId)
-        ]);
+        // Refresh data from backend with retry logic
+        let freshData, updatedScores;
+        let attempts = 0;
+        const maxAttempts = 3;
         
+        while (attempts < maxAttempts) {
+          try {
+            [freshData, updatedScores] = await Promise.all([
+              getVendorRatingMatrix(nominationId, vendorId),
+              getVendorRatingOverallScores(nominationId, vendorId)
+            ]);
+            
+            console.log(`Attempt ${attempts + 1} - Fresh data:`, freshData);
+            console.log(`Attempt ${attempts + 1} - Updated scores:`, updatedScores);
+            
+            // Verify that scores have been calculated
+            if (updatedScores && (updatedScores.sectionWiseCapability > 0 || updatedScores.riskMitigation > 0 || attempts === maxAttempts - 1)) {
+              console.log('Scores calculated successfully or max attempts reached');
+              break;
+            } else {
+              console.log('Scores still 0, retrying...');
+            }
+            
+            // Wait a bit longer and try again
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            attempts++;
+          } catch (error) {
+            console.warn(`Attempt ${attempts + 1} failed:`, error);
+            if (attempts === maxAttempts - 1) throw error;
+            attempts++;
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
         
-        // Force component re-render by clearing data first
-        setRatingData([]);
-        setOverallScores({
+        // Update state with fresh data
+        setRatingData(freshData || []);
+        
+        // If backend scores are still 0 but we have data, calculate manually
+        let finalScores = updatedScores;
+        if (freshData && freshData.length > 0 && (!updatedScores || 
+            (updatedScores.sectionWiseCapability === 0 && updatedScores.riskMitigation === 0))) {
+          
+          let totalSectionCapability = 0;
+          let totalRiskMitigation = 0;
+          let totalMinorNC = 0;
+          let totalMajorNC = 0;
+          let recordCount = 0;
+          
+          freshData.forEach(item => {
+            totalSectionCapability += item.sectionWiseCapabilityPercent || 0;
+            totalRiskMitigation += item.riskMitigationPercent || 0;
+            totalMinorNC += item.minorNC || 0;
+            totalMajorNC += item.majorNC || 0;
+            recordCount++;
+          });
+          
+          finalScores = {
+            sectionWiseCapability: recordCount > 0 ? totalSectionCapability / recordCount : 0,
+            riskMitigation: recordCount > 0 ? totalRiskMitigation / recordCount : 0,
+            totalMinorNC,
+            totalMajorNC,
+            totalRecords: recordCount
+          };
+          
+          console.log('Manual calculation:', finalScores);
+        }
+        
+        setOverallScores(finalScores || {
           sectionWiseCapability: 0,
           riskMitigation: 0,
           totalMinorNC: 0,
           totalMajorNC: 0,
           totalRecords: 0
         });
-        
-        // Set fresh data after brief delay
-        setTimeout(() => {
-          setRatingData(freshData);
-          setOverallScores(updatedScores);
-        }, 50);
         
         setEditingValues({});
         setIsEditing(false);
@@ -271,6 +333,19 @@ export function VendorRatingEngine({ vendorId, vendorName, nominationId, onScore
         }
         
         toast.success(`Successfully updated ${updates.length} rating entries`);
+        
+        // If scores are still 0 after all attempts, force a page refresh as fallback
+        if (finalScores && finalScores.sectionWiseCapability === 0 && finalScores.riskMitigation === 0) {
+          const hasNonZeroValues = freshData?.some(item => 
+            (item.sectionWiseCapabilityPercent && item.sectionWiseCapabilityPercent > 0) ||
+            (item.riskMitigationPercent && item.riskMitigationPercent > 0)
+          );
+          
+          if (hasNonZeroValues) {
+            toast.info('Refreshing page to ensure latest scores are displayed...');
+            setTimeout(() => window.location.reload(), 2000);
+          }
+        }
         
         // Clear pending changes after successful save
         setHasPendingChanges(false);

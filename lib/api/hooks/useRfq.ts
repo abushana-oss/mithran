@@ -68,50 +68,25 @@ export function useCreateRfq() {
 }
 
 /**
- * Hook to send an RFQ to vendors - Production-grade with tracking integration
+ * Hook to send an RFQ to vendors
  */
 export function useSendRfq() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: (id: string) => rfqApi.send(id),
-    onSuccess: async (data, variables) => {
-      // 1. Update RFQ status immediately
+    onSuccess: (data, variables) => {
+      // Update RFQ status immediately
       queryClient.setQueryData(
         rfqKeys.detail(variables),
         (old: any) => old ? { ...old, status: 'sent', sentAt: new Date() } : old
       );
       
-      // 2. Update RFQ lists
-      queryClient.setQueryData(
-        rfqKeys.lists(),
-        (old: any[]) => old?.map(rfq => 
-          rfq.id === variables 
-            ? { ...rfq, status: 'sent', sentAt: new Date() }
-            : rfq
-        ) || []
-      );
-
-      // 3. Wait for backend processing and aggressively refresh tracking
-      const refreshTracking = async () => {
-        // Wait for backend to create tracking record
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        // Force refresh all tracking data
-        queryClient.refetchQueries({ queryKey: rfqTrackingKeys.all });
-        
-        // Additional refresh to ensure data loads
-        setTimeout(() => {
-          queryClient.refetchQueries({ queryKey: rfqTrackingKeys.all });
-        }, 1500);
-        
-        // Final refresh for any delayed data
-        setTimeout(() => {
-          queryClient.refetchQueries({ queryKey: rfqTrackingKeys.all });
-        }, 3000);
-      };
+      // Update RFQ lists
+      queryClient.invalidateQueries({ queryKey: rfqKeys.lists() });
       
-      refreshTracking();
+      // Refresh tracking data
+      queryClient.invalidateQueries({ queryKey: rfqTrackingKeys.all });
       
       toast.success('RFQ sent to vendors successfully');
     },
@@ -137,15 +112,8 @@ export function useCloseRfq() {
       );
       
       // Update RFQ lists
-      queryClient.setQueryData(
-        rfqKeys.lists(),
-        (old: any[]) => old?.map(rfq => 
-          rfq.id === variables 
-            ? { ...rfq, status: 'closed', closedAt: new Date() }
-            : rfq
-        ) || []
-      );
-
+      queryClient.invalidateQueries({ queryKey: rfqKeys.lists() });
+      
       // Update tracking status
       queryClient.invalidateQueries({ queryKey: rfqTrackingKeys.all });
       

@@ -31,7 +31,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { ProductionLot } from '@/lib/api/hooks/useProductionPlanning';
+import { ProductionLot, useDeleteProductionLot } from '@/lib/api/hooks/useProductionPlanning';
 
 interface ProductionLotsTableProps {
   lots: ProductionLot[];
@@ -41,6 +41,7 @@ interface ProductionLotsTableProps {
 export function ProductionLotsTable({ lots, isLoading }: ProductionLotsTableProps) {
   const router = useRouter();
   const [selectedLot, setSelectedLot] = useState<ProductionLot | null>(null);
+  const deleteProductionLot = useDeleteProductionLot();
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
@@ -90,8 +91,9 @@ export function ProductionLotsTable({ lots, isLoading }: ProductionLotsTableProp
   };
 
   const handleDeleteLot = (lot: ProductionLot) => {
-    // TODO: Implement delete functionality
-    console.log('Delete lot:', lot.id);
+    if (confirm(`Are you sure you want to delete production lot ${lot.lotNumber}? This action cannot be undone.`)) {
+      deleteProductionLot.mutate(lot.id);
+    }
   };
 
   if (isLoading) {
@@ -253,7 +255,10 @@ export function ProductionLotsTable({ lots, isLoading }: ProductionLotsTableProp
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem 
-                      onClick={() => handleDeleteLot(lot)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteLot(lot);
+                      }}
                       className="text-destructive focus:text-destructive"
                     >
                       <Trash2 className="h-4 w-4 mr-2" />

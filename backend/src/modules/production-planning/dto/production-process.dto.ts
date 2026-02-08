@@ -1,4 +1,5 @@
-import { IsUUID, IsString, IsOptional, IsDateString, IsEnum, IsInt, IsBoolean, IsArray, IsNumber, Min, Max } from 'class-validator';
+import { IsUUID, IsString, IsOptional, IsDateString, IsEnum, IsInt, IsBoolean, IsArray, IsNumber, Min, Max, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export enum ProcessStatus {
   PENDING = 'pending',
@@ -19,35 +20,32 @@ export enum QualityStatus {
 
 export class CreateProductionProcessDto {
   @IsUUID()
-  productionLotId: string;
+  production_lot_id: string;
 
   @IsUUID()
-  processId: string;
-
-  @IsInt()
-  @Min(1)
-  processSequence: number;
+  @IsOptional()
+  process_id?: string;
 
   @IsString()
-  processName: string;
+  process_name: string;
 
   @IsOptional()
   @IsString()
   description?: string;
 
   @IsDateString()
-  plannedStartDate: string;
+  planned_start_date: string;
 
   @IsDateString()
-  plannedEndDate: string;
+  planned_end_date: string;
 
   @IsOptional()
   @IsString()
-  assignedDepartment?: string;
+  assigned_department?: string;
 
   @IsOptional()
   @IsString()
-  responsiblePerson?: string;
+  responsible_person?: string;
 
   @IsOptional()
   @IsArray()
@@ -148,9 +146,12 @@ export class CreateProcessSubtaskDto {
   taskSequence: number;
 
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  estimatedDurationHours?: number = 0;
+  @IsDateString()
+  plannedStartDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  plannedEndDate?: string;
 
   @IsOptional()
   @IsString()
@@ -171,6 +172,14 @@ export class CreateProcessSubtaskDto {
   @IsOptional()
   @IsString()
   remarks?: string;
+
+  @IsOptional()
+  @IsArray()
+  bomParts?: Array<{
+    bom_item_id: string;
+    required_quantity: number;
+    unit: string;
+  }>;
 }
 
 export class UpdateProcessSubtaskDto {
@@ -188,9 +197,12 @@ export class UpdateProcessSubtaskDto {
   taskSequence?: number;
 
   @IsOptional()
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  estimatedDurationHours?: number;
+  @IsDateString()
+  plannedStartDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  plannedEndDate?: string;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })

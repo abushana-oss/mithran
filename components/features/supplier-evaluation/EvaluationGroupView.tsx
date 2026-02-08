@@ -16,6 +16,9 @@ import { getRfqSummaryText, formatResponseTime, getStatusText, getStatusColor } 
 import { analyzeTrackingFeature, getFeatureStatusMessage, TrackingFeatureState } from '@/lib/api/features/tracking-feature';
 import { useProcessCosts } from '@/lib/api/hooks/useProcessCosts';
 import { useProcesses } from '@/lib/api/hooks/useProcesses';
+import { VendorRatingEngine } from '@/components/features/supplier-nominations/VendorRatingEngine';
+import { useSupplierNominations } from '@/lib/api/hooks/useSupplierNominations';
+import { BomPartCostAnalysis } from './BomPartCostAnalysis';
 
 interface BOMPart {
   id: string;
@@ -50,6 +53,7 @@ export function EvaluationGroupView({ projectId, bomParts, evaluationGroupName, 
   const [activeBomTab, setActiveBomTab] = useState('overview');
   const [partProcesses, setPartProcesses] = useState<Record<string, string[]>>({});
   const [isSubmittingRfq, setIsSubmittingRfq] = useState(false);
+  const [selectedVendorForRating, setSelectedVendorForRating] = useState<string | null>(null);
   // Remove local state - use database-backed tracking
   // const [sentRfqs, setSentRfqs] = useState<...>([]);
 
@@ -68,6 +72,9 @@ export function EvaluationGroupView({ projectId, bomParts, evaluationGroupName, 
     bomItemIds,
     enabled: bomItemIds.length > 0,
   });
+  
+  // Fetch existing supplier nominations for this project
+  const { data: supplierNominations, isLoading: isLoadingNominations } = useSupplierNominations(projectId);
   
   // Production-ready RFQ tracking with graceful degradation
   const { 
@@ -543,12 +550,18 @@ We look forward to your competitive proposal and establishing a successful partn
               </div>
               
               <Tabs value={activeBomTab} onValueChange={setActiveBomTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-4 bg-muted rounded-lg p-1 h-10">
+                <TabsList className="grid w-full grid-cols-5 bg-muted rounded-lg p-1 h-10">
                   <TabsTrigger 
                     value="overview" 
                     className="text-xs data-[state=active]:bg-background data-[state=active]:text-foreground"
                   >
                     BOM & Vendor
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="cost-analysis" 
+                    className="text-xs data-[state=active]:bg-background data-[state=active]:text-foreground"
+                  >
+                    Cost Analysis
                   </TabsTrigger>
                   <TabsTrigger 
                     value="rfq" 
@@ -866,6 +879,20 @@ We look forward to your competitive proposal and establishing a successful partn
             )}
                 </TabsContent>
 
+                <TabsContent value="cost-analysis" className="mt-0">
+                  <div className="p-6">
+                    <BomPartCostAnalysis
+                      projectId={projectId}
+                      bomParts={bomParts}
+                      selectedVendors={matchedVendors}
+                      onAnalysisComplete={(data) => {
+                        console.log('Cost analysis completed:', data);
+                        // Optional: Handle cost analysis completion
+                      }}
+                    />
+                  </div>
+                </TabsContent>
+
                 <TabsContent value="rfq" className="mt-0">
                   {/* RFQ Tracking Summary */}
                   {shouldShowTracking ? (
@@ -1077,10 +1104,88 @@ We look forward to your competitive proposal and establishing a successful partn
 
                 <TabsContent value="evaluation" className="mt-0">
                   <div className="p-6">
-                    <div className="text-center py-8 text-gray-400">
-                      <div className="text-sm">Supplier Analysis content</div>
-                      <div className="text-xs mt-1">Advanced evaluation metrics and comparisons</div>
-                    </div>
+                    <h3 className="text-lg font-semibold text-white mb-4">Vendor Rating Analysis</h3>
+                    
+                    {/* Vendor Selection for Rating */}
+                    {matchedVendors.length === 0 ? (
+                      <div className="text-center py-8 text-gray-400">
+                        <div className="text-sm">Select BOM parts first to see matched vendors for rating</div>
+                        <div className="text-xs mt-1">Go to BOM & Vendor tab to select parts and vendors</div>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
+                          <h4 className="text-md font-medium text-white mb-3">Select Vendor to Rate</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {matchedVendors.map((vendor) => (
+                              <div
+                                key={vendor.id}
+                                className={`border rounded-lg p-3 cursor-pointer transition-all ${
+                                  selectedVendorForRating === vendor.id
+                                    ? 'border-blue-500 bg-blue-600/10 shadow-md'
+                                    : 'border-gray-600 hover:border-blue-500/50 bg-gray-900/50'
+                                }`}
+                                onClick={() => setSelectedVendorForRating(vendor.id)}
+                              >
+                                <div className="font-medium text-white">{vendor.name || vendor.companyName}</div>
+                                <div className="text-sm text-gray-400 mt-1">{vendor.city && vendor.state ? `${vendor.city}, ${vendor.state}` : 'Location TBD'}</div>
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {vendor.process?.slice(0, 2).map((proc) => (
+                                    <Badge key={proc} variant="outline" className="text-xs border-gray-500 text-gray-300">
+                                      {proc}
+                                    </Badge>
+                                  ))}
+                                  {vendor.process && vendor.process.length > 2 && (
+                                    <Badge variant="outline" className="text-xs border-gray-500 text-gray-300">
+                                      +{vendor.process.length - 2}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Vendor Rating Engine */}
+                        {selectedVendorForRating && (
+                          <div className="bg-gray-800 rounded-lg border border-gray-700">
+                            {supplierNominations && supplierNominations.length > 0 ? (
+                              <VendorRatingEngine
+                                vendorId={selectedVendorForRating}
+                                vendorName={matchedVendors.find(v => v.id === selectedVendorForRating)?.name || matchedVendors.find(v => v.id === selectedVendorForRating)?.companyName}
+                                nominationId={supplierNominations[0].id} // Use the first supplier nomination
+                                onScoreUpdate={(scores) => {
+                                  // Optional: Handle score updates
+                                  console.log('Vendor rating updated:', scores);
+                                }}
+                              />
+                            ) : isLoadingNominations ? (
+                              <div className="p-6 text-center">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-4"></div>
+                                <p className="text-gray-400">Loading nomination data...</p>
+                              </div>
+                            ) : (
+                              <div className="p-6 text-center">
+                                <div className="text-gray-400 mb-4">
+                                  <div className="text-lg font-medium">No Supplier Nomination Found</div>
+                                  <div className="text-sm mt-2">
+                                    A supplier nomination evaluation is required to rate vendors. 
+                                    Please create one first in the Supplier Nomination module.
+                                  </div>
+                                </div>
+                                <Button 
+                                  variant="outline"
+                                  onClick={() => window.open(`/projects/${projectId}/supplier-nomination`, '_blank')}
+                                  className="border-blue-500 text-blue-400 hover:bg-blue-500/10"
+                                >
+                                  Create Supplier Nomination
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
 

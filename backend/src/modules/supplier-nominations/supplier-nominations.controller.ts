@@ -42,6 +42,13 @@ import {
   VendorRatingOverallScoresDto,
   UpdateCapabilityCriteriaDto
 } from './dto/vendor-rating-matrix.dto';
+import {
+  PartWiseCostAnalysisDto,
+  PartWiseCostBaseDataDto,
+  CreatePartWiseCostAnalysisDto,
+  CreatePartWiseCostBaseDataDto,
+  BulkUpdatePartWiseCostAnalysisDto
+} from './dto/part-wise-cost-analysis.dto';
 
 @ApiTags('supplier-nominations')
 @ApiBearerAuth()
@@ -936,6 +943,159 @@ export class SupplierNominationsController {
       userId,
       nominationId,
       vendorId,
+      token
+    );
+  }
+
+  // =======================================
+  // Part-wise Cost Analysis Endpoints (ENTERPRISE GRADE)
+  // =======================================
+
+  @Get(':nominationId/parts/:bomItemId/cost-analysis')
+  @ApiOperation({ 
+    summary: 'Get part-wise cost analysis for specific BOM part',
+    description: 'Retrieve cost analysis data for all vendors for a specific BOM part within nomination'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Part-wise cost analysis retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        costAnalysis: { type: 'array', items: { $ref: '#/components/schemas/PartWiseCostAnalysisDto' } },
+        baseData: { $ref: '#/components/schemas/PartWiseCostBaseDataDto' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Part-wise cost analysis not found'
+  })
+  getPartWiseCostAnalysis(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string,
+    @Param('bomItemId') bomItemId: string
+  ): Promise<{
+    costAnalysis: PartWiseCostAnalysisDto[];
+    baseData: PartWiseCostBaseDataDto | null;
+  }> {
+    return this.supplierNominationsService.getPartWiseCostAnalysis(
+      userId,
+      nominationId,
+      bomItemId,
+      token
+    );
+  }
+
+  @Post(':nominationId/parts/:bomItemId/cost-analysis/init')
+  @ApiOperation({ 
+    summary: 'Initialize part-wise cost analysis for BOM part',
+    description: 'Create cost analysis records for all vendors for a specific BOM part'
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Part-wise cost analysis initialized successfully'
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Part-wise cost analysis already exists'
+  })
+  initializePartWiseCostAnalysis(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string,
+    @Param('bomItemId') bomItemId: string
+  ): Promise<void> {
+    return this.supplierNominationsService.initializePartWiseCostAnalysis(
+      userId,
+      nominationId,
+      bomItemId,
+      token
+    );
+  }
+
+  @Put(':nominationId/parts/:bomItemId/cost-analysis/bulk')
+  @ApiOperation({ 
+    summary: 'Bulk update part-wise cost analysis - ATOMIC ENTERPRISE OPERATION',
+    description: 'Atomically update cost analysis data for all vendors for a specific BOM part'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Part-wise cost analysis updated successfully in batch',
+    schema: {
+      type: 'object',
+      properties: {
+        costAnalysis: { type: 'array', items: { $ref: '#/components/schemas/PartWiseCostAnalysisDto' } },
+        baseData: { $ref: '#/components/schemas/PartWiseCostBaseDataDto' }
+      }
+    }
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid update data or batch operation failed'
+  })
+  async bulkUpdatePartWiseCostAnalysis(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string,
+    @Param('bomItemId') bomItemId: string,
+    @Body() updateDto: BulkUpdatePartWiseCostAnalysisDto
+  ): Promise<{
+    costAnalysis: PartWiseCostAnalysisDto[];
+    baseData: PartWiseCostBaseDataDto | null;
+  }> {
+    if (!updateDto || (!updateDto.baseData && (!updateDto.vendorCostData || updateDto.vendorCostData.length === 0))) {
+      throw new BadRequestException('No update data provided in bulk request');
+    }
+
+    if (updateDto.vendorCostData && updateDto.vendorCostData.length > 20) {
+      throw new BadRequestException('Maximum 20 vendor updates allowed per batch');
+    }
+
+    return this.supplierNominationsService.bulkUpdatePartWiseCostAnalysis(
+      userId,
+      nominationId,
+      bomItemId,
+      updateDto,
+      token
+    );
+  }
+
+  @Get(':nominationId/part-wise-analysis-summary')
+  @ApiOperation({ 
+    summary: 'Get part-wise analysis summary for dashboard',
+    description: 'Retrieve summary statistics for all BOM parts in the nomination'
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Part-wise analysis summary retrieved successfully',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          bomItemId: { type: 'string' },
+          bomItemName: { type: 'string' },
+          partNumber: { type: 'string' },
+          vendorCount: { type: 'number' },
+          vendors: { type: 'array' },
+          lowestNetPrice: { type: 'number' },
+          lowestDevelopmentCost: { type: 'number' },
+          shortestLeadTime: { type: 'number' },
+          topVendor: { type: 'object' }
+        }
+      }
+    }
+  })
+  getPartWiseAnalysisSummary(
+    @CurrentUser('id') userId: string,
+    @AccessToken() token: string,
+    @Param('nominationId') nominationId: string
+  ): Promise<any[]> {
+    return this.supplierNominationsService.getPartWiseAnalysisSummary(
+      userId,
+      nominationId,
       token
     );
   }

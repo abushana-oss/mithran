@@ -386,7 +386,6 @@ export function CreateNominationDialog({
         : 'Supplier nomination created successfully';
       toast.success(successMessage);
     } catch (error: any) {
-      console.error('Create nomination error:', error);
       const errorMessage = error?.message || error?.response?.data?.error?.message || error?.response?.data?.message || 'Failed to create nomination';
       toast.error(errorMessage);
     }
@@ -654,11 +653,6 @@ export function CreateNominationDialog({
                           : "Complete RFQ evaluations first to nominate vendors"
                         }
                       </div>
-                      {selectedBomPartIds.length > 0 && (
-                        <div className="text-xs text-gray-600 mt-2">
-                          Debug: {rfqTrackingRecords.length} RFQ records, {bomItems.length} BOM items, {bomPartVendorMap.size} part-vendor mappings
-                        </div>
-                      )}
                     </CardContent>
                   </Card>
                 ) : (

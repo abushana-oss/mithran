@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
+import { WorkflowNavigation } from '@/components/features/workflow/WorkflowNavigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -52,6 +53,12 @@ export default function ProjectProductionPlanningPage() {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-[1800px] mx-auto space-y-6">
+        {/* Workflow Navigation */}
+        <WorkflowNavigation 
+          currentModuleId="production-planning" 
+          projectId={projectId}
+        />
+        
         {/* BREADCRUMB & HEADER */}
         <div className="flex items-center justify-between">
           <div className="space-y-1">

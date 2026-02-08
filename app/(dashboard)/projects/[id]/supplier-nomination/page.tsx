@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
+import { WorkflowNavigation } from '@/components/features/workflow/WorkflowNavigation';
 import { SupplierNominationsDashboard } from '@/components/features/supplier-nominations/SupplierNominationsDashboard';
 import { SupplierNominationPage } from '@/components/features/supplier-nominations/SupplierNominationPage';
 import { DetailedEvaluationView } from '@/components/features/supplier-nominations/DetailedEvaluationView';
@@ -74,10 +75,18 @@ export default function SupplierNominationMainPage() {
   const selectedBomId = searchParams.get('bomId'); // Allow BOM ID to be passed via URL
   
   return (
-    <SupplierNominationsDashboard
-      projectId={projectId}
-      selectedBomId={selectedBomId || undefined}
-      onSelectNomination={handleSelectNomination}
-    />
+    <div className="space-y-6">
+      {/* Workflow Navigation */}
+      <WorkflowNavigation 
+        currentModuleId="supplier-nomination" 
+        projectId={projectId}
+      />
+      
+      <SupplierNominationsDashboard
+        projectId={projectId}
+        selectedBomId={selectedBomId || undefined}
+        onSelectNomination={handleSelectNomination}
+      />
+    </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { WorkflowNavigation } from '@/components/features/workflow/WorkflowNavigation';
 import { useProject } from '@/lib/api/hooks/useProjects';
 import { useBOM } from '@/lib/api/hooks/useBOM';
 import { useBOMItems, deleteBOMItem } from '@/lib/api/hooks/useBOMItems';
@@ -397,6 +398,12 @@ export default function
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Workflow Navigation */}
+      <WorkflowNavigation 
+        currentModuleId="bom" 
+        projectId={projectId}
+      />
+      
       <PageHeader
         title={bom.name}
         description={bom.description}

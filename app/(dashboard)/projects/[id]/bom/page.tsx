@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { WorkflowNavigation } from '@/components/features/workflow/WorkflowNavigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -63,6 +64,12 @@ export default function ProjectBOMList() {
 
   return (
     <div className="space-y-6">
+      {/* Workflow Navigation */}
+      <WorkflowNavigation 
+        currentModuleId="bom" 
+        projectId={id}
+      />
+      
       <div className="flex items-center gap-4">
         <Button variant="outline" onClick={() => router.push('/bom')} className="gap-2">
           <ArrowLeft className="h-4 w-4" />

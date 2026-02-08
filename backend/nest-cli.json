@@ -4,7 +4,10 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "assets": ["**/*.sql", "**/*.hbs"],
+    "assets": [
+      "**/*.sql",
+      "**/*.hbs"
+    ],
     "watchAssets": true
   }
 }

@@ -7,15 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { 
-  Users, 
-  CheckCircle, 
-  AlertTriangle, 
-  Clock,
+import {
+  Users,
+  CheckCircle,
   Search,
   Plus,
   Edit,
+  Trash2,
   Calendar,
   DollarSign,
   Package
@@ -46,6 +44,7 @@ interface LotBOMItem {
   id: string;
   bom_item_id: string;
   bom_item_name: string;
+  description?: string;
   part_number: string;
   material: string;
   quantity: number;
@@ -76,6 +75,10 @@ interface VendorAssignment {
   lead_time_days: number;
   assignment_reason: string;
   assigned_at: string;
+  vendor?: { name: string };
+  unit_cost?: number;
+  expected_delivery_date?: string;
+  created_at?: string;
 }
 
 interface VendorAssignmentProps {
@@ -87,7 +90,7 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
   const [vendorAssignments, setVendorAssignments] = useState<VendorAssignment[]>([]);
   const [availableVendors, setAvailableVendors] = useState<Vendor[]>([]);
   const [approvedVendorsByPart, setApprovedVendorsByPart] = useState<Record<string, ApprovedVendor[]>>({});
-  const [loading, setLoading] = useState(true);
+  // const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [showNewAssignment, setShowNewAssignment] = useState(false);
@@ -95,51 +98,56 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
   const [selectedVendor, setSelectedVendor] = useState<string>('');
   const [quotedPrice, setQuotedPrice] = useState<string>('');
   const [deliveryDate, setDeliveryDate] = useState<Date | undefined>(undefined);
-  const [leadTimeDays, setLeadTimeDays] = useState<string>('');
-  const [assignmentReason, setAssignmentReason] = useState<string>('');
-  
-  const { user } = useAuth();
+  // const [leadTimeDays, setLeadTimeDays] = useState<string>('');
+  const [editingAssignment, setEditingAssignment] = useState<VendorAssignment | null>(null);
+
+  const { } = useAuth(); // User unused
   const isAuthReady = useAuthReady();
+  const hasFetchedRef = React.useRef(false);
 
   useEffect(() => {
     const fetchLotData = async () => {
       try {
-        // Fetch production lot details with BOM items
-        const lotResponse = await apiClient.get(`/production-planning/lots/${lotId}`);
+        // Fetch production lot details
+        const lotResponse: any = await apiClient.get(`/production-planning/lots/${lotId}`);
         const lotData = lotResponse.data;
-        
-        console.log('Lot data:', lotData);
-        
-        // Extract BOM items from the lot data
-        const bomItems = lotData.selectedBomItems || [];
-        
+
+        // Fetch BOM items for this production lot from the dedicated endpoint
+        const bomItemsResponse: any = await apiClient.get(`/production-planning/lots/${lotId}/bom-items`);
+        const bomItems = bomItemsResponse.data || [];
+
         // Transform BOM items for display
         const lotBomItems = bomItems.map((bomItem: any) => ({
           id: bomItem.id,
           bom_item_id: bomItem.id,
-          bom_item_name: bomItem.description || bomItem.partNumber,
-          part_number: bomItem.partNumber,
-          material: bomItem.materialGrade || 'Not specified',
-          quantity: bomItem.quantity
+          bom_item_name: bomItem.name || bomItem.description,
+          description: bomItem.description,
+          part_number: bomItem.part_number,
+          material: bomItem.material_grade || bomItem.material || 'Not specified',
+          quantity: bomItem.quantity,
+          unit_cost: bomItem.unit_cost,
+          make_buy: bomItem.make_buy
         }));
-        
-        console.log('Lot BOM items:', lotBomItems);
+
         setLotBOMItems(lotBomItems);
-        
-        // Fetch approved vendors for each BOM part from supplier nominations
+
+        // Fetch approved vendors for each BOM part from supplier nominations (in parallel)
+        const approvedVendorsPromises = lotBomItems.map((bomItem: any) =>
+          getApprovedVendorsByBomPart(bomItem.bom_item_id, lotData.projectId)
+            .then(vendors => ({ bomItemId: bomItem.bom_item_id, vendors }))
+            .catch(() => ({ bomItemId: bomItem.bom_item_id, vendors: [] }))
+        );
+
+        // Fetch only approved vendors (no need for all vendors)
+        const approvedVendorsResults = await Promise.all(approvedVendorsPromises);
+
         const approvedVendorsMap: Record<string, ApprovedVendor[]> = {};
-        for (const bomItem of lotBomItems) {
-          try {
-            const approvedVendors = await getApprovedVendorsByBomPart(bomItem.bom_item_id, lotData.projectId);
-            approvedVendorsMap[bomItem.bom_item_id] = approvedVendors;
-          } catch (error) {
-            console.log(`No approved vendors found for BOM item ${bomItem.bom_item_id}`);
-            approvedVendorsMap[bomItem.bom_item_id] = [];
-          }
-        }
-        
+        approvedVendorsResults.forEach((result: any) => {
+          approvedVendorsMap[result.bomItemId] = result.vendors;
+        });
+
         setApprovedVendorsByPart(approvedVendorsMap);
-        
+
         // Convert approved vendors to vendor format for dropdown
         const allApprovedVendors: Vendor[] = [];
         Object.values(approvedVendorsMap).forEach(vendors => {
@@ -157,52 +165,34 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
             }
           });
         });
-        
-        // Fallback: Also fetch all available vendors if no approved vendors found
-        const vendorsResponse = await apiClient.get('/vendors');
-        const fallbackVendors = (vendorsResponse.data?.vendors || []).map((v: any) => ({
-          ...v,
-          isApproved: false
-        }));
-        
-        // Combine approved and fallback vendors, prioritizing approved ones
-        const combinedVendors = [...allApprovedVendors, ...fallbackVendors.filter(
-          (fv: Vendor) => !allApprovedVendors.find(av => av.id === fv.id)
-        )];
-        
-        setAvailableVendors(combinedVendors);
-        
-        // Fetch existing vendor assignments for this lot
+
+        // Only use approved vendors
+        setAvailableVendors(allApprovedVendors);
+
+        // Process vendor assignments - get existing assignments for this lot
+        let assignments: VendorAssignment[] = [];
         try {
-          const assignmentsResponse = await apiClient.get(`/production-planning/lots/${lotId}/vendor-assignments`);
-          const assignments = assignmentsResponse.data?.map((assignment: any) => ({
-            id: assignment.id,
-            bom_item_id: assignment.bomItemId || assignment.bom_item?.id,
-            vendor_id: assignment.vendorId || assignment.vendor?.id,
-            vendor_name: assignment.vendor?.name || 'Unknown Vendor',
-            quoted_price: assignment.quotedPrice || 0,
-            delivery_date: assignment.expectedDeliveryDate || assignment.deliveryDate,
-            lead_time_days: assignment.leadTimeDays || 0,
-            assignment_reason: assignment.remarks || '',
-            assigned_at: assignment.createdAt || assignment.created_at || new Date().toISOString()
-          })) || [];
-          
-          console.log('Vendor assignments:', assignments);
-          setVendorAssignments(assignments);
-        } catch (error) {
-          console.log('No existing vendor assignments found');
-          setVendorAssignments([]);
+          const assignmentsResponse: any = await apiClient.get(`/production-planning/lots/${lotId}/vendor-assignments`);
+          assignments = assignmentsResponse.data || [];
+          console.log('Raw assignments response:', assignmentsResponse.data);
+        } catch (assignmentError) {
+          console.log('No existing assignments found for this lot, starting with empty assignments');
+          assignments = [];
         }
-        
-        setLoading(false);
+
+
+        setVendorAssignments(assignments);
+
+        // setLoading(false);
       } catch (error) {
         console.error('Error fetching lot data:', error);
         toast.error('Failed to load production lot data');
-        setLoading(false);
+        // setLoading(false);
       }
     };
 
-    if (lotId && isAuthReady) {
+    if (lotId && isAuthReady && !hasFetchedRef.current) {
+      hasFetchedRef.current = true;
       fetchLotData();
     }
   }, [lotId, isAuthReady]);
@@ -212,28 +202,25 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
     setSelectedVendor('');
   }, [selectedBOMItem]);
 
-  // Get vendors available for the selected BOM item (prioritize approved vendors)
+  // Get only approved vendors for the selected BOM item
   const getVendorsForSelectedBOMItem = (): Vendor[] => {
     if (!selectedBOMItem) return availableVendors;
-    
+
     const approvedForThisPart = approvedVendorsByPart[selectedBOMItem] || [];
     const approvedVendorIds = approvedForThisPart.map(v => v.vendorId);
-    
-    // Filter available vendors to show approved ones for this part first, then others
-    const approvedVendors = availableVendors.filter(v => approvedVendorIds.includes(v.id));
-    const otherVendors = availableVendors.filter(v => !approvedVendorIds.includes(v.id));
-    
-    return [...approvedVendors, ...otherVendors];
+
+    // Only show vendors that are approved for this specific BOM part
+    return availableVendors.filter(v => approvedVendorIds.includes(v.id));
   };
 
   // Filter assignments based on search term
   const filteredAssignments = vendorAssignments.filter(assignment => {
     const bomItem = lotBOMItems.find(item => item.bom_item_id === assignment.bom_item_id);
-    const matchesSearch = searchTerm === '' || 
+    const matchesSearch = searchTerm === '' ||
       (bomItem?.bom_item_name?.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (bomItem?.part_number?.toLowerCase().includes(searchTerm.toLowerCase())) ||
       assignment.vendor_name.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     return matchesSearch;
   });
 
@@ -244,45 +231,50 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
     }
 
     try {
+      // Get the selected BOM item to retrieve quantity
+      const selectedItem = lotBOMItems.find(item => item.bom_item_id === selectedBOMItem);
+
+      if (!selectedItem) {
+        toast.error('Selected BOM item not found');
+        return;
+      }
+
+      // Validate and convert quantity to number
+      const requiredQuantity = Number(selectedItem.quantity);
+      if (isNaN(requiredQuantity) || requiredQuantity <= 0) {
+        toast.error('Invalid quantity for selected BOM item');
+        console.error('Invalid quantity:', selectedItem.quantity);
+        return;
+      }
+
       // Format the data to match CreateLotVendorAssignmentDto
       const assignmentData = {
         productionLotId: lotId,
         bomItemId: selectedBOMItem,
         vendorId: selectedVendor,
-        quotedPrice: parseFloat(quotedPrice),
+        requiredQuantity: requiredQuantity,
+        unitCost: parseFloat(quotedPrice),
         expectedDeliveryDate: deliveryDate.toISOString().split('T')[0],
-        remarks: assignmentReason || 'Assigned via production planning'
+        remarks: 'Assigned via production planning'
       };
 
-      console.log('Assigning vendor:', assignmentData);
 
-      const response = await apiClient.post(`/production-planning/lots/${lotId}/vendor-assignments`, assignmentData);
+      await apiClient.post(`/production-planning/lots/${lotId}/vendor-assignments`, assignmentData);
 
       toast.success('Vendor assigned successfully');
       setShowNewAssignment(false);
-      
+
       // Reset form
       setSelectedBOMItem('');
       setSelectedVendor('');
       setQuotedPrice('');
       setDeliveryDate(undefined);
-      setLeadTimeDays('');
-      setAssignmentReason('');
-      
+      // setLeadTimeDays('');
+
       // Refresh assignments
-      const assignmentsResponse = await apiClient.get(`/production-planning/lots/${lotId}/vendor-assignments`);
-      const assignments = assignmentsResponse.data?.map((assignment: any) => ({
-        id: assignment.id,
-        bom_item_id: assignment.bomItemId || assignment.bom_item?.id,
-        vendor_id: assignment.vendorId || assignment.vendor?.id,
-        vendor_name: assignment.vendor?.name || 'Unknown Vendor',
-        quoted_price: assignment.quotedPrice || 0,
-        delivery_date: assignment.expectedDeliveryDate || assignment.deliveryDate,
-        lead_time_days: assignment.leadTimeDays || 0,
-        assignment_reason: assignment.remarks || '',
-        assigned_at: assignment.createdAt || assignment.created_at || new Date().toISOString()
-      })) || [];
-      
+      const assignmentsResponse: any = await apiClient.get(`/production-planning/lots/${lotId}/vendor-assignments`);
+      const assignments = assignmentsResponse.data || [];
+
       setVendorAssignments(assignments);
     } catch (error) {
       console.error('Error assigning vendor:', error);
@@ -290,12 +282,88 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
     }
   };
 
-  if (!isAuthReady || loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary"></div>
-      </div>
-    );
+  const handleDeleteAssignment = async (assignmentId: string) => {
+    if (!confirm('Are you sure you want to delete this vendor assignment?')) {
+      return;
+    }
+
+    try {
+      await apiClient.delete(`/production-planning/lots/${lotId}/vendor-assignments/${assignmentId}`);
+      toast.success('Vendor assignment deleted successfully');
+
+      // Remove from local state
+      setVendorAssignments(prev => prev.filter(a => a.id !== assignmentId));
+    } catch (error) {
+      console.error('Error deleting assignment:', error);
+      toast.error('Failed to delete vendor assignment');
+    }
+  };
+
+  const handleEditAssignment = (assignment: VendorAssignment) => {
+    // const bomItem = lotBOMItems.find(item => item.bom_item_id === assignment.bom_item_id);
+
+    setEditingAssignment(assignment);
+    setSelectedBOMItem(assignment.bom_item_id);
+    setSelectedVendor(assignment.vendor_id);
+    setQuotedPrice(assignment.quoted_price.toString());
+    setDeliveryDate(assignment.delivery_date ? new Date(assignment.delivery_date) : undefined);
+    setShowNewAssignment(true);
+  };
+
+  const handleUpdateAssignment = async () => {
+    if (!editingAssignment || !selectedBOMItem || !selectedVendor || !quotedPrice || !deliveryDate) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      const selectedItem = lotBOMItems.find(item => item.bom_item_id === selectedBOMItem);
+
+      if (!selectedItem) {
+        toast.error('Selected BOM item not found');
+        return;
+      }
+
+      const requiredQuantity = Number(selectedItem.quantity);
+      if (isNaN(requiredQuantity) || requiredQuantity <= 0) {
+        toast.error('Invalid quantity for selected BOM item');
+        return;
+      }
+
+      const updateData = {
+        vendorId: selectedVendor,
+        requiredQuantity: requiredQuantity,
+        unitCost: parseFloat(quotedPrice),
+        expectedDeliveryDate: deliveryDate.toISOString().split('T')[0],
+        remarks: 'Updated via production planning'
+      };
+
+      await apiClient.patch(`/production-planning/lots/${lotId}/vendor-assignments/${editingAssignment.id}`, updateData);
+
+      toast.success('Vendor assignment updated successfully');
+      setShowNewAssignment(false);
+      setEditingAssignment(null);
+
+      // Reset form
+      setSelectedBOMItem('');
+      setSelectedVendor('');
+      setQuotedPrice('');
+      setDeliveryDate(undefined);
+      // setLeadTimeDays('');
+
+      // Refresh assignments
+      const assignmentsResponse: any = await apiClient.get(`/production-planning/lots/${lotId}/vendor-assignments`);
+      const assignments = assignmentsResponse.data || [];
+
+      setVendorAssignments(assignments);
+    } catch (error) {
+      console.error('Error updating assignment:', error);
+      toast.error('Failed to update vendor assignment');
+    }
+  };
+
+  if (!isAuthReady) {
+    return null;
   }
 
   return (
@@ -382,9 +450,9 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
               </DialogTrigger>
               <DialogContent className="max-w-2xl">
                 <DialogHeader>
-                  <DialogTitle>Assign Vendor to Part</DialogTitle>
+                  <DialogTitle>{editingAssignment ? 'Edit Vendor Assignment' : 'Assign Vendor to Part'}</DialogTitle>
                   <DialogDescription>
-                    Select a vendor and configure assignment details
+                    {editingAssignment ? 'Update vendor assignment details' : 'Select a vendor and configure assignment details'}
                   </DialogDescription>
                 </DialogHeader>
                 {/* New assignment form would go here */}
@@ -396,12 +464,19 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
                       <SelectTrigger className="col-span-3">
                         <SelectValue placeholder="Select a BOM part" />
                       </SelectTrigger>
-                      <SelectContent>
-                        {lotBOMItems.map(item => (
-                          <SelectItem key={item.bom_item_id} value={item.bom_item_id}>
-                            {item.part_number} - {item.bom_item_name}
-                          </SelectItem>
-                        ))}
+                      <SelectContent className="max-w-[400px]">
+                        {lotBOMItems.map(item => {
+                          const partName = item.bom_item_name !== item.description ? item.bom_item_name : '';
+                          const label = partName ? `${item.part_number} - ${partName}` : item.part_number;
+
+                          return (
+                            <SelectItem key={item.bom_item_id} value={item.bom_item_id}>
+                              <span className="truncate block" title={label}>
+                                {label}
+                              </span>
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   </div>
@@ -414,33 +489,24 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
                         <SelectValue placeholder="Select a vendor" />
                       </SelectTrigger>
                       <SelectContent>
-                        {getVendorsForSelectedBOMItem().map(vendor => {
-                          const isApprovedForThisPart = selectedBOMItem && 
-                            approvedVendorsByPart[selectedBOMItem]?.some(av => av.vendorId === vendor.id);
-                          
-                          return (
-                            <SelectItem key={vendor.id} value={vendor.id}>
-                              <div className="flex items-center gap-2">
-                                {isApprovedForThisPart && (
-                                  <CheckCircle className="h-4 w-4 text-green-500" />
-                                )}
-                                <span>
-                                  {vendor.name} - {vendor.supplier_code || 'No Code'}
-                                </span>
-                                {isApprovedForThisPart && (
-                                  <Badge variant="outline" className="text-xs text-green-600 border-green-600">
-                                    Approved
-                                  </Badge>
-                                )}
-                                {vendor.overallScore && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {vendor.overallScore.toFixed(1)}%
-                                  </Badge>
-                                )}
-                              </div>
-                            </SelectItem>
-                          );
-                        })}
+                        {getVendorsForSelectedBOMItem().map(vendor => (
+                          <SelectItem key={vendor.id} value={vendor.id}>
+                            <div className="flex items-center gap-2">
+                              <CheckCircle className="h-4 w-4 text-green-500" />
+                              <span>
+                                {vendor.name} - {vendor.supplier_code || 'No Code'}
+                              </span>
+                              <Badge variant="outline" className="text-xs text-green-600 border-green-600">
+                                Approved
+                              </Badge>
+                              {vendor.overallScore && (
+                                <Badge variant="outline" className="text-xs">
+                                  {vendor.overallScore.toFixed(1)}%
+                                </Badge>
+                              )}
+                            </div>
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -448,10 +514,10 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
                   {/* Quote Details */}
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="price" className="text-right">Quoted Price</Label>
-                    <Input 
-                      id="price" 
-                      placeholder="0.00" 
-                      className="col-span-3" 
+                    <Input
+                      id="price"
+                      placeholder="0.00"
+                      className="col-span-3"
                       value={quotedPrice}
                       onChange={(e) => setQuotedPrice(e.target.value)}
                       type="number"
@@ -462,26 +528,33 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="delivery" className="text-right">Delivery Date</Label>
                     <div className="col-span-3">
-                      <DatePicker 
+                      <DatePicker
                         date={deliveryDate}
                         onDateChange={setDeliveryDate}
                       />
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="reason" className="text-right">Assignment Reason</Label>
-                    <Textarea 
-                      id="reason" 
-                      placeholder="Why this vendor was selected..." 
-                      className="col-span-3"
-                      value={assignmentReason}
-                      onChange={(e) => setAssignmentReason(e.target.value)}
-                    />
-                  </div>
                 </div>
                 <DialogFooter>
-                  <Button type="submit" onClick={handleAssignVendor}>Assign Vendor</Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowNewAssignment(false);
+                      setEditingAssignment(null);
+                      setSelectedBOMItem('');
+                      setSelectedVendor('');
+                      setQuotedPrice('');
+                      setDeliveryDate(undefined);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    onClick={editingAssignment ? handleUpdateAssignment : handleAssignVendor}
+                  >
+                    {editingAssignment ? 'Update Assignment' : 'Assign Vendor'}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -535,6 +608,8 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
               <TableBody>
                 {filteredAssignments.map((assignment) => {
                   const bomItem = lotBOMItems.find(item => item.bom_item_id === assignment.bom_item_id);
+                  console.log('Assignment object:', assignment);
+                  console.log('Vendor object in assignment:', assignment.vendor);
                   return (
                     <TableRow key={assignment.id}>
                       <TableCell>
@@ -547,12 +622,24 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
                       <TableCell>
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
-                            <div className="font-medium">{assignment.vendor_name}</div>
+                            <div className="font-medium">
+                              {(() => {
+                                // First try vendor.name from assignment
+                                if (assignment.vendor?.name) return assignment.vendor.name;
+
+                                // Fallback: try to find vendor name from approved vendors
+                                const bomApprovedVendors = approvedVendorsByPart[assignment.bom_item_id] || [];
+                                const approvedVendor = bomApprovedVendors.find(av => av.vendorId === assignment.vendor_id);
+                                if (approvedVendor) return approvedVendor.vendorName;
+
+                                // Last resort: show vendor ID if available
+                                return assignment.vendor_id ? `Vendor ${assignment.vendor_id}` : 'Unknown Vendor';
+                              })()}
+                            </div>
                             {(() => {
                               const bomApprovedVendors = approvedVendorsByPart[assignment.bom_item_id] || [];
                               const isApproved = bomApprovedVendors.some(av => av.vendorId === assignment.vendor_id);
-                              const approvedVendor = bomApprovedVendors.find(av => av.vendorId === assignment.vendor_id);
-                              
+
                               if (isApproved) {
                                 return (
                                   <Badge variant="outline" className="text-xs text-green-600 border-green-600">
@@ -573,7 +660,7 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
                             {(() => {
                               const bomApprovedVendors = approvedVendorsByPart[assignment.bom_item_id] || [];
                               const approvedVendor = bomApprovedVendors.find(av => av.vendorId === assignment.vendor_id);
-                              
+
                               if (approvedVendor) {
                                 return `From: ${approvedVendor.nominationName} (Score: ${approvedVendor.overallScore.toFixed(1)}%)`;
                               } else {
@@ -586,7 +673,7 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
                       <TableCell>
                         <div className="space-y-1">
                           <div className="font-medium">
-                            ₹{assignment.quoted_price.toLocaleString()}
+                            ₹{(assignment.unit_cost || 0).toLocaleString()}
                           </div>
                           <div className="text-sm text-muted-foreground">
                             Total for {bomItem?.quantity || 1} units
@@ -598,11 +685,11 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
                           <div className="flex items-center gap-2">
                             <Calendar className="h-4 w-4 text-muted-foreground" />
                             <span className="text-sm">
-                              {new Date(assignment.delivery_date).toLocaleDateString()}
+                              {assignment.expected_delivery_date ? new Date(assignment.expected_delivery_date).toLocaleDateString() : 'Not set'}
                             </span>
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {assignment.lead_time_days} days lead time
+                            {assignment.expected_delivery_date ? `${Math.ceil((new Date(assignment.expected_delivery_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))} days from now` : 'Lead time not calculated'}
                           </div>
                         </div>
                       </TableCell>
@@ -615,21 +702,28 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
                             </Badge>
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {new Date(assignment.assigned_at).toLocaleDateString()}
+                            {assignment.created_at ? new Date(assignment.created_at).toLocaleDateString() : 'Unknown date'}
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            // Handle edit assignment
-                            toast.info('Edit functionality coming soon');
-                          }}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleEditAssignment(assignment)}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteAssignment(assignment.id)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );

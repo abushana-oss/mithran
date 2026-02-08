@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { WorkflowNavigation } from '@/components/features/workflow/WorkflowNavigation';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import {
@@ -115,6 +116,12 @@ export default function SupplierEvaluationPage() {
   if (currentView === 'dashboard') {
     return (
       <div className="space-y-6">
+        {/* Workflow Navigation */}
+        <WorkflowNavigation 
+          currentModuleId="supplier-evaluation" 
+          projectId={projectId}
+        />
+        
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" onClick={() => router.push(`/projects/${projectId}`)}>
             <ArrowLeft className="h-4 w-4" />

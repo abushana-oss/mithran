@@ -9,7 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   getFactorWeights,
   updateFactorWeights,
-  calculateSupplierRankings
+  calculateSupplierRankings,
+  getPartWiseCostAnalysis,
+  initializePartWiseCostAnalysis,
+  bulkUpdatePartWiseCostAnalysis,
+  type PartWiseCostAnalysis,
+  type PartWiseCostBaseData,
+  type BulkUpdatePartWiseCostAnalysisData
 } from '@/lib/api/supplier-nominations';
 import {
   getCostAnalysis,
@@ -35,7 +41,9 @@ import {
   Calculator,
   BarChart3,
   Edit,
-  Save
+  Save,
+  Package,
+  ChevronDown
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -50,14 +58,331 @@ export interface CostCompetencyData {
   basePaymentTerm?: string; // Base payment term for reference
 }
 
+// Helper function to calculate summary for part-wise overview
+function calculatePartSummary(
+  costAnalysis: PartWiseCostAnalysis[],
+  vendors: Array<{ id: string; name: string }>
+) {
+  if (!costAnalysis || costAnalysis.length === 0) {
+    return {
+      topVendor: vendors.length > 0 ? vendors[0] : null,
+      bestScore: 0,
+      lowestCost: 0,
+      vendorCount: vendors.length
+    };
+  }
+
+  // Find vendor with best overall rank (lowest rank number means better)
+  const bestRankedVendor = costAnalysis
+    .filter(ca => ca.overallRank != null && ca.overallRank > 0)
+    .sort((a, b) => (a.overallRank || Infinity) - (b.overallRank || Infinity))[0];
+
+  const topVendor = bestRankedVendor 
+    ? vendors.find(v => v.id === bestRankedVendor.vendorId) || null
+    : (vendors.length > 0 ? vendors[0] : null);
+
+  // Get best total score (highest score)
+  const bestScore = Math.max(...costAnalysis.map(ca => ca.totalScore || 0));
+
+  // Get lowest net price (if available)
+  const lowestCost = Math.min(
+    ...costAnalysis
+      .map(ca => ca.netPriceUnit || 0)
+      .filter(price => price > 0)
+  );
+
+  return {
+    topVendor,
+    bestScore: bestScore > 0 ? bestScore : 0,
+    lowestCost: lowestCost !== Infinity ? lowestCost : 0,
+    vendorCount: vendors.length
+  };
+}
+
+// Transformation functions for part-wise cost analysis
+function transformPartWiseCostToComponentData(
+  costAnalysis: PartWiseCostAnalysis[],
+  baseData: PartWiseCostBaseData | null,
+  vendors: Array<{ id: string; name: string }>
+): CostCompetencyData[] {
+  const numVendors = vendors.length;
+  
+  // Create vendor mapping for consistent ordering
+  const vendorOrder = vendors.map(v => v.id);
+  
+  const result: CostCompetencyData[] = [
+    {
+      id: 1,
+      costComponent: "Raw Material Cost",
+      baseValue: baseData?.baseRawMaterialCost || 0,
+      supplierValues: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.rawMaterialCost || 0;
+      }),
+      unit: "₹"
+    },
+    {
+      id: 2,
+      costComponent: "Process Cost",
+      baseValue: baseData?.baseProcessCost || 0,
+      supplierValues: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.processCost || 0;
+      }),
+      unit: "₹"
+    },
+    {
+      id: 3,
+      costComponent: "Overheads & Profit",
+      baseValue: baseData?.baseOverheadsProfit || 0,
+      supplierValues: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.overheadsProfit || 0;
+      }),
+      unit: "₹"
+    },
+    {
+      id: 4,
+      costComponent: "Packing & Forwarding Cost",
+      baseValue: baseData?.basePackingForwardingCost || 0,
+      supplierValues: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.packingForwardingCost || 0;
+      }),
+      unit: "₹"
+    },
+    {
+      id: 5,
+      costComponent: "Payment Terms",
+      paymentTerms: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.paymentTerms || "";
+      }),
+      supplierValues: [],
+      basePaymentTerm: baseData?.basePaymentTerms || ""
+    },
+    {
+      id: 6,
+      costComponent: "Net Price/unit",
+      baseValue: baseData?.baseNetPriceUnit || 0,
+      supplierValues: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.netPriceUnit || 0;
+      }),
+      unit: "₹"
+    },
+    {
+      id: 7,
+      costComponent: "Development cost",
+      baseValue: baseData?.baseDevelopmentCost || 0,
+      supplierValues: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.developmentCost || 0;
+      }),
+      unit: "Lakhs"
+    },
+    {
+      id: 8,
+      costComponent: "Financial Risk",
+      baseValue: baseData?.baseFinancialRisk || 0,
+      supplierValues: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.financialRisk || 0;
+      }),
+      unit: "%"
+    },
+    {
+      id: 9,
+      costComponent: "Cost Competency Score",
+      baseValue: baseData?.baseCostCompetencyScore || 0,
+      supplierValues: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.costCompetencyScore || 0;
+      }),
+      unit: "Score"
+    },
+    {
+      id: 10,
+      costComponent: "Lead Time Days",
+      baseValue: baseData?.baseLeadTimeDays || 0,
+      supplierValues: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.leadTimeDays || 0;
+      }),
+      unit: "Days"
+    },
+    // Ranking rows
+    {
+      id: 11,
+      costComponent: "Rank-Cost",
+      supplierValues: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.rankCost || 0;
+      }),
+      isRanking: true
+    },
+    {
+      id: 12,
+      costComponent: "Rank-Development cost",
+      supplierValues: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.rankDevelopmentCost || 0;
+      }),
+      isRanking: true
+    },
+    {
+      id: 13,
+      costComponent: "Lead Time Ranking",
+      supplierValues: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.rankLeadTime || 0;
+      }),
+      isRanking: true
+    },
+    {
+      id: 14,
+      costComponent: "Total Score",
+      supplierValues: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.totalScore || 0;
+      }),
+      unit: "Score",
+      isRanking: true
+    },
+    {
+      id: 15,
+      costComponent: "Overall Rank",
+      supplierValues: vendorOrder.map(vendorId => {
+        const analysis = costAnalysis.find(ca => ca.vendorId === vendorId);
+        return analysis?.overallRank || 0;
+      }),
+      isRanking: true
+    }
+  ];
+  
+  return result;
+}
+
+function transformComponentDataToPartWise(
+  costData: CostCompetencyData[],
+  vendors: Array<{ id: string; name: string }>,
+  nominationId: string,
+  bomItemId: string
+): BulkUpdatePartWiseCostAnalysisData {
+  const vendorOrder = vendors.map(v => v.id);
+  
+  // Transform base data
+  const baseData: any = {
+    nominationId,
+    bomItemId
+  };
+  
+  costData.forEach(item => {
+    switch (item.costComponent) {
+      case "Raw Material Cost":
+        baseData.baseRawMaterialCost = item.baseValue;
+        break;
+      case "Process Cost":
+        baseData.baseProcessCost = item.baseValue;
+        break;
+      case "Overheads & Profit":
+        baseData.baseOverheadsProfit = item.baseValue;
+        break;
+      case "Packing & Forwarding Cost":
+        baseData.basePackingForwardingCost = item.baseValue;
+        break;
+      case "Payment Terms":
+        baseData.basePaymentTerms = item.basePaymentTerm;
+        break;
+      case "Net Price/unit":
+        baseData.baseNetPriceUnit = item.baseValue;
+        break;
+      case "Development cost":
+        baseData.baseDevelopmentCost = item.baseValue;
+        break;
+      case "Financial Risk":
+        baseData.baseFinancialRisk = item.baseValue;
+        break;
+      case "Cost Competency Score":
+        baseData.baseCostCompetencyScore = item.baseValue;
+        break;
+      case "Lead Time Days":
+        baseData.baseLeadTimeDays = item.baseValue;
+        break;
+    }
+  });
+  
+  // Transform vendor data
+  const vendorCostData: any[] = vendorOrder.map((vendorId, vendorIndex) => {
+    const vendorData: any = {
+      nominationId,
+      bomItemId,
+      vendorId
+    };
+    
+    costData.forEach(item => {
+      if (item.isRanking) return; // Skip ranking rows
+      
+      switch (item.costComponent) {
+        case "Raw Material Cost":
+          vendorData.rawMaterialCost = Math.round((item.supplierValues[vendorIndex] || 0) * 100) / 100;
+          break;
+        case "Process Cost":
+          vendorData.processCost = Math.round((item.supplierValues[vendorIndex] || 0) * 100) / 100;
+          break;
+        case "Overheads & Profit":
+          vendorData.overheadsProfit = Math.round((item.supplierValues[vendorIndex] || 0) * 100) / 100;
+          break;
+        case "Packing & Forwarding Cost":
+          vendorData.packingForwardingCost = Math.round((item.supplierValues[vendorIndex] || 0) * 100) / 100;
+          break;
+        case "Payment Terms":
+          vendorData.paymentTerms = item.paymentTerms?.[vendorIndex] || '';
+          break;
+        case "Net Price/unit":
+          vendorData.netPriceUnit = Math.round((item.supplierValues[vendorIndex] || 0) * 100) / 100;
+          break;
+        case "Development cost":
+          vendorData.developmentCost = Math.round((item.supplierValues[vendorIndex] || 0) * 100) / 100;
+          break;
+        case "Financial Risk":
+          vendorData.financialRisk = item.supplierValues[vendorIndex];
+          break;
+        case "Cost Competency Score":
+          vendorData.costCompetencyScore = item.supplierValues[vendorIndex];
+          break;
+        case "Lead Time Days":
+          vendorData.leadTimeDays = item.supplierValues[vendorIndex];
+          break;
+      }
+    });
+    
+    return vendorData;
+  });
+  
+  return {
+    baseData,
+    vendorCostData
+  };
+}
+
 
 interface CostCompetencyAnalysisProps {
   nominationId: string;
+  projectId?: string; // Project ID for fetching BOMs and BOM items
   onDataUpdate?: (data: CostCompetencyData[]) => void;
   vendors?: Array<{ id: string; name: string; }>;
+  nominationBomParts?: Array<{
+    bomItemId: string;
+    bomItemName: string;
+    partNumber?: string;
+    material?: string;
+    quantity: number;
+    vendorIds: string[];
+  }>; // BOM parts included in this nomination
 }
 
-export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdate }: CostCompetencyAnalysisProps) {
+export function CostCompetencyAnalysis({ nominationId, projectId, vendors = [], onDataUpdate, nominationBomParts = [] }: CostCompetencyAnalysisProps) {
   // Create empty cost data structure for real data input
   const createEmptyCostData = () => {
     const numVendors = vendors.length || 0;
@@ -168,6 +493,20 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdat
     ];
   };
 
+  // BOM Part Selection State - now using nomination BOM parts
+  const [selectedBomItemId, setSelectedBomItemId] = useState<string>('');
+  
+  // Use nomination BOM parts directly
+  const availableBomParts = nominationBomParts || [];
+  
+  // Auto-select first BOM part when parts become available
+  React.useEffect(() => {
+    if (availableBomParts.length > 0 && !selectedBomItemId) {
+      setSelectedBomItemId(availableBomParts[0].bomItemId);
+    }
+  }, [availableBomParts, selectedBomItemId]);
+
+
   const [costData, setCostData] = useState<CostCompetencyData[]>([]);
   const [isLoadingCostData, setIsLoadingCostData] = useState(false);
   const [isEditingCost, setIsEditingCost] = useState(false);
@@ -184,13 +523,11 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdat
         item.costComponent.includes('Vendor 1e8e') ||
         item.costComponent === '' ||
         item.costComponent.length > 100) {
-        console.log(`Removing malformed entry: ${item.costComponent}`);
         return false;
       }
 
       // Filter out duplicates
       if (seen.has(item.costComponent)) {
-        console.log(`Removing duplicate entry: ${item.costComponent}`);
         return false;
       }
 
@@ -206,12 +543,22 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdat
     leadTime: 33.34
   });
   const [isLoadingWeights, setIsLoadingWeights] = useState(false);
+
+  // Part-wise summary data for dashboard
+  const [partWiseSummary, setPartWiseSummary] = useState<Record<string, any>>({});
   // const [rankings, setRankings] = useState<SupplierRanking[]>([]); // Removed unused state
 
-  // ENTERPRISE OPTIMIZATION: Load cost analysis data and factor weights with single optimized call
+  // ENTERPRISE OPTIMIZATION: Load part-wise cost analysis data with single optimized call
   React.useEffect(() => {
-    const loadCostAnalysisData = async () => {
-      if (!nominationId || vendors.length === 0) return;
+    const loadPartWiseCostData = async () => {
+      if (!nominationId || !selectedBomItemId || vendors.length === 0) {
+        // If no BOM part selected, show empty state
+        if (vendors.length > 0 && !selectedBomItemId) {
+          const emptyData = createEmptyCostData();
+          setCostData(emptyData);
+        }
+        return;
+      }
 
       // Prevent duplicate calls
       if (isLoadingCostData || isLoadingWeights) return;
@@ -220,24 +567,43 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdat
         setIsLoadingCostData(true);
         setIsLoadingWeights(true);
 
-        // BATCH LOAD: Get both cost analysis and factor weights in parallel - ENTERPRISE BEST PRACTICE
-        const [costAnalysis, weights] = await Promise.all([
-          getCostAnalysis(nominationId),
+        // BATCH LOAD: Get part-wise cost analysis and factor weights in parallel - ENTERPRISE BEST PRACTICE
+        const [partWiseResult, weights] = await Promise.all([
+          getPartWiseCostAnalysis(nominationId, selectedBomItemId),
           getFactorWeights(nominationId)
         ]);
 
-        // Process cost analysis data efficiently
-        if (costAnalysis.length === 0) {
+        // Process part-wise cost analysis data efficiently
+        if (!partWiseResult || partWiseResult.costAnalysis.length === 0) {
           // Initialize if no data exists (one-time setup)
-          console.log('Initializing cost analysis for nomination:', nominationId);
-          await initializeCostAnalysis(nominationId);
+          await initializePartWiseCostAnalysis(nominationId, selectedBomItemId);
           // Single re-fetch after initialization
-          const newCostAnalysis = await getCostAnalysis(nominationId);
-          const transformedData = transformCostAnalysisToComponentData(newCostAnalysis, vendors);
+          const newPartWiseResult = await getPartWiseCostAnalysis(nominationId, selectedBomItemId);
+          const transformedData = transformPartWiseCostToComponentData(
+            newPartWiseResult.costAnalysis, 
+            newPartWiseResult.baseData, 
+            vendors
+          );
           setCostData(transformedData);
+          
+          // Update part-wise summary for overview
+          setPartWiseSummary(prev => ({
+            ...prev,
+            [selectedBomItemId]: calculatePartSummary(newPartWiseResult.costAnalysis, vendors)
+          }));
         } else {
-          const transformedData = transformCostAnalysisToComponentData(costAnalysis, vendors);
+          const transformedData = transformPartWiseCostToComponentData(
+            partWiseResult.costAnalysis, 
+            partWiseResult.baseData, 
+            vendors
+          );
           setCostData(transformedData);
+          
+          // Update part-wise summary for overview
+          setPartWiseSummary(prev => ({
+            ...prev,
+            [selectedBomItemId]: calculatePartSummary(partWiseResult.costAnalysis, vendors)
+          }));
         }
 
         // Set factor weights from parallel call
@@ -248,7 +614,6 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdat
         });
 
       } catch (error) {
-        console.error('Failed to load cost analysis data:', error);
         // Fallback to empty data structure only if no data exists
         if (costData.length === 0) {
           const fallbackData = createEmptyCostData();
@@ -260,11 +625,9 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdat
       }
     };
 
-    // Only load once when component mounts or nominationId changes
-    if (nominationId && vendors.length > 0 && costData.length === 0) {
-      loadCostAnalysisData();
-    }
-  }, [nominationId, vendors.length]); // Stable dependencies
+    // Load data when nomination, BOM part, or vendor list changes
+    loadPartWiseCostData();
+  }, [nominationId, selectedBomItemId, vendors.length]); // Stable dependencies
 
   // Clean up duplicates on initial mount
   React.useEffect(() => {
@@ -543,9 +906,13 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdat
         }
       });
 
-      // Transform to API format and send batch update - ENTERPRISE BEST PRACTICE
-      const bulkUpdateData = transformComponentDataToCostAnalysis(updatedCostData, vendors);
-      await batchUpdateCostAnalysis(nominationId, bulkUpdateData);
+      // Transform to part-wise API format and send batch update - ENTERPRISE BEST PRACTICE
+      if (!selectedBomItemId) {
+        throw new Error('No BOM part selected for cost analysis');
+      }
+      
+      const bulkUpdateData = transformComponentDataToPartWise(updatedCostData, vendors, nominationId, selectedBomItemId);
+      await bulkUpdatePartWiseCostAnalysis(nominationId, selectedBomItemId, bulkUpdateData);
 
       // Update local state and clear editing state
       setCostData(updatedCostData);
@@ -557,8 +924,6 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdat
       toast.success(`Successfully saved ${changeCount} cost data changes`);
 
     } catch (error) {
-      console.error('Failed to save cost data:', error);
-
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
       // Provide specific error message based on the error type
@@ -587,8 +952,7 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdat
     // Validate weights sum to 100 (with tolerance for floating point precision)
     const sum = newWeights.cost + newWeights.developmentCost + newWeights.leadTime;
     if (Math.abs(sum - 100) > 0.1) {
-      console.warn(`Weights must sum to 100%. Current sum: ${sum.toFixed(2)}%`);
-      // Still allow the change for UI responsiveness, but warn user
+      // Still allow the change for UI responsiveness
     }
 
     setFactorWeights(newWeights);
@@ -608,10 +972,8 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdat
         // Recalculate rankings with new weights
         await handleCalculateRankings();
       } catch (error) {
-        console.error('Failed to update factor weights:', error);
         // Show user-friendly error message
         if (error instanceof Error && error.message.includes('must sum to 100%')) {
-          console.warn('Weight validation failed due to precision. Auto-adjusting...');
           // Auto-adjust the last weight to make sum exactly 100
           const adjustedLeadTime = 100 - newWeights.cost - newWeights.developmentCost;
           setFactorWeights(prev => ({ ...prev, leadTime: adjustedLeadTime }));
@@ -650,7 +1012,7 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdat
         return newData;
       });
     } catch (error) {
-      console.error('Failed to calculate rankings:', error);
+      // Rankings calculation failed
     }
   };
 
@@ -730,376 +1092,410 @@ export function CostCompetencyAnalysis({ nominationId, vendors = [], onDataUpdat
     );
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Summary Dashboard */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+  // Show empty state if no project ID provided
+  if (!projectId) {
+    return (
+      <div className="space-y-6">
         <Card className="bg-gray-800 border-gray-700">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-300 flex items-center gap-2">
-              <Award className="h-4 w-4" />
-              Top Supplier
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-400">{getBestSupplier() || 'Not calculated'}</div>
-            <p className="text-xs text-gray-400 mt-1">Highest ranked</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gray-800 border-gray-700">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-300 flex items-center gap-2">
-              <DollarSign className="h-4 w-4" />
-              Lowest Net Price
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-white">
-              ₹{supplierSummary.length > 0 ? Math.min(...supplierSummary.map(s => s.netPrice)).toFixed(2) : '0.00'}
-            </div>
-            <p className="text-xs text-gray-400 mt-1">Per Unit</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gray-800 border-gray-700">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-300 flex items-center gap-2">
-              <BarChart3 className="h-4 w-4" />
-              Highest Score
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-400">
-              {supplierSummary.length > 0 ? Math.max(...supplierSummary.map(s => s.score)).toFixed(1) : '0.0'}
-            </div>
-            <p className="text-xs text-gray-400 mt-1">Competency Score</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gray-800 border-gray-700">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-300 flex items-center gap-2">
-              <Calculator className="h-4 w-4" />
-              Development Cost
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-white">
-              ₹{supplierSummary.length > 0 ? Math.min(...supplierSummary.map(s => s.devCost)).toFixed(1) : '0.0'}L
-            </div>
-            <p className="text-xs text-gray-400 mt-1">Lowest Cost</p>
+          <CardContent className="p-8 text-center">
+            <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-300 mb-2">No Project Context</h3>
+            <p className="text-gray-400 mb-4">Project information is required to load BOMs for cost analysis</p>
           </CardContent>
         </Card>
       </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Part-wise Cost Vendor Rating Dashboard */}
+      {availableBomParts.length > 1 && (
+        <Card className="bg-gray-800 border-gray-700">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Part-wise Vendor Performance Overview
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+              {availableBomParts.map((part) => {
+                // Get real part-wise summary data
+                const partSummary = partWiseSummary[part.bomItemId] || {
+                  topVendor: vendors.length > 0 ? vendors[0] : null,
+                  bestScore: 0,
+                  lowestCost: 0,
+                  vendorCount: vendors.length
+                };
+
+                return (
+                  <div key={part.bomItemId} className="bg-gray-900 rounded-lg p-4 border border-gray-600">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h4 className="text-white font-medium text-sm">{part.bomItemName}</h4>
+                        {part.partNumber && (
+                          <p className="text-gray-400 text-xs">Part: {part.partNumber}</p>
+                        )}
+                      </div>
+                      <Badge 
+                        variant={selectedBomItemId === part.bomItemId ? "default" : "outline"}
+                        className={selectedBomItemId === part.bomItemId ? "bg-blue-600" : "border-gray-600"}
+                      >
+                        {selectedBomItemId === part.bomItemId ? "Active" : "View"}
+                      </Badge>
+                    </div>
+
+                    <div className="space-y-2">
+                      {/* Top Vendor */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400 text-xs">Top Vendor:</span>
+                        {partSummary.topVendor ? (
+                          <div className="flex items-center gap-1">
+                            <Award className="h-3 w-3 text-green-400" />
+                            <span className="text-green-400 text-xs font-medium">
+                              {partSummary.topVendor.name}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-500 text-xs">No data</span>
+                        )}
+                      </div>
+
+                      {/* Overall Score */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400 text-xs">Best Score:</span>
+                        <span className="text-white text-xs font-medium">
+                          {partSummary.bestScore > 0 ? partSummary.bestScore.toFixed(2) : "No data"}
+                        </span>
+                      </div>
+                      
+                      {/* Net Price (if available) */}
+                      {partSummary.lowestCost > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-gray-400 text-xs">Best Price:</span>
+                          <span className="text-green-400 text-xs font-medium">
+                            ₹{partSummary.lowestCost.toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Vendor Count */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400 text-xs">Vendors:</span>
+                        <span className="text-blue-400 text-xs font-medium">{partSummary.vendorCount}</span>
+                      </div>
+
+                      {/* Action Button */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-2 border-gray-600 text-gray-300 hover:bg-gray-700"
+                        onClick={() => setSelectedBomItemId(part.bomItemId)}
+                      >
+                        {selectedBomItemId === part.bomItemId ? "Currently Selected" : "Analyze Part"}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* BOM Part Selection for Nomination */}
+      {availableBomParts.length > 0 ? (
+        <Card className="bg-gray-800 border-gray-700">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between gap-4">
+              <CardTitle className="text-white flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Select BOM Part for Cost Analysis
+              </CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4">
+              <div className="flex-1 max-w-md">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  BOM Parts (from this nomination)
+                </label>
+                <Select value={selectedBomItemId} onValueChange={setSelectedBomItemId}>
+                  <SelectTrigger className="w-full bg-gray-700 border-gray-600 text-white">
+                    <SelectValue placeholder="Select a BOM part to analyze..." />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-700 border-gray-600">
+                    {availableBomParts.map((part) => (
+                      <SelectItem
+                        key={part.bomItemId}
+                        value={part.bomItemId}
+                        className="text-white hover:bg-gray-600 focus:bg-gray-600"
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-medium">{part.bomItemName}</span>
+                          <div className="text-xs text-gray-400 space-x-2">
+                            {part.partNumber && <span>Part: {part.partNumber}</span>}
+                            {part.material && <span>Material: {part.material}</span>}
+                            <span>Qty: {part.quantity}</span>
+                          </div>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {selectedBomItemId && (
+                <div className="flex items-center gap-2 text-sm text-gray-300">
+                  <span>Selected:</span>
+                  <Badge variant="outline" className="border-green-500 text-green-400">
+                    {availableBomParts.find(part => part.bomItemId === selectedBomItemId)?.bomItemName}
+                  </Badge>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="bg-gray-800 border-gray-700">
+          <CardContent className="p-8 text-center">
+            <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-300 mb-2">No BOMs Available</h3>
+            <p className="text-gray-400 mb-4">
+              No BOMs found for this project. Create a BOM first to perform part-wise cost analysis.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cost Competency Analysis Table */}
-      <Card className="bg-gray-800 border-gray-700">
-        <CardHeader>
-          <div className="flex items-center justify-between gap-4">
-            <CardTitle className="text-white flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
-              Cost Competency Score & Financial Stability Analysis
-            </CardTitle>
-
-            {/* Action Buttons - ENTERPRISE BEST PRACTICE */}
-            <div className="flex items-center gap-2">
-              {isEditingCost ? (
-                <>
-                  {Object.keys(editingCostValues).length > 0 && (
-                    <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
-                      {Object.keys(editingCostValues).length} unsaved changes
+      {(availableBomParts.length === 0 || selectedBomItemId) ? (
+        // Show cost analysis table if no BOMs available (fallback) or when a BOM part is selected
+        <Card className="bg-gray-800 border-gray-700">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-4">
+              <CardTitle className="text-white flex items-center gap-2">
+                <DollarSign className="h-5 w-5" />
+                {selectedBomItemId ? (
+                  <>
+                    Part-wise Cost Analysis - {availableBomParts.find(p => p.bomItemId === selectedBomItemId)?.bomItemName || 'Selected Part'}
+                    <Badge variant="secondary" className="ml-2">
+                      {availableBomParts.find(p => p.bomItemId === selectedBomItemId)?.partNumber || 'Part'}
                     </Badge>
-                  )}
-                  <Button
-                    onClick={saveCostData}
-                    disabled={isSavingCost || Object.keys(editingCostValues).length === 0}
-                    className="bg-green-600 hover:bg-green-700 text-white"
-                    size="sm"
-                  >
-                    {isSavingCost ? (
-                      <>
-                        <Save className="h-4 w-4 mr-2 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-4 w-4 mr-2" />
-                        Save Changes
-                      </>
+                  </>
+                ) : (
+                  'Cost Competency Score & Financial Stability Analysis'
+                )}
+              </CardTitle>
+              {/* Action Buttons - ENTERPRISE BEST PRACTICE */}
+              <div className="flex items-center gap-2">
+                {isEditingCost ? (
+                  <>
+                    {Object.keys(editingCostValues).length > 0 && (
+                      <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">
+                        {Object.keys(editingCostValues).length} unsaved changes
+                      </Badge>
                     )}
-                  </Button>
+                    <Button
+                      onClick={saveCostData}
+                      disabled={isSavingCost || Object.keys(editingCostValues).length === 0}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      size="sm"
+                    >
+                      {isSavingCost ? (
+                        <>
+                          <Save className="h-4 w-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4 mr-2" />
+                          Save Changes
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={cancelCostEditing}
+                      disabled={isSavingCost}
+                      variant="outline"
+                      size="sm"
+                      className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                    >
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
                   <Button
-                    onClick={cancelCostEditing}
-                    disabled={isSavingCost}
+                    onClick={() => setIsEditingCost(true)}
                     variant="outline"
                     size="sm"
                     className="border-gray-600 text-gray-300 hover:bg-gray-700"
                   >
-                    Cancel
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit Cost Data
                   </Button>
-                </>
-              ) : (
-                <Button
-                  onClick={() => setIsEditingCost(true)}
-                  variant="outline"
-                  size="sm"
-                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Cost Data
-                </Button>
-              )}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-gray-700">
-                <TableHead className="text-gray-300 font-medium w-[200px]">Cost Component</TableHead>
-                <TableHead className="text-center text-gray-300 font-medium w-[120px]">Base/Reference</TableHead>
-                {vendors.length > 0 ? vendors.map((vendor, index) => {
-                  const colors = ['text-blue-400', 'text-green-400', 'text-yellow-400', 'text-purple-400'];
-                  return (
-                    <TableHead key={vendor.id} className={`text-center ${colors[index % colors.length]} font-medium w-[100px]`}>
-                      {vendor.name}
-                    </TableHead>
-                  );
-                }) : (
-                  <>
-                    <TableHead className="text-center text-blue-400 font-medium w-[100px]">Supplier-1</TableHead>
-                    <TableHead className="text-center text-green-400 font-medium w-[100px]">Supplier-2</TableHead>
-                    <TableHead className="text-center text-yellow-400 font-medium w-[100px]">Supplier-3</TableHead>
-                    <TableHead className="text-center text-purple-400 font-medium w-[100px]">Supplier-4</TableHead>
-                  </>
                 )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {costData.map((row) => (
-                <TableRow key={row.id} className="border-gray-700">
-                  <TableCell className="text-white font-medium text-left pl-4">{row.costComponent}</TableCell>
-
-                  {/* Base/Reference Value - Edit Mode Pattern */}
-                  <TableCell className="text-center text-gray-300">
-                    {row.costComponent === "Payment Terms" ? (
-                      isEditingCost ? (
-                        <Select
-                          value={getCurrentBasePaymentTerm()}
-                          onValueChange={updateBasePaymentTermLocal}
-                        >
-                          <SelectTrigger className="w-32 h-8 bg-gray-700 border-gray-600 text-white text-xs">
-                            <SelectValue placeholder="Base terms" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-gray-700 border-gray-600">
-                            {paymentTermOptions.map((option) => (
-                              <SelectItem
-                                key={option}
-                                value={option}
-                                className="text-white hover:bg-gray-600 focus:bg-gray-600"
-                              >
-                                {option}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <span className="text-white font-medium text-sm px-2 py-1">
-                          {getCurrentBasePaymentTerm() || "-"}
-                        </span>
-                      )
-                    ) : row.isRanking ? (
-                      <div className="text-xs text-gray-400 px-2 py-1">
-                        Auto-calc
-                      </div>
-                    ) : isEditingCost ? (
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={getCurrentBaseValue(row.id)}
-                        onChange={(e) => updateBaseValueLocal(row.id, parseFloat(e.target.value) || 0)}
-                        className="w-24 h-8 bg-gray-700 border-gray-600 text-white text-sm text-center"
-                        placeholder="0.00"
-                      />
-                    ) : (
-                      <span className="text-white font-medium text-sm">
-                        {getCurrentBaseValue(row.id).toFixed(2)}
-                      </span>
-                    )}
-                  </TableCell>
-
-                  {/* Dynamic Supplier Columns - Edit Mode Pattern */}
-                  {row.paymentTerms ? (
-                    // Payment Terms Row - Edit Mode Pattern
-                    row.paymentTerms.map((_, index) => {
-                      return (
-                        <TableCell key={index} className="text-center">
-                          {isEditingCost ? (
-                            <Select
-                              value={getCurrentPaymentTerm(row.id, index)}
-                              onValueChange={(value) => updatePaymentTermLocal(row.id, index, value)}
-                            >
-                              <SelectTrigger className="w-32 h-8 bg-gray-700 border-gray-600 text-white text-xs">
-                                <SelectValue placeholder="Select terms" />
-                              </SelectTrigger>
-                              <SelectContent className="bg-gray-700 border-gray-600">
-                                {paymentTermOptions.map((option) => (
-                                  <SelectItem
-                                    key={option}
-                                    value={option}
-                                    className="text-white hover:bg-gray-600 focus:bg-gray-600"
-                                  >
-                                    {option}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <span className="text-white font-medium text-sm px-2 py-1">
-                              {getCurrentPaymentTerm(row.id, index) || "-"}
-                            </span>
-                          )}
-                        </TableCell>
-                      );
-                    })
-                  ) : (
-                    // Regular Numeric Values - Edit Mode Pattern  
-                    row.supplierValues.map((_, index) => {
-                      const colors = ['text-blue-400', 'text-green-400', 'text-yellow-400', 'text-purple-400'];
-                      const colorClass = colors[index % colors.length];
-                      const currentValue = getCurrentSupplierValue(row.id, index);
-
-                      return (
-                        <TableCell key={index} className="text-center">
-                          {row.isRanking ? (
-                            <Badge className={`${getRankingColor(currentValue)} flex items-center gap-1 justify-center w-12`}>
-                              {getRankingIcon(currentValue)}
-                              {currentValue || '-'}
-                            </Badge>
-                          ) : isEditingCost ? (
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={currentValue}
-                              onChange={(e) => updateSupplierValueLocal(row.id, index, parseFloat(e.target.value) || 0)}
-                              className={`w-20 h-8 bg-gray-700 border-gray-600 text-white text-sm text-center ${colorClass} font-medium`}
-                              placeholder="0.00"
-                            />
-                          ) : (
-                            <span className={`${colorClass} font-medium text-sm`}>
-                              {currentValue.toFixed(2)}
-                            </span>
-                          )}
-                        </TableCell>
-                      );
-                    })
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-gray-700">
+                  <TableHead className="text-gray-300 font-medium w-[200px]">Cost Component</TableHead>
+                  <TableHead className="text-center text-gray-300 font-medium w-[120px]">Base/Reference</TableHead>
+                  {vendors.length > 0 ? vendors.map((vendor, index) => {
+                    const colors = ['text-blue-400', 'text-green-400', 'text-yellow-400', 'text-purple-400'];
+                    return (
+                      <TableHead key={vendor.id} className={`text-center ${colors[index % colors.length]} font-medium w-[100px]`}>
+                        {vendor.name}
+                      </TableHead>
+                    );
+                  }) : (
+                    <>
+                      <TableHead className="text-center text-blue-400 font-medium w-[100px]">Supplier-1</TableHead>
+                      <TableHead className="text-center text-green-400 font-medium w-[100px]">Supplier-2</TableHead>
+                      <TableHead className="text-center text-yellow-400 font-medium w-[100px]">Supplier-3</TableHead>
+                      <TableHead className="text-center text-purple-400 font-medium w-[100px]">Supplier-4</TableHead>
+                    </>
                   )}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              </TableHeader>
+              <TableBody>
+                {costData.map((row) => (
+                  <TableRow key={row.id} className="border-gray-700">
+                    <TableCell className="text-white font-medium text-left pl-4">{row.costComponent}</TableCell>
 
-      {/* Factor Weights Section */}
-      <Card className="bg-gray-800 border-gray-700">
-        <CardHeader>
-          <CardTitle className="text-white flex items-center gap-2">
-            <Calculator className="h-5 w-5" />
-            Ranking Factor Weights
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Cost Factor
-              </label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={factorWeights.cost}
-                  onChange={(e) => handleWeightChange('cost', parseFloat(e.target.value) || 0)}
-                  className="bg-gray-700 border-gray-600 text-white"
-                />
-                <span className="text-gray-300 text-sm">%</span>
-              </div>
-            </div>
+                    {/* Base/Reference Value - Edit Mode Pattern */}
+                    <TableCell className="text-center text-gray-300">
+                      {row.costComponent === "Payment Terms" ? (
+                        isEditingCost ? (
+                          <Select
+                            value={getCurrentBasePaymentTerm()}
+                            onValueChange={updateBasePaymentTermLocal}
+                          >
+                            <SelectTrigger className="w-32 h-8 bg-gray-700 border-gray-600 text-white text-xs">
+                              <SelectValue placeholder="Base terms" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-gray-700 border-gray-600">
+                              {paymentTermOptions.map((option) => (
+                                <SelectItem
+                                  key={option}
+                                  value={option}
+                                  className="text-white hover:bg-gray-600 focus:bg-gray-600"
+                                >
+                                  {option}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <span className="text-white font-medium text-sm px-2 py-1">
+                            {getCurrentBasePaymentTerm() || "-"}
+                          </span>
+                        )
+                      ) : row.isRanking ? (
+                        <div className="text-xs text-gray-400 px-2 py-1">
+                          Auto-calc
+                        </div>
+                      ) : isEditingCost ? (
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={getCurrentBaseValue(row.id)}
+                          onChange={(e) => updateBaseValueLocal(row.id, parseFloat(e.target.value) || 0)}
+                          className="w-24 h-8 bg-gray-700 border-gray-600 text-white text-sm text-center"
+                          placeholder="0.00"
+                        />
+                      ) : (
+                        <span className="text-white font-medium text-sm">
+                          {getCurrentBaseValue(row.id).toFixed(2)}
+                        </span>
+                      )}
+                    </TableCell>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Development Cost Factor
-              </label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={factorWeights.developmentCost}
-                  onChange={(e) => handleWeightChange('developmentCost', parseFloat(e.target.value) || 0)}
-                  className="bg-gray-700 border-gray-600 text-white"
-                />
-                <span className="text-gray-300 text-sm">%</span>
-              </div>
-            </div>
+                    {/* Dynamic Supplier Columns - Edit Mode Pattern */}
+                    {row.paymentTerms ? (
+                      // Payment Terms Row - Edit Mode Pattern
+                      row.paymentTerms.map((_, index) => {
+                        return (
+                          <TableCell key={index} className="text-center">
+                            {isEditingCost ? (
+                              <Select
+                                value={getCurrentPaymentTerm(row.id, index)}
+                                onValueChange={(value) => updatePaymentTermLocal(row.id, index, value)}
+                              >
+                                <SelectTrigger className="w-32 h-8 bg-gray-700 border-gray-600 text-white text-xs">
+                                  <SelectValue placeholder="Select terms" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-gray-700 border-gray-600">
+                                  {paymentTermOptions.map((option) => (
+                                    <SelectItem
+                                      key={option}
+                                      value={option}
+                                      className="text-white hover:bg-gray-600 focus:bg-gray-600"
+                                    >
+                                      {option}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <span className="text-white font-medium text-sm px-2 py-1">
+                                {getCurrentPaymentTerm(row.id, index) || "-"}
+                              </span>
+                            )}
+                          </TableCell>
+                        );
+                      })
+                    ) : (
+                      // Regular Numeric Values - Edit Mode Pattern  
+                      row.supplierValues.map((_, index) => {
+                        const colors = ['text-blue-400', 'text-green-400', 'text-yellow-400', 'text-purple-400'];
+                        const colorClass = colors[index % colors.length];
+                        const currentValue = getCurrentSupplierValue(row.id, index);
 
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Lead Time Factor
-              </label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.1"
-                  value={factorWeights.leadTime}
-                  onChange={(e) => handleWeightChange('leadTime', parseFloat(e.target.value) || 0)}
-                  className="bg-gray-700 border-gray-600 text-white"
-                />
-                <span className="text-gray-300 text-sm">%</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between pt-4 border-t border-gray-700">
-            <span className="text-sm text-gray-400">
-              Total: {(factorWeights.cost + factorWeights.developmentCost + factorWeights.leadTime).toFixed(1)}%
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={async () => {
-                // Use exact values that sum to 100.00
-                const defaultWeights = { cost: 33.33, developmentCost: 33.33, leadTime: 33.34 };
-                setFactorWeights(defaultWeights);
-
-                if (nominationId) {
-                  try {
-                    await updateFactorWeights(nominationId, {
-                      costFactor: 33.33,
-                      developmentCostFactor: 33.33,
-                      leadTimeFactor: 33.34  // This ensures sum = 100.00
-                    });
-                    await handleCalculateRankings();
-                  } catch (error) {
-                    console.error('Failed to reset factor weights:', error);
-                  }
-                }
-              }}
-              className="h-8 text-xs"
-              disabled={isLoadingWeights}
-            >
-              Reset to Equal (33.3% each)
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+                        return (
+                          <TableCell key={index} className="text-center">
+                            {row.isRanking ? (
+                              <Badge className={`${getRankingColor(currentValue)} flex items-center gap-1 justify-center w-12`}>
+                                {getRankingIcon(currentValue)}
+                                {currentValue || '-'}
+                              </Badge>
+                            ) : isEditingCost ? (
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={currentValue}
+                                onChange={(e) => updateSupplierValueLocal(row.id, index, parseFloat(e.target.value) || 0)}
+                                className={`w-20 h-8 bg-gray-700 border-gray-600 text-white text-sm text-center ${colorClass} font-medium`}
+                                placeholder="0.00"
+                              />
+                            ) : (
+                              <span className={`${colorClass} font-medium text-sm`}>
+                                {currentValue.toFixed(2)}
+                              </span>
+                            )}
+                          </TableCell>
+                        );
+                      })
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ) : (
+        // Show message when BOM parts are available but none is selected
+        <Card className="bg-gray-800 border-gray-700">
+          <CardContent className="p-8 text-center">
+            <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-300 mb-2">Select a BOM Part</h3>
+            <p className="text-gray-400 mb-4">Choose a BOM part from the dropdown above to start part-wise cost analysis</p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

@@ -316,7 +316,7 @@ export class ProductionMaterialTrackingService {
       try {
         finalMaterials = await this.initializeProductionLotMaterials(lotId, userId);
       } catch (error) {
-        console.log('Could not initialize materials:', error.message);
+        // Could not initialize materials - using empty array
         finalMaterials = [];
       }
     }
@@ -477,6 +477,11 @@ export class ProductionMaterialTrackingService {
   // ============================================================================
 
   private async verifyLotAccess(lotId: string, userId: string): Promise<void> {
+    // Skip access verification in development mode for faster iteration
+    if (process.env.DISABLE_AUTH === 'true') {
+      return;
+    }
+
     const supabase = this.supabaseService.getClient();
 
     const { data } = await supabase

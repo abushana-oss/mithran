@@ -1,3 +1,4 @@
+
 /**
  * React Hook for Correlation Context Management
  * 
@@ -17,7 +18,7 @@ import { correlationManager, generateCorrelationContext } from '../utils/tracing
  */
 export function useCorrelationContext(userId?: string) {
   const initialized = useRef(false);
-  const sessionId = useRef<string>();
+  const sessionId = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     // Only initialize once per session

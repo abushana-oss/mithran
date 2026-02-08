@@ -437,174 +437,12 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
       </div>
 
       {/* Main Integrated Dashboard */}
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="overview">Process & Material Overview</TabsTrigger>
+      <Tabs defaultValue="materials" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="materials">Material Tracking</TabsTrigger>
           <TabsTrigger value="alerts">Integrated Alerts</TabsTrigger>
           <TabsTrigger value="timeline">Production Timeline</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="overview" className="space-y-6">
-          {/* Process-Material Integration */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Process Progress with Material Impact */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Process Progress & Material Status</CardTitle>
-                <CardDescription>
-                  Production processes with material readiness indicators
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  {processProgress.map((process) => (
-                    <div key={process.id} className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <h3 className="font-medium">{process.name}</h3>
-                          <Badge className={getStatusColor(process.status)}>
-                            {process.status}
-                          </Badge>
-                          {process.delay > 0 && (
-                            <Badge variant="destructive">
-                              {process.delay} day delay
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-sm font-medium">
-                          {process.progress}%
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                          <span>Production Progress</span>
-                          <span>{process.progress}%</span>
-                        </div>
-                        <Progress value={process.progress} className="h-2" />
-                        
-                        <div className="flex items-center justify-between text-sm">
-                          <span>Material Readiness</span>
-                          <span className={process.materialReadiness < 50 ? 'text-red-600' : process.materialReadiness < 80 ? 'text-yellow-600' : 'text-green-600'}>
-                            {process.materialReadiness}%
-                          </span>
-                        </div>
-                        <Progress 
-                          value={process.materialReadiness} 
-                          className="h-2" 
-                        />
-                      </div>
-
-                      {process.requiredMaterials.length > 0 && (
-                        <div className="text-sm">
-                          <div className="font-medium mb-2">Required Materials:</div>
-                          <div className="flex flex-wrap gap-2">
-                            {process.requiredMaterials.map(materialId => {
-                              const material = bomItems.find(item => item.partNumber === materialId);
-                              return material ? (
-                                <Badge 
-                                  key={materialId}
-                                  className={getStatusColor(material.materialStatus)}
-                                  variant="outline"
-                                >
-                                  {material.partNumber}
-                                </Badge>
-                              ) : null;
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {process.bottlenecks.length > 0 && (
-                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                          <div className="flex items-center gap-2 text-orange-800 font-medium mb-1">
-                            <AlertTriangle className="h-4 w-4" />
-                            Material Issues
-                          </div>
-                          <ul className="text-sm text-orange-700">
-                            {process.bottlenecks.map((bottleneck, index) => (
-                              <li key={index}>• {bottleneck}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Material Status Summary */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Critical Materials Status</CardTitle>
-                <CardDescription>
-                  High and critical priority materials affecting production
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {bomItems
-                    .filter(item => item.criticality === 'CRITICAL' || item.criticality === 'HIGH')
-                    .map((item) => (
-                      <div key={item.id} className="border rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <div>
-                            <h3 className="font-medium">{item.partName}</h3>
-                            <p className="text-sm text-muted-foreground">{item.partNumber}</p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge className={getSeverityColor(item.criticality)} variant="outline">
-                              {item.criticality}
-                            </Badge>
-                            <Badge className={getStatusColor(item.materialStatus)}>
-                              {item.materialStatus}
-                            </Badge>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-4 text-sm mb-3">
-                          <div className="text-center">
-                            <div className="text-lg font-semibold">{item.approvedQuantity}</div>
-                            <div className="text-muted-foreground">Available</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-lg font-semibold text-blue-600">{item.consumedQuantity}</div>
-                            <div className="text-muted-foreground">Used</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="text-lg font-semibold text-green-600">
-                              {item.totalQuantity - item.consumedQuantity}
-                            </div>
-                            <div className="text-muted-foreground">Remaining</div>
-                          </div>
-                        </div>
-
-                        {item.processImpact.length > 0 && (
-                          <div className="text-sm">
-                            <span className="font-medium">Affects Processes: </span>
-                            {item.processImpact.join(', ')}
-                          </div>
-                        )}
-
-                        {item.alerts.filter(a => !a.resolved).length > 0 && (
-                          <div className="mt-2">
-                            {item.alerts.filter(a => !a.resolved).map(alert => (
-                              <div key={alert.id} className="flex items-center gap-2 text-sm p-2 bg-red-50 border border-red-200 rounded">
-                                <AlertTriangle className="h-4 w-4 text-red-600" />
-                                <span className="text-red-800">{alert.message}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
 
         <TabsContent value="materials" className="space-y-4">
           <Card>
@@ -737,11 +575,11 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
                           </TableCell>
                           <TableCell>
                             <div className="space-y-1">
-                              {(item.processImpact || ['Material Preparation', 'Assembly']).map(processName => {
+                              {(item.processImpact || ['Material Preparation', 'Assembly']).map((processName, index) => {
                                 const process = processProgress.find(p => p.name === processName);
                                 return (
                                   <Badge 
-                                    key={processName}
+                                    key={`${item.id || item.partNumber}-${processName}-${index}`}
                                     variant="outline" 
                                     className={`text-xs ${process ? getStatusColor(process.status) : 'bg-gray-100 text-gray-600'}`}
                                   >
@@ -995,11 +833,11 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
                           </div>
                         </div>
 
-                        {process.requiredMaterials.length > 0 && (
+                        {process.requiredMaterials?.length > 0 && (
                           <div className="mb-4">
                             <div className="text-sm font-medium mb-2">Required Materials:</div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {process.requiredMaterials.map(materialId => {
+                              {process.requiredMaterials?.map(materialId => {
                                 const material = bomItems.find(item => item.partNumber === materialId);
                                 return material ? (
                                   <div key={materialId} className="flex items-center justify-between p-2 border rounded text-sm">
@@ -1014,14 +852,14 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
                           </div>
                         )}
 
-                        {process.bottlenecks.length > 0 && (
+                        {process.bottlenecks?.length > 0 && (
                           <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
                             <div className="flex items-center gap-2 text-orange-800 font-medium mb-1">
                               <AlertTriangle className="h-4 w-4" />
                               Material Bottlenecks
                             </div>
                             <ul className="text-sm text-orange-700">
-                              {process.bottlenecks.map((bottleneck, idx) => (
+                              {process.bottlenecks?.map((bottleneck, idx) => (
                                 <li key={idx}>• {bottleneck}</li>
                               ))}
                             </ul>

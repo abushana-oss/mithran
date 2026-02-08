@@ -172,8 +172,7 @@ export class RawMaterialsController {
       const finalRowKeys = Object.keys(jsonData[0]);
       const finalEmptyCount = finalRowKeys.filter(key => key.startsWith('__EMPTY')).length;
 
-      console.log(`Final check: ${finalEmptyCount} empty headers out of ${finalRowKeys.length} total`);
-      console.log(`Column names: ${finalRowKeys.slice(0, 10).join(', ')}${finalRowKeys.length > 10 ? '...' : ''}`);
+      // Final validation completed - checking column headers
 
       if (finalEmptyCount > finalRowKeys.length * 0.7) {
         throw new BadRequestException(
@@ -259,7 +258,7 @@ export class RawMaterialsController {
 
           // Log for first row to debug
           if (index === 0) {
-            this.logger.debug('DEBUG - Row 1 extracted values:', 'RawMaterialsController');
+            this.logger.debug('Row 1 extracted values:', 'RawMaterialsController');
             this.logger.debug(`  Specific Heat raw: ${specificHeatRaw}`, 'RawMaterialsController');
             this.logger.debug(`  Thermal Cond raw: ${thermalCondRaw}`, 'RawMaterialsController');
             this.logger.debug(`  Specific Heat parsed: ${parseNumeric(specificHeatRaw)}`, 'RawMaterialsController');

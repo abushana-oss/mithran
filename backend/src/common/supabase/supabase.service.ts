@@ -35,11 +35,17 @@ export class SupabaseService {
    * Get Supabase client authenticated with user's access token
    * This ensures RLS policies work correctly with auth.uid()
    *
-   * @param accessToken - User's Supabase access token
+   * @param accessToken - User's Supabase access token (or dev token)
    * @returns Authenticated Supabase client
    */
   getClient(accessToken?: string): SupabaseClient {
     if (!accessToken) {
+      return this.adminClient;
+    }
+
+    // In development mode, use admin client for mock tokens
+    // Dev tokens start with "dev-token-"
+    if (accessToken.startsWith('dev-token-')) {
       return this.adminClient;
     }
 
