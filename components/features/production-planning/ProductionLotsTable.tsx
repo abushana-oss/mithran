@@ -174,14 +174,20 @@ export function ProductionLotsTable({ lots, isLoading }: ProductionLotsTableProp
               <TableCell>
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
-                  {format(new Date(lot.plannedStartDate), 'MMM dd, yyyy')}
+                  {lot.plannedStartDate && !isNaN(new Date(lot.plannedStartDate).getTime()) 
+                    ? format(new Date(lot.plannedStartDate), 'MMM dd, yyyy')
+                    : 'Not set'
+                  }
                 </div>
               </TableCell>
               
               <TableCell>
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
-                  {format(new Date(lot.plannedEndDate), 'MMM dd, yyyy')}
+                  {lot.plannedEndDate && !isNaN(new Date(lot.plannedEndDate).getTime()) 
+                    ? format(new Date(lot.plannedEndDate), 'MMM dd, yyyy')
+                    : 'Not set'
+                  }
                 </div>
               </TableCell>
               

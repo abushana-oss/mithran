@@ -52,7 +52,6 @@ export class CircuitBreaker {
    * Execute a function with circuit breaker protection
    */
   async execute<T>(fn: () => Promise<T>): Promise<T> {
-    console.log('[Circuit Breaker] EXECUTE CALLED:', { state: this.state });
     if (this.state === CircuitBreakerState.OPEN) {
       // Check if enough time has passed to try HALF_OPEN
       if (Date.now() >= (this.nextAttemptTime || 0)) {
@@ -70,13 +69,10 @@ export class CircuitBreaker {
     this.totalRequests++;
 
     try {
-      console.log('[Circuit Breaker] CALLING FUNCTION');
       const result = await fn();
-      console.log('[Circuit Breaker] FUNCTION SUCCESS');
       this.onSuccess();
       return result;
     } catch (error) {
-      console.log('[Circuit Breaker] FUNCTION ERROR:', error);
       // Only count infrastructure failures, not business logic errors
       if (this.isInfrastructureFailure(error)) {
         this.onFailure();
@@ -169,7 +165,6 @@ export class CircuitBreaker {
   resetOnHealthy(): void {
     if (this.state === CircuitBreakerState.OPEN) {
       this.reset();
-      console.log('[CircuitBreaker] Reset due to confirmed healthy backend');
     }
   }
 

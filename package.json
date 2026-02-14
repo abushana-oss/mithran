@@ -67,6 +67,7 @@
     "react-day-picker": "^9.13.0",
     "react-dom": "^19.0.0",
     "react-dropzone": "^14.3.8",
+    "react-error-boundary": "^6.1.0",
     "react-hook-form": "^7.61.1",
     "react-leaflet": "^5.0.0",
     "react-resizable-panels": "^2.1.9",

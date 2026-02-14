@@ -176,7 +176,6 @@ export default function
       toast.success('Item deleted successfully');
     } catch (error) {
       toast.error('Failed to delete item');
-      console.error('Delete error:', error);
     }
   };
 
@@ -238,7 +237,6 @@ export default function
 
       toast.success('Template downloaded successfully');
     } catch (error) {
-      console.error('Template download failed:', error);
       toast.error('Failed to download template');
     }
   };
@@ -295,7 +293,6 @@ export default function
 
       toast.success('BOM exported successfully');
     } catch (error) {
-      console.error('Export failed:', error);
       toast.error('Failed to export BOM');
     }
   };
@@ -376,7 +373,6 @@ export default function
         // refetchBOMItems();
 
       } catch (error) {
-        console.error('Import failed:', error);
         toast.error('Failed to import CSV file');
       }
     };
@@ -391,7 +387,6 @@ export default function
       // TODO: Implement actual save logic if you have pending changes
       // For now, this might just be a confirmation that auto-save is working
     } catch (error) {
-      console.error('Save failed:', error);
       toast.error('Failed to save changes');
     }
   };

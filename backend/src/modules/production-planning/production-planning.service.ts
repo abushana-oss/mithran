@@ -24,6 +24,14 @@ import {
   ProductionSummaryDto,
 } from './dto/daily-production.dto';
 
+interface ProcessTemplate {
+  id: string;
+  name: string;
+  description: string;
+  estimatedDuration: number;
+  category: string;
+}
+
 @Injectable()
 export class ProductionPlanningService {
   private readonly logger = new Logger(ProductionPlanningService.name);
@@ -108,6 +116,9 @@ export class ProductionPlanningService {
         throw new BadRequestException(`Failed to associate BOM items: ${itemsError.message}`);
       }
     }
+
+    // Auto-create the 4 standard production processes for the new lot
+    await this.createDefaultProcessesForLot(lotData.id, createDto.plannedStartDate, createDto.plannedEndDate);
 
     // Fetch the complete lot data with BOM info and selected items
     const { data, error: fetchError } = await supabase
@@ -210,10 +221,17 @@ export class ProductionPlanningService {
 
     const supabase = this.supabaseService.getClient();
 
-    // Get production lot with simplified query to avoid relationship errors
+    // Get production lot with BOM relationship data
     const { data, error } = await supabase
       .from('production_lots')
-      .select('*')
+      .select(`
+        *,
+        bom:boms(
+          id, 
+          name, 
+          version
+        )
+      `)
       .eq('id', id)
       .eq('created_by', userId)
       .single();
@@ -395,10 +413,10 @@ export class ProductionPlanningService {
   ): Promise<ProductionLotResponseDto> {
     const supabase = this.supabaseService.getClient();
 
-    // Verify ownership through BOM
+    // Get existing lot to check current status for validation
     const { data: existingLot } = await supabase
       .from('production_lots')
-      .select('id, boms!inner(user_id)')
+      .select('id, status, boms!inner(user_id)')
       .eq('id', id)
       .eq('boms.user_id', userId)
       .single();
@@ -407,12 +425,26 @@ export class ProductionPlanningService {
       throw new NotFoundException('Production lot not found');
     }
 
+    // Validate status transitions if status is being updated
+    if (updateDto.status !== undefined) {
+      this.validateStatusTransition(existingLot.status, updateDto.status);
+    }
+
+    // Transform camelCase DTO fields to snake_case database fields
+    const updateData: any = { updated_at: new Date().toISOString() };
+
+    // Handle field name transformations
+    if (updateDto.lotNumber !== undefined) updateData.lot_number = updateDto.lotNumber;
+    if (updateDto.productionQuantity !== undefined) updateData.production_quantity = updateDto.productionQuantity;
+    if (updateDto.status !== undefined) updateData.status = updateDto.status;
+    if (updateDto.plannedStartDate !== undefined) updateData.planned_start_date = updateDto.plannedStartDate;
+    if (updateDto.plannedEndDate !== undefined) updateData.planned_end_date = updateDto.plannedEndDate;
+    if (updateDto.actualStartDate !== undefined) updateData.actual_start_date = updateDto.actualStartDate;
+    if (updateDto.actualEndDate !== undefined) updateData.actual_end_date = updateDto.actualEndDate;
+
     const { data, error } = await supabase
       .from('production_lots')
-      .update({
-        ...updateDto,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('id', id)
       .select(`
         *,
@@ -670,8 +702,8 @@ export class ProductionPlanningService {
       .order('process_sequence', { ascending: false })
       .limit(1);
 
-    const nextSequence = existingProcesses && existingProcesses.length > 0 
-      ? (existingProcesses[0].process_sequence || 0) + 1 
+    const nextSequence = existingProcesses && existingProcesses.length > 0
+      ? (existingProcesses[0].process_sequence || 0) + 1
       : 1;
 
     const { data, error } = await supabase
@@ -682,8 +714,6 @@ export class ProductionPlanningService {
         process_sequence: nextSequence,
         process_name: createDto.process_name,
         description: createDto.description,
-        planned_start_date: createDto.planned_start_date,
-        planned_end_date: createDto.planned_end_date,
         assigned_department: createDto.assigned_department,
         responsible_person: createDto.responsible_person,
         machine_allocation: createDto.machineAllocation ? JSON.stringify(createDto.machineAllocation) : null,
@@ -715,7 +745,22 @@ export class ProductionPlanningService {
       .from('production_processes')
       .select(`
         *,
-        subtasks:process_subtasks(*)
+        subtasks:process_subtasks(
+          *,
+          bom_requirements:subtask_bom_requirements(
+            id,
+            bom_item_id,
+            required_quantity,
+            unit,
+            requirement_status,
+            bom_item:bom_items(
+              id,
+              part_number,
+              name,
+              description
+            )
+          )
+        )
       `)
       .eq('production_lot_id', lotId)
       .order('process_sequence', { ascending: true });
@@ -729,6 +774,7 @@ export class ProductionPlanningService {
     if (error) {
       throw new BadRequestException(`Failed to get production processes: ${error.message}`);
     }
+
 
     return data;
   }
@@ -756,6 +802,24 @@ export class ProductionPlanningService {
     let updateData: any = { ...updateDto };
     if (updateDto.machineAllocation) {
       updateData.machine_allocation = JSON.stringify(updateDto.machineAllocation);
+    }
+
+    // Map camelCase DTO fields to snake_case database columns
+    if ('plannedStartDate' in updateDto) {
+      updateData.planned_start_date = updateDto.plannedStartDate;
+      delete updateData.plannedStartDate;
+    }
+    if ('plannedEndDate' in updateDto) {
+      updateData.planned_end_date = updateDto.plannedEndDate;
+      delete updateData.plannedEndDate;
+    }
+    if ('actualStartDate' in updateDto) {
+      updateData.actual_start_date = updateDto.actualStartDate;
+      delete updateData.actualStartDate;
+    }
+    if ('actualEndDate' in updateDto) {
+      updateData.actual_end_date = updateDto.actualEndDate;
+      delete updateData.actualEndDate;
     }
 
     const { data, error } = await supabase
@@ -799,6 +863,19 @@ export class ProductionPlanningService {
     // Verify process ownership
     await this.verifyProcessOwnership(createDto.productionProcessId, userId);
 
+    // Extract and filter BOM parts
+    const rawBomParts = createDto.bomParts || [];
+    
+    // Filter out empty or invalid BOM parts
+    const bomParts = rawBomParts.filter(part => 
+      part && 
+      part.bom_item_id && 
+      typeof part.required_quantity === 'number' && 
+      part.required_quantity > 0 &&
+      part.unit
+    );
+    
+
     // Use the database function for comprehensive subtask creation with BOM parts
     const { data, error } = await supabase.rpc('create_subtask_with_bom_parts', {
       p_production_process_id: createDto.productionProcessId,
@@ -808,8 +885,8 @@ export class ProductionPlanningService {
       p_assigned_operator: createDto.assignedOperator || null,
       p_planned_start_date: createDto.plannedStartDate ? new Date(createDto.plannedStartDate).toISOString() : null,
       p_planned_end_date: createDto.plannedEndDate ? new Date(createDto.plannedEndDate).toISOString() : null,
-      p_status: 'PENDING',
-      p_bom_parts: (createDto as any).bomParts || []
+      p_status: 'pending',
+      p_bom_parts: bomParts
     });
 
     if (error) {
@@ -827,14 +904,13 @@ export class ProductionPlanningService {
 
     // Return the subtask details by fetching the created subtask
     const { data: subtaskData, error: fetchError } = await supabase
-      .from('v_subtask_details')
+      .from('process_subtasks')
       .select('*')
       .eq('id', result.subtask_id)
       .single();
 
     if (fetchError) {
       // Subtask was created but we couldn't fetch details - return basic info
-      console.warn('Subtask created but could not fetch details:', fetchError);
       return {
         id: result.subtask_id,
         task_name: createDto.taskName,
@@ -898,6 +974,32 @@ export class ProductionPlanningService {
     }
 
     return data;
+  }
+
+  async deleteProcessSubtask(id: string, userId: string): Promise<void> {
+    const supabase = this.supabaseService.getClient();
+
+    // Verify ownership
+    const { data: subtask } = await supabase
+      .from('process_subtasks')
+      .select('production_process_id')
+      .eq('id', id)
+      .single();
+
+    if (!subtask) {
+      throw new NotFoundException('Process subtask not found');
+    }
+
+    await this.verifyProcessOwnership(subtask.production_process_id, userId);
+
+    const { error } = await supabase
+      .from('process_subtasks')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      throw new BadRequestException(`Failed to delete process subtask: ${error.message}`);
+    }
   }
 
   // ============================================================================
@@ -1226,6 +1328,7 @@ export class ProductionPlanningService {
     };
   }
 
+
   // ============================================================================
   // HELPER METHODS
   // ============================================================================
@@ -1248,31 +1351,54 @@ export class ProductionPlanningService {
   private async verifyProcessOwnership(processId: string, userId: string): Promise<void> {
     const supabase = this.supabaseService.getClient();
 
-    // First, get the process and its production lot
-    const { data: process, error } = await supabase
+    // Step 1: Get the production process
+    const { data: process, error: processError } = await supabase
       .from('production_processes')
-      .select(`
-        id,
-        production_lot_id,
-        production_lots!inner(
-          id,
-          bom_id,
-          boms!inner(user_id)
-        )
-      `)
+      .select('id, production_lot_id')
       .eq('id', processId)
       .single();
 
-    if (error || !process) {
-      throw new NotFoundException('Production process not found');
+    if (processError) {
+      throw new NotFoundException(`Production process query failed: ${processError.message}`);
     }
 
-    // Check if the user owns the BOM associated with this production lot
-    const productionLot = process.production_lots?.[0]; // Get first production lot from array
-    const bom = productionLot?.boms?.[0]; // Get first BOM from array
-    if (!bom || bom.user_id !== userId) {
-      throw new NotFoundException('Production process not found or you do not have permission to access it');
+    if (!process) {
+      throw new NotFoundException(`Production process with ID ${processId} not found`);
     }
+
+    // Step 2: Get the production lot and verify BOM ownership
+    const { data: lot, error: lotError } = await supabase
+      .from('production_lots')
+      .select(`
+        id,
+        bom_id,
+        boms!inner(
+          id,
+          user_id
+        )
+      `)
+      .eq('id', process.production_lot_id)
+      .single();
+
+    if (lotError) {
+      throw new NotFoundException(`Production lot query failed: ${lotError.message}`);
+    }
+
+    if (!lot) {
+      throw new NotFoundException(`Production lot with ID ${process.production_lot_id} not found`);
+    }
+
+    // BOM check is optional - some production lots may not have BOMs yet
+    if (lot.boms && lot.boms.length > 0) {
+      const firstBom = lot.boms[0];
+      if (firstBom) {
+        // Skip user permission check if user_id is not available (for dev/legacy auth)
+        if (userId && firstBom.user_id && firstBom.user_id !== userId) {
+          throw new NotFoundException('You do not have permission to access this production process');
+        }
+      }
+    }
+    // If no BOM exists, we still allow the operation to proceed
   }
 
   private async calculateEstimatedLotCost(bomId: string, quantity: number): Promise<number> {
@@ -1449,5 +1575,404 @@ export class ProductionPlanningService {
       vendorAssignments: data.vendor_assignments || [],
       processes: data.processes || [],
     };
+  }
+
+  async getSubtasksDirectByLot(lotId: string, userId: string): Promise<any[]> {
+    const supabase = this.supabaseService.getClient();
+
+    // Verify lot ownership
+    await this.verifyLotOwnership(lotId, userId);
+
+    // Debug: Check what's in the production_processes table for this lot
+    const { data: processes, error: processError } = await supabase
+      .from('production_processes')
+      .select('*')
+      .eq('production_lot_id', lotId);
+
+    this.logger.log('🔍 DEBUG: Processes found for lot', { lotId, processCount: processes?.length || 0, processes, processError });
+
+    // Also check if there are any subtasks at all in the database (regardless of lot)
+    const { data: allSubtasks, error: allSubtasksError } = await supabase
+      .from('process_subtasks')
+      .select('id, production_process_id, task_name')
+      .limit(10);
+
+    this.logger.log('🔍 DEBUG: Sample subtasks in database', { 
+      totalSubtasks: allSubtasks?.length || 0, 
+      sampleSubtasks: allSubtasks,
+      allSubtasksError 
+    });
+
+    if (processError || !processes || processes.length === 0) {
+      this.logger.warn('No processes found for lot, checking for orphaned subtasks', { lotId, processError });
+      
+      // Try to find subtasks that might exist without proper processes
+      const { data: orphanedSubtasks, error: orphanedError } = await supabase
+        .from('process_subtasks')
+        .select(`
+          id,
+          production_process_id,
+          task_name,
+          description,
+          task_sequence,
+          planned_start_date,
+          planned_end_date,
+          actual_start_date,
+          actual_end_date,
+          estimated_duration_hours,
+          assigned_operator,
+          operator_name,
+          status,
+          notes,
+          created_at,
+          updated_at
+        `);
+
+      this.logger.log('🔍 DEBUG: Orphaned subtasks check', { 
+        orphanedCount: orphanedSubtasks?.length || 0, 
+        orphanedSubtasks,
+        orphanedError 
+      });
+
+      return orphanedSubtasks || [];
+    }
+
+    const processIds = processes.map(p => p.id);
+
+    // Fetch subtasks directly using process IDs
+    const { data: subtasks, error } = await supabase
+      .from('process_subtasks')
+      .select(`
+        id,
+        production_process_id,
+        task_name,
+        description,
+        task_sequence,
+        planned_start_date,
+        planned_end_date,
+        actual_start_date,
+        actual_end_date,
+        estimated_duration_hours,
+        assigned_operator,
+        operator_name,
+        status,
+        notes,
+        created_at,
+        updated_at
+      `)
+      .in('production_process_id', processIds)
+      .order('task_sequence', { ascending: true });
+
+    this.logger.log('🔍 DEBUG: Subtasks found for processes', { 
+      processIds, 
+      subtaskCount: subtasks?.length || 0, 
+      subtasks,
+      error 
+    });
+
+    if (error) {
+      this.logger.error('Failed to fetch subtasks directly for lot', { error: error.message, lotId });
+      throw new InternalServerErrorException(`Failed to fetch subtasks: ${error.message}`);
+    }
+
+    // Transform data to match expected structure
+    return (subtasks || []).map(subtask => ({
+      id: subtask.id,
+      productionProcessId: subtask.production_process_id,
+      taskName: subtask.task_name,
+      description: subtask.description || '',
+      taskSequence: subtask.task_sequence,
+      plannedStartDate: subtask.planned_start_date,
+      plannedEndDate: subtask.planned_end_date,
+      actualStartDate: subtask.actual_start_date,
+      actualEndDate: subtask.actual_end_date,
+      assignedOperator: subtask.assigned_operator,
+      operatorName: subtask.operator_name || '',
+      status: subtask.status,
+      notes: subtask.notes || '',
+      createdAt: subtask.created_at,
+      updatedAt: subtask.updated_at,
+      bomRequirements: [] // Simplified for now - BOM requirements can be fetched separately if needed
+    }));
+  }
+
+  // ============================================================================
+  // PROCESS TEMPLATE METHODS
+  // ============================================================================
+
+  /**
+   * Get default process templates for production planning
+   */
+  /**
+   * Auto-create the 4 standard production processes for a new lot
+   */
+  private async createDefaultProcessesForLot(
+    lotId: string, 
+    plannedStartDate: string, 
+    plannedEndDate: string
+  ): Promise<void> {
+    const supabase = this.supabaseService.getClient();
+
+    // Define the 4 standard processes with correct names
+    const standardProcesses = [
+      {
+        process_name: 'Raw Material',
+        description: 'Raw material procurement, inspection, and preparation for production',
+        process_sequence: 1,
+        category: 'Material'
+      },
+      {
+        process_name: 'Process Conversion', 
+        description: 'Core manufacturing and processing operations',
+        process_sequence: 2,
+        category: 'Production'
+      },
+      {
+        process_name: 'Inspection',
+        description: 'Quality inspection, testing, and validation processes', 
+        process_sequence: 3,
+        category: 'Quality'
+      },
+      {
+        process_name: 'Packing',
+        description: 'Final packaging, labeling, and preparation for delivery',
+        process_sequence: 4,
+        category: 'Finishing'
+      }
+    ];
+
+    // Calculate dates for each process (divide timeline equally)
+    const startDate = new Date(plannedStartDate);
+    const endDate = new Date(plannedEndDate);
+    const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    const daysPerProcess = Math.max(1, Math.floor(totalDays / 4));
+
+    // Create processes with sequential dates
+    const processesToCreate = standardProcesses.map((process, index) => {
+      const processStart = new Date(startDate);
+      processStart.setDate(startDate.getDate() + (index * daysPerProcess));
+      
+      const processEnd = new Date(processStart);
+      processEnd.setDate(processStart.getDate() + daysPerProcess - 1);
+      
+      // Ensure last process ends on the lot end date
+      if (index === standardProcesses.length - 1) {
+        processEnd.setTime(endDate.getTime());
+      }
+
+      return {
+        production_lot_id: lotId,
+        process_id: `default-${process.process_name.toLowerCase().replace(' ', '-')}`, // Generate a process_id
+        process_sequence: process.process_sequence,
+        process_name: process.process_name,
+        description: process.description,
+        planned_start_date: processStart.toISOString(),
+        planned_end_date: processEnd.toISOString(),
+        status: 'pending',
+        completion_percentage: 0,
+        quality_check_required: true,
+        quality_status: 'pending'
+      };
+    });
+
+    const { error } = await supabase
+      .from('production_processes')
+      .insert(processesToCreate);
+
+    if (error) {
+      this.logger.error('Failed to create default processes for lot', error);
+      throw new InternalServerErrorException(`Failed to create default processes: ${error.message}`);
+    }
+
+    this.logger.log(`Created ${standardProcesses.length} default processes for lot ${lotId}`);
+  }
+
+  async getDefaultProcessTemplates(userId: string): Promise<ProcessTemplate[]> {
+    const supabase = this.supabaseService.getClient();
+
+    // Try to get user's custom templates first
+    const { data: userTemplates, error: userError } = await supabase
+      .from('process_templates')
+      .select('id, name, description, category, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: true });
+
+    if (userError) {
+      this.logger.warn('Failed to fetch user process templates', userError);
+    }
+
+    // If user has custom templates, return those
+    if (userTemplates && userTemplates.length > 0) {
+      return userTemplates.map(template => ({
+        id: template.id,
+        name: template.name,
+        description: template.description || '',
+        category: template.category || 'Production',
+        estimatedDuration: 8 // Default duration, could be calculated from template steps
+      }));
+    }
+
+    // Otherwise return system default templates
+    return [
+      {
+        id: 'default-raw-material',
+        name: 'Raw Material Preparation',
+        description: 'Raw material procurement, inspection, and preparation for production',
+        estimatedDuration: 8,
+        category: 'Material'
+      },
+      {
+        id: 'default-process-conversion',
+        name: 'Manufacturing Process',
+        description: 'Core manufacturing and processing operations',
+        estimatedDuration: 16,
+        category: 'Production'
+      },
+      {
+        id: 'default-inspection',
+        name: 'Quality Control',
+        description: 'Quality inspection, testing, and validation processes',
+        estimatedDuration: 4,
+        category: 'Quality'
+      },
+      {
+        id: 'default-packing',
+        name: 'Packaging & Finishing',
+        description: 'Final packaging, labeling, and preparation for delivery',
+        estimatedDuration: 6,
+        category: 'Finishing'
+      }
+    ];
+  }
+
+  /**
+   * Create a custom process template
+   */
+  async createProcessTemplate(userId: string, templateData: {
+    name: string;
+    description?: string;
+    category?: string;
+  }): Promise<ProcessTemplate> {
+    const supabase = this.supabaseService.getClient();
+
+    const { data, error } = await supabase
+      .from('process_templates')
+      .insert({
+        name: templateData.name,
+        description: templateData.description,
+        category: templateData.category || 'Custom',
+        user_id: userId
+      })
+      .select('id, name, description, category')
+      .single();
+
+    if (error) {
+      throw new BadRequestException(`Failed to create process template: ${error.message}`);
+    }
+
+    return {
+      id: data.id,
+      name: data.name,
+      description: data.description || '',
+      category: data.category || 'Custom',
+      estimatedDuration: 8 // Default
+    };
+  }
+
+  /**
+   * Validate if a status transition is allowed
+   */
+  private validateStatusTransition(currentStatus: string, newStatus: string): void {
+    const allowedTransitions: Record<string, string[]> = {
+      'PLANNED': ['MATERIALS_ORDERED', 'CANCELLED', 'IN_PRODUCTION'],
+      'MATERIALS_ORDERED': ['IN_PRODUCTION', 'ON_HOLD', 'CANCELLED'],
+      'IN_PRODUCTION': ['COMPLETED', 'ON_HOLD', 'CANCELLED'],
+      'ON_HOLD': ['IN_PRODUCTION', 'CANCELLED'],
+      'COMPLETED': ['ON_HOLD'], // Allow reopening completed lots if needed
+      'CANCELLED': ['PLANNED'] // Allow reactivating cancelled lots
+    };
+
+    const allowedNext = allowedTransitions[currentStatus] || [];
+    
+    if (!allowedNext.includes(newStatus)) {
+      throw new BadRequestException(
+        `Invalid status transition from ${currentStatus} to ${newStatus}. ` +
+        `Allowed transitions: ${allowedNext.join(', ')}`
+      );
+    }
+  }
+
+  /**
+   * Auto-update lot status based on progress
+   */
+  async updateLotStatusByProgress(lotId: string, userId: string): Promise<void> {
+    const supabase = this.supabaseService.getClient();
+
+    // Get current lot status and processes
+    const { data: lot } = await supabase
+      .from('production_lots')
+      .select('id, status')
+      .eq('id', lotId)
+      .eq('created_by', userId)
+      .single();
+
+    if (!lot) return;
+
+    // Get processes and their completion status
+    const { data: processes } = await supabase
+      .from('production_processes')
+      .select('id, status')
+      .eq('production_lot_id', lotId);
+
+    if (!processes || processes.length === 0) return;
+
+    const completedProcesses = processes.filter(p => p.status === 'COMPLETED').length;
+    const totalProcesses = processes.length;
+    const completionPercentage = (completedProcesses / totalProcesses) * 100;
+
+    // Auto-transition status based on progress
+    let newStatus = lot.status;
+
+    if (lot.status === 'PLANNED' && completionPercentage > 0) {
+      newStatus = 'IN_PRODUCTION';
+    } else if (lot.status === 'IN_PRODUCTION' && completionPercentage === 100) {
+      newStatus = 'COMPLETED';
+    }
+
+    // Update if status should change
+    if (newStatus !== lot.status) {
+      await this.updateProductionLot(lotId, { status: newStatus }, userId);
+      this.logger.log(`Auto-updated lot ${lotId} status from ${lot.status} to ${newStatus} based on ${completionPercentage}% completion`);
+    }
+  }
+
+  /**
+   * Clean up production lot materials to only include selected BOM items
+   */
+  async cleanupProductionLotMaterials(lotId: string, userId: string): Promise<void> {
+    const supabase = this.supabaseService.getClient();
+
+    // Get the selected BOM items for this lot
+    const { data: selectedBomItems } = await supabase
+      .from('production_lot_bom_items')
+      .select('bom_item_id')
+      .eq('production_lot_id', lotId);
+
+    if (selectedBomItems && selectedBomItems.length > 0) {
+      const selectedBomItemIds = selectedBomItems.map(item => item.bom_item_id);
+      
+      // Delete materials that are not in the selected BOM items
+      const { error } = await supabase
+        .from('production_lot_materials')
+        .delete()
+        .eq('production_lot_id', lotId)
+        .not('bom_item_id', 'in', `(${selectedBomItemIds.join(',')})`);
+
+      if (error) {
+        this.logger.error('Failed to cleanup production lot materials', error);
+      } else {
+        this.logger.log(`Cleaned up production lot ${lotId} materials to only include selected BOM items`);
+      }
+    }
   }
 }

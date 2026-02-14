@@ -8,6 +8,22 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { RemarksApi } from '@/lib/api/remarks';
+import { CommentsApi } from '@/lib/api/comments';
+import { productionPlanningApi } from '@/lib/api/production-planning';
+import { 
+  RemarkType,
+  RemarkPriority,
+  RemarkStatus,
+  RemarkScope,
+  getRemarkTypeColor,
+  getRemarkPriorityColor,
+  getRemarkStatusColor,
+  REMARK_TYPE_OPTIONS,
+  REMARK_PRIORITY_OPTIONS,
+  REMARK_SCOPE_OPTIONS
+} from '@/types/remarks';
+import type { RemarkResponseDto } from '@/lib/api/remarks';
 import { 
   MessageSquare, 
   AlertTriangle, 
@@ -44,34 +60,40 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-interface Remark {
+
+interface ProcessOption {
   id: string;
-  type: 'GENERAL' | 'DELAY' | 'QUALITY' | 'MATERIAL' | 'SAFETY' | 'SUGGESTION';
-  level: 'LOT' | 'PROCESS' | 'SUBTASK';
-  targetId: string;
-  targetName: string;
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  title: string;
-  description: string;
-  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
-  createdBy: string;
-  createdByName: string;
-  createdAt: string;
-  updatedAt: string;
-  assignedTo?: string;
-  assignedToName?: string;
-  resolution?: string;
-  attachments: string[];
-  comments: Comment[];
+  name: string;
+  description?: string;
+  status: string;
+  subtasks?: SubtaskOption[];
 }
 
-interface Comment {
+interface BomPartRequirement {
   id: string;
-  remarkId: string;
-  content: string;
-  createdBy: string;
-  createdByName: string;
-  createdAt: string;
+  bom_item_id: string;
+  required_quantity: number;
+  unit: string;
+  requirement_status: string;
+  bom_item?: {
+    id: string;
+    part_number: string;
+    name: string;
+    description?: string;
+  };
+}
+
+interface SubtaskOption {
+  id: string;
+  name: string;
+  description?: string;
+  status: string;
+  sequence: number;
+  assignedOperator?: string;
+  operatorName?: string;
+  plannedStartDate?: string;
+  plannedEndDate?: string;
+  bomRequirements?: BomPartRequirement[];
 }
 
 interface RemarksIssuesProps {
@@ -79,141 +101,65 @@ interface RemarksIssuesProps {
 }
 
 export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
-  const [remarks, setRemarks] = useState<Remark[]>([]);
+  const [remarks, setRemarks] = useState<RemarkResponseDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterLevel, setFilterLevel] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showNewRemark, setShowNewRemark] = useState(false);
-  const [selectedRemark, setSelectedRemark] = useState<Remark | null>(null);
+  const [selectedRemark, setSelectedRemark] = useState<RemarkResponseDto | null>(null);
+  const [comments, setComments] = useState<any[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [formData, setFormData] = useState({
+    type: '',
+    priority: '',
+    appliesTo: '',
+    processId: '',
+    subtaskId: '',
+    bomPartId: '',
+    assignedTo: '',
+    title: '',
+    description: ''
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [processes, setProcesses] = useState<ProcessOption[]>([]);
+  const [loadingProcesses, setLoadingProcesses] = useState(false);
+  const [selectedProcess, setSelectedProcess] = useState<ProcessOption | null>(null);
+  const [selectedSubtask, setSelectedSubtask] = useState<SubtaskOption | null>(null);
+
+  // Load comment count for a single remark
+  const loadCommentCount = async (remarkId: string) => {
+    if (commentCounts[remarkId] !== undefined) return; // Already loaded
+    
+    try {
+      const commentsData = await CommentsApi.getCommentsByRemark(remarkId);
+      setCommentCounts(prev => ({
+        ...prev,
+        [remarkId]: commentsData?.length || 0
+      }));
+    } catch (error) {
+      console.error(`Error loading comments for remark ${remarkId}:`, error);
+      setCommentCounts(prev => ({
+        ...prev,
+        [remarkId]: 0
+      }));
+    }
+  };
 
   useEffect(() => {
     const fetchRemarksData = async () => {
       try {
-        // Mock remarks and issues data
-        const mockRemarks: Remark[] = [
-          {
-            id: '1',
-            type: 'DELAY',
-            level: 'PROCESS',
-            targetId: '1',
-            targetName: 'Material Preparation',
-            priority: 'HIGH',
-            title: 'Material Delivery Delay',
-            description: 'Steel plates delivery is delayed by 2 days due to supplier transport issues. This will impact the overall production timeline.',
-            status: 'IN_PROGRESS',
-            createdBy: 'user-1',
-            createdByName: 'Alice Johnson',
-            createdAt: '2026-02-04T10:30:00',
-            updatedAt: '2026-02-04T14:20:00',
-            assignedTo: 'user-2',
-            assignedToName: 'Michael Brown',
-            resolution: '',
-            attachments: [],
-            comments: [
-              {
-                id: 'c1',
-                remarkId: '1',
-                content: 'Contacted supplier, they confirmed delivery by Feb 6th morning.',
-                createdBy: 'user-2',
-                createdByName: 'Michael Brown',
-                createdAt: '2026-02-04T14:20:00'
-              }
-            ]
-          },
-          {
-            id: '2',
-            type: 'QUALITY',
-            level: 'SUBTASK',
-            targetId: 'st-1-1',
-            targetName: 'Material Inspection',
-            priority: 'MEDIUM',
-            title: 'Surface Quality Issue',
-            description: 'Minor surface scratches observed on steel plates. Need to assess if this affects the final product quality.',
-            status: 'RESOLVED',
-            createdBy: 'user-3',
-            createdByName: 'Bob Smith',
-            createdAt: '2026-02-03T09:15:00',
-            updatedAt: '2026-02-03T16:45:00',
-            assignedTo: 'user-4',
-            assignedToName: 'Sarah Garcia',
-            resolution: 'QC team confirmed scratches are within acceptable tolerance. No impact on final product.',
-            attachments: [],
-            comments: [
-              {
-                id: 'c2',
-                remarkId: '2',
-                content: 'Photos of the scratches have been documented for future reference.',
-                createdBy: 'user-3',
-                createdByName: 'Bob Smith',
-                createdAt: '2026-02-03T11:30:00'
-              },
-              {
-                id: 'c3',
-                remarkId: '2',
-                content: 'Quality standards review completed. Marks acceptable.',
-                createdBy: 'user-4',
-                createdByName: 'Sarah Garcia',
-                createdAt: '2026-02-03T16:45:00'
-              }
-            ]
-          },
-          {
-            id: '3',
-            type: 'SUGGESTION',
-            level: 'LOT',
-            targetId: lotId,
-            targetName: 'LOT-20260205-332',
-            priority: 'LOW',
-            title: 'Process Optimization Suggestion',
-            description: 'Consider implementing parallel processing for assembly steps to reduce overall production time by 15%.',
-            status: 'OPEN',
-            createdBy: 'user-5',
-            createdByName: 'Emma Taylor',
-            createdAt: '2026-02-02T14:00:00',
-            updatedAt: '2026-02-02T14:00:00',
-            assignedTo: undefined,
-            assignedToName: undefined,
-            resolution: '',
-            attachments: [],
-            comments: []
-          },
-          {
-            id: '4',
-            type: 'SAFETY',
-            level: 'PROCESS',
-            targetId: '2',
-            targetName: 'Assembly',
-            priority: 'CRITICAL',
-            title: 'Safety Protocol Reminder',
-            description: 'Ensure all operators wear proper PPE during welding operations. Safety audit scheduled for next week.',
-            status: 'OPEN',
-            createdBy: 'user-6',
-            createdByName: 'Safety Officer',
-            createdAt: '2026-02-01T08:00:00',
-            updatedAt: '2026-02-01T08:00:00',
-            assignedTo: 'user-2',
-            assignedToName: 'Michael Brown',
-            resolution: '',
-            attachments: [],
-            comments: [
-              {
-                id: 'c4',
-                remarkId: '4',
-                content: 'PPE checklist updated and distributed to all operators.',
-                createdBy: 'user-2',
-                createdByName: 'Michael Brown',
-                createdAt: '2026-02-01T10:30:00'
-              }
-            ]
-          }
-        ];
-        
-        setRemarks(mockRemarks);
-        setLoading(false);
+        setLoading(true);
+        const data = await RemarksApi.getRemarksByLot(lotId);
+        const remarksArray = Array.isArray(data) ? data : [];
+        setRemarks(remarksArray);
       } catch (error) {
         console.error('Error fetching remarks data:', error);
+      } finally {
         setLoading(false);
       }
     };
@@ -221,16 +167,160 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
     fetchRemarksData();
   }, [lotId]);
 
-  const getTypeColor = (type: string) => {
-    const colors = {
-      GENERAL: 'bg-gray-100 text-gray-600',
-      DELAY: 'bg-red-100 text-red-600',
-      QUALITY: 'bg-yellow-100 text-yellow-600',
-      MATERIAL: 'bg-blue-100 text-blue-600',
-      SAFETY: 'bg-orange-100 text-orange-600',
-      SUGGESTION: 'bg-green-100 text-green-600'
-    };
-    return colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-600';
+  // Fetch processes when form is opened and 'Specific Process' might be selected
+  const fetchProcesses = async () => {
+    if (processes.length > 0) return; // Already loaded
+    
+    try {
+      setLoadingProcesses(true);
+      console.log('Fetching processes for lot:', lotId);
+      
+      // Try the API call with no cache to get fresh data
+      const response = await productionPlanningApi.getProcessesByLot(lotId, false);
+      console.log('Raw API response structure:', {
+        data: response?.data ? 'present' : 'missing',
+        dataType: Array.isArray(response?.data) ? 'array' : typeof response?.data,
+        dataLength: response?.data?.length || 0
+      });
+      
+      // Debug: Log the first process with subtasks and BOM data
+      if (response?.data?.[0]?.subtasks?.[0]?.bom_requirements) {
+        console.log('Sample BOM requirement data:', response.data[0].subtasks[0].bom_requirements[0]);
+      }
+      
+      const processData = response.data || response || [];
+      
+      if (!Array.isArray(processData)) {
+        console.error('Expected array but got:', typeof processData, processData);
+        throw new Error('Invalid response format - expected array');
+      }
+      
+      const mappedProcesses: ProcessOption[] = processData.map((process: any) => {
+        // Handle different possible subtask field names
+        const rawSubtasks = process.subtasks || process.sub_tasks || process.subTasks || [];
+        
+        const mappedSubtasks = rawSubtasks.map((subtask: any) => {
+          const bomRequirements = (subtask.bom_requirements || subtask.bomRequirements || []).map((req: any) => {
+            // Handle different possible field names and structures
+            const bomItem = req.bom_item || req.bomItem || req.bom_items || {};
+            
+            
+            return {
+              id: req.id,
+              bom_item_id: req.bom_item_id || req.bomItemId,
+              required_quantity: req.required_quantity || req.requiredQuantity || 0,
+              unit: req.unit || 'pcs',
+              requirement_status: req.requirement_status || req.requirementStatus || 'PENDING',
+              bom_item: bomItem && Object.keys(bomItem).length > 0 ? {
+                id: bomItem.id,
+                part_number: bomItem.part_number || bomItem.partNumber || bomItem.part_code || 'UNKNOWN',
+                name: bomItem.name || bomItem.title || 'Unknown Part',
+                description: bomItem.description || bomItem.details || ''
+              } : null
+            };
+          });
+          
+          return {
+            id: subtask.id,
+            name: subtask.taskName || subtask.name || subtask.task_name || 'Unnamed Subtask',
+            description: subtask.description,
+            status: subtask.status,
+            sequence: subtask.taskSequence || subtask.sequence || subtask.task_sequence || 0,
+            assignedOperator: subtask.assigned_operator || subtask.assignedOperator,
+            operatorName: subtask.operator_name || subtask.operatorName,
+            plannedStartDate: subtask.planned_start_date || subtask.plannedStartDate,
+            plannedEndDate: subtask.planned_end_date || subtask.plannedEndDate,
+            bomRequirements
+          };
+        });
+        
+        // Create unique process name if original name is generic
+        const rawName = process.processName || process.name || process.process_name || process.sectionName;
+        const isGenericName = rawName === 'Process' || rawName === 'Inspection' || rawName === 'Raw Material' || rawName === 'Packing';
+        const uniqueName = isGenericName 
+          ? `${rawName} (${process.id?.slice(-8) || 'ID-Unknown'})`
+          : rawName || `Process ${process.id?.slice(-4) || 'Unknown'}`;
+
+        return {
+          id: process.id,
+          name: uniqueName,
+          description: process.description || `${process.sectionName || rawName || 'Process'} operations - ${mappedSubtasks.length} subtask(s)`,
+          status: process.status || 'UNKNOWN',
+          subtasks: mappedSubtasks
+        };
+      });
+      
+      setProcesses(mappedProcesses);
+      
+      if (mappedProcesses.length === 0) {
+        console.warn('No processes found for lot:', lotId);
+      }
+      
+    } catch (error) {
+      console.error('Error fetching processes:', error);
+      console.error('Error details:', error.response || error.message || error);
+      
+      // More detailed error message
+      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
+      alert(`Failed to load processes: ${errorMessage}. Please check the console for details.`);
+    } finally {
+      setLoadingProcesses(false);
+    }
+  };
+
+  // Handle applies to change
+  const handleAppliesToChange = (value: string) => {
+    setFormData(prev => ({
+      ...prev, 
+      appliesTo: value,
+      processId: '', // Reset process selection
+      subtaskId: '', // Reset subtask selection
+      bomPartId: ''  // Reset BOM part selection
+    }));
+    setSelectedProcess(null);
+    setSelectedSubtask(null);
+    
+    // Fetch processes if process-related scope is selected
+    if (value === 'PROCESS' || value === 'SUBTASK' || value === 'BOM_PART') {
+      fetchProcesses();
+    }
+  };
+
+  // Handle process selection
+  const handleProcessChange = (processId: string) => {
+    const process = processes.find(p => p.id === processId);
+    setSelectedProcess(process || null);
+    setFormData(prev => ({
+      ...prev,
+      processId,
+      subtaskId: '' // Reset subtask when process changes
+    }));
+  };
+
+  // Handle subtask selection
+  const handleSubtaskChange = (subtaskId: string) => {
+    const actualSubtaskId = subtaskId === 'none' ? '' : subtaskId;
+    const subtask = selectedProcess?.subtasks?.find(s => s.id === actualSubtaskId);
+    
+    setSelectedSubtask(subtask || null);
+    setFormData(prev => ({
+      ...prev,
+      subtaskId: actualSubtaskId,
+      bomPartId: '' // Reset BOM part when subtask changes
+    }));
+  };
+
+  // Handle BOM part selection
+  const handleBomPartChange = (bomPartId: string) => {
+    // Don't allow selection of the disabled placeholder option
+    if (bomPartId === 'none') {
+      return;
+    }
+    
+    setFormData(prev => ({
+      ...prev,
+      bomPartId: bomPartId
+    }));
   };
 
   const getTypeIcon = (type: string) => {
@@ -244,41 +334,258 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
     }
   };
 
-  const getPriorityColor = (priority: string) => {
-    const colors = {
-      LOW: 'bg-green-100 text-green-600',
-      MEDIUM: 'bg-yellow-100 text-yellow-600',
-      HIGH: 'bg-orange-100 text-orange-600',
-      CRITICAL: 'bg-red-100 text-red-600'
-    };
-    return colors[priority as keyof typeof colors] || 'bg-gray-100 text-gray-600';
+  const handleCreateRemark = async () => {
+    if (!formData.type || !formData.priority || !formData.appliesTo || !formData.title.trim()) {
+      alert('Please fill in all required fields (Type, Priority, Applies To, and Title)');
+      return;
+    }
+    
+    // Additional validation for process/subtask scopes
+    if (formData.appliesTo === 'PROCESS' && !formData.processId) {
+      alert('Please select a process when scope is "Specific Process"');
+      return;
+    }
+    
+    if (formData.appliesTo === 'SUBTASK') {
+      if (!formData.processId) {
+        alert('Please select a process when scope is "Specific Subtask"');
+        return;
+      }
+      if (!formData.subtaskId || formData.subtaskId === 'none') {
+        alert('Please select a subtask when scope is "Specific Subtask"');
+        return;
+      }
+    }
+    
+    if (formData.appliesTo === 'BOM_PART') {
+      if (!formData.processId) {
+        alert('Please select a process when scope is "Specific BOM Part"');
+        return;
+      }
+      if (!formData.subtaskId || formData.subtaskId === 'none') {
+        alert('Please select a subtask when scope is "Specific BOM Part"');
+        return;
+      }
+      if (!formData.bomPartId || formData.bomPartId === 'none' || formData.bomPartId === '') {
+        alert('Please select a BOM part when scope is "Specific BOM Part"');
+        return;
+      }
+    }
+
+    try {
+      setSubmitting(true);
+      const remarkData: any = {
+        lotId,
+        title: formData.title.trim(),
+        remarkType: formData.type as RemarkType,
+        priority: formData.priority as RemarkPriority,
+        appliesTo: formData.appliesTo as RemarkScope,
+      };
+      
+      // Add process/subtask IDs based on scope
+      if (formData.appliesTo === 'PROCESS' && formData.processId) {
+        remarkData.processId = formData.processId;
+      }
+      
+      if (formData.appliesTo === 'SUBTASK') {
+        if (formData.processId) {
+          remarkData.processId = formData.processId;
+        }
+        if (formData.subtaskId && formData.subtaskId !== 'none') {
+          remarkData.subtaskId = formData.subtaskId;
+        }
+      }
+      
+      if (formData.appliesTo === 'BOM_PART') {
+        if (formData.processId) {
+          remarkData.processId = formData.processId;
+        }
+        if (formData.subtaskId && formData.subtaskId !== 'none') {
+          remarkData.subtaskId = formData.subtaskId;
+        }
+        if (formData.bomPartId && formData.bomPartId !== 'none') {
+          remarkData.bomPartId = formData.bomPartId;
+        }
+      }
+
+      // Only add optional fields if they have values
+      if (formData.description && formData.description.trim()) {
+        remarkData.description = formData.description.trim();
+      }
+      
+      if (formData.assignedTo && formData.assignedTo.trim()) {
+        remarkData.assignedTo = formData.assignedTo.trim();
+      }
+      
+      // Set context reference based on selected process/subtask
+      if (formData.appliesTo === 'PROCESS' && selectedProcess) {
+        remarkData.contextReference = selectedProcess.name;
+      } else if (formData.appliesTo === 'SUBTASK') {
+        if (selectedProcess && formData.subtaskId && formData.subtaskId !== 'none') {
+          const selectedSubtask = selectedProcess.subtasks?.find(st => st.id === formData.subtaskId);
+          if (selectedSubtask) {
+            remarkData.contextReference = `${selectedProcess.name} > ${selectedSubtask.name}`;
+          }
+        } else if (selectedProcess) {
+          // If only process is selected for subtask scope
+          remarkData.contextReference = `${selectedProcess.name} (Process level)`;
+        }
+      } else if (formData.appliesTo === 'BOM_PART') {
+        if (selectedProcess && selectedSubtask && formData.bomPartId && formData.bomPartId !== 'none') {
+          const bomPart = selectedSubtask.bomRequirements?.find(req => req.id === formData.bomPartId);
+          if (bomPart?.bom_item) {
+            remarkData.contextReference = `${selectedProcess.name} > ${selectedSubtask.name} > ${bomPart.bom_item.part_number}`;
+          }
+        }
+      }
+
+      await RemarksApi.createRemark(remarkData);
+      // Refresh the remarks list after creation
+      const updatedRemarks = await RemarksApi.getRemarksByLot(lotId);
+      setRemarks(Array.isArray(updatedRemarks) ? updatedRemarks : []);
+      setShowNewRemark(false);
+      setFormData({
+        type: '',
+        priority: '',
+        appliesTo: '',
+        processId: '',
+        subtaskId: '',
+        bomPartId: '',
+        assignedTo: '',
+        title: '',
+        description: ''
+      });
+      setSelectedProcess(null);
+      setSelectedSubtask(null);
+      setShowNewRemark(false);
+    } catch (error) {
+      console.error('Error creating remark:', error);
+      alert('Failed to create remark. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const getStatusColor = (status: string) => {
-    const colors = {
-      OPEN: 'bg-blue-100 text-blue-600',
-      IN_PROGRESS: 'bg-yellow-100 text-yellow-600',
-      RESOLVED: 'bg-green-100 text-green-600',
-      CLOSED: 'bg-gray-100 text-gray-600'
-    };
-    return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-600';
+  const handleDeleteRemark = async (remarkId: string) => {
+    if (!confirm('Are you sure you want to delete this remark?')) return;
+    
+    try {
+      await RemarksApi.deleteRemark(remarkId);
+      // Remove from state immediately for better UX
+      setRemarks(prev => prev.filter(r => r.id !== remarkId));
+    } catch (error) {
+      console.error('Error deleting remark:', error);
+    }
   };
 
-  const filteredRemarks = remarks.filter(remark => {
-    const matchesSearch = remark.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         remark.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         remark.createdByName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = filterType === 'all' || remark.type === filterType;
-    const matchesLevel = filterLevel === 'all' || remark.level === filterLevel;
+  const handleEditRemark = (remark: any) => {
+    // TODO: Implement edit functionality
+    console.log('Edit remark:', remark);
+  };
+
+  const handleUpdateRemark = async (remark: any) => {
+    try {
+      const updateData = {
+        status: remark.status,
+        priority: remark.priority
+      };
+      
+      await RemarksApi.updateRemark(remark.id, updateData);
+      
+      // Update the remarks list
+      setRemarks(prev => prev.map(r => 
+        r.id === remark.id ? { ...r, ...updateData } : r
+      ));
+      
+      // Close the dialog
+      setSelectedRemark(null);
+    } catch (error) {
+      console.error('Error updating remark:', error);
+      alert('Failed to update remark. Please try again.');
+    }
+  };
+
+  // Comment handling functions
+  const loadComments = async (remarkId: string) => {
+    try {
+      setLoadingComments(true);
+      const commentsData = await CommentsApi.getCommentsByRemark(remarkId);
+      setComments(commentsData || []);
+      // Update comment count for this remark
+      setCommentCounts(prev => ({
+        ...prev,
+        [remarkId]: commentsData?.length || 0
+      }));
+    } catch (error) {
+      console.error('Error loading comments:', error);
+      setComments([]);
+      setCommentCounts(prev => ({
+        ...prev,
+        [remarkId]: 0
+      }));
+    } finally {
+      setLoadingComments(false);
+    }
+  };
+
+  const handlePostComment = async () => {
+    if (!newComment.trim() || !selectedRemark) return;
+
+    try {
+      setSubmittingComment(true);
+      await CommentsApi.createComment({
+        commentText: newComment.trim(),
+        remarkId: selectedRemark.id
+      });
+      
+      setNewComment('');
+      // Reload comments
+      await loadComments(selectedRemark.id);
+    } catch (error) {
+      console.error('Error posting comment:', error);
+      alert('Failed to post comment. Please try again.');
+    } finally {
+      setSubmittingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!confirm('Are you sure you want to delete this comment?')) return;
+
+    try {
+      await CommentsApi.deleteComment(commentId);
+      // Reload comments
+      if (selectedRemark) {
+        await loadComments(selectedRemark.id);
+      }
+    } catch (error) {
+      console.error('Error deleting comment:', error);
+      alert('Failed to delete comment. Please try again.');
+    }
+  };
+
+  // Load comments when a remark is selected
+  useEffect(() => {
+    if (selectedRemark) {
+      loadComments(selectedRemark.id);
+    }
+  }, [selectedRemark]);
+
+  const filteredRemarks = (remarks || []).filter(remark => {
+    if (!remark) return false;
+    const matchesSearch = (remark.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (remark.description || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = filterType === 'all' || remark.remarkType === filterType;
+    const matchesLevel = filterLevel === 'all' || remark.appliesTo === filterLevel;
     const matchesStatus = filterStatus === 'all' || remark.status === filterStatus;
     return matchesSearch && matchesType && matchesLevel && matchesStatus;
   });
 
   // Calculate statistics
-  const totalRemarks = remarks.length;
-  const openRemarks = remarks.filter(r => r.status === 'OPEN').length;
-  const criticalRemarks = remarks.filter(r => r.priority === 'CRITICAL').length;
-  const resolvedRemarks = remarks.filter(r => r.status === 'RESOLVED').length;
+  const totalRemarks = (remarks || []).length;
+  const openRemarks = (remarks || []).filter(r => r && r.status === RemarkStatus.OPEN).length;
+  const criticalRemarks = (remarks || []).filter(r => r && r.priority === RemarkPriority.CRITICAL).length;
+  const resolvedRemarks = (remarks || []).filter(r => r && r.status === RemarkStatus.RESOLVED).length;
 
   if (loading) {
     return (
@@ -362,7 +669,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                   Add Remark
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl">
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Create New Remark</DialogTitle>
                   <DialogDescription>
@@ -373,31 +680,31 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="type">Type</Label>
-                      <Select>
+                      <Select value={formData.type} onValueChange={(value) => setFormData(prev => ({...prev, type: value}))}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select type" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="GENERAL">General</SelectItem>
-                          <SelectItem value="DELAY">Delay</SelectItem>
-                          <SelectItem value="QUALITY">Quality Issue</SelectItem>
-                          <SelectItem value="MATERIAL">Material Issue</SelectItem>
-                          <SelectItem value="SAFETY">Safety</SelectItem>
-                          <SelectItem value="SUGGESTION">Suggestion</SelectItem>
+                          {REMARK_TYPE_OPTIONS.map(option => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
                       <Label htmlFor="priority">Priority</Label>
-                      <Select>
+                      <Select value={formData.priority} onValueChange={(value) => setFormData(prev => ({...prev, priority: value}))}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select priority" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="LOW">Low</SelectItem>
-                          <SelectItem value="MEDIUM">Medium</SelectItem>
-                          <SelectItem value="HIGH">High</SelectItem>
-                          <SelectItem value="CRITICAL">Critical</SelectItem>
+                          {REMARK_PRIORITY_OPTIONS.map(option => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -405,34 +712,223 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="level">Applies To</Label>
-                      <Select>
+                      <Select value={formData.appliesTo} onValueChange={handleAppliesToChange}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select scope" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="LOT">Entire Lot</SelectItem>
-                          <SelectItem value="PROCESS">Specific Process</SelectItem>
-                          <SelectItem value="SUBTASK">Sub-task</SelectItem>
+                          {REMARK_SCOPE_OPTIONS.map(option => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <Label htmlFor="target">Assign To</Label>
-                      <Select>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select person" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="user-1">Alice Johnson</SelectItem>
-                          <SelectItem value="user-2">Michael Brown</SelectItem>
-                          <SelectItem value="user-3">Sarah Garcia</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <Label htmlFor="assignedTo">Assign To (Name)</Label>
+                      <Input 
+                        id="assignedTo" 
+                        placeholder="Enter person's name (optional)"
+                        value={formData.assignedTo}
+                        onChange={(e) => setFormData(prev => ({...prev, assignedTo: e.target.value}))}
+                      />
                     </div>
                   </div>
+                  
+                  {/* Process Selection - Show when 'PROCESS', 'SUBTASK' or 'BOM_PART' is selected */}
+                  {(formData.appliesTo === 'PROCESS' || formData.appliesTo === 'SUBTASK' || formData.appliesTo === 'BOM_PART') && (
+                    <div className="grid grid-cols-1 gap-4">
+                      <div>
+                        <Label htmlFor="process">
+                          Select Process {(formData.appliesTo === 'PROCESS' || formData.appliesTo === 'SUBTASK' || formData.appliesTo === 'BOM_PART') ? '(Required)' : ''}
+                        </Label>
+                        <Select 
+                          value={formData.processId} 
+                          onValueChange={handleProcessChange}
+                          disabled={loadingProcesses}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder={loadingProcesses ? "Loading processes..." : "Select a process"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {processes.length === 0 && !loadingProcesses && (
+                              <div className="p-2 text-sm text-muted-foreground">
+                                No processes found for this lot
+                              </div>
+                            )}
+                            {processes.map(process => (
+                              <SelectItem key={process.id} value={process.id}>
+                                <div className="flex flex-col items-start">
+                                  <span className="font-medium">{process.name}</span>
+                                  {process.description && (
+                                    <span className="text-xs text-muted-foreground">{process.description}</span>
+                                  )}
+                                  <div className="flex gap-2 text-xs text-muted-foreground">
+                                    <span>Status: {process.status}</span>
+                                    <span>• {process.subtasks?.length || 0} subtasks</span>
+                                  </div>
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {processes.length === 0 && !loadingProcesses && (
+                          <p className="text-xs text-yellow-600 mt-1">
+                            No processes available. Please ensure processes have been created for this production lot.
+                          </p>
+                        )}
+                      </div>
+                      
+                      {/* Subtask Selection - Show when process is selected and has subtasks */}
+                      {selectedProcess && selectedProcess.subtasks && selectedProcess.subtasks.length > 0 && (
+                        <div>
+                          <Label htmlFor="subtask">
+                            Select Subtask {(formData.appliesTo === 'SUBTASK' || formData.appliesTo === 'BOM_PART') ? '(Required)' : '(Optional)'}
+                          </Label>
+                          <Select 
+                            value={formData.subtaskId} 
+                            onValueChange={handleSubtaskChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={
+                                (formData.appliesTo === 'SUBTASK' || formData.appliesTo === 'BOM_PART')
+                                  ? "Select a subtask" 
+                                  : "Select a subtask (optional)"
+                              } />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {(formData.appliesTo !== 'SUBTASK' && formData.appliesTo !== 'BOM_PART') && (
+                                <SelectItem value="none">
+                                  <span className="text-muted-foreground">No specific subtask</span>
+                                </SelectItem>
+                              )}
+                              {selectedProcess.subtasks
+                                .sort((a, b) => a.sequence - b.sequence)
+                                .map(subtask => (
+                                <SelectItem key={subtask.id} value={subtask.id}>
+                                  <div className="flex flex-col items-start">
+                                    <span className="font-medium">{subtask.name}</span>
+                                    {subtask.description && (
+                                      <span className="text-xs text-muted-foreground">{subtask.description}</span>
+                                    )}
+                                    <div className="flex gap-2 text-xs text-muted-foreground">
+                                      <span>Seq: {subtask.sequence}</span>
+                                      <span>Status: {subtask.status}</span>
+                                    </div>
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          
+                          {/* Note about subtask selection */}
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {(formData.appliesTo === 'SUBTASK' || formData.appliesTo === 'BOM_PART')
+                              ? 'Select a specific subtask for granular remark targeting.'
+                              : 'Select a specific subtask for more granular remark targeting, or leave blank for general process remarks.'
+                            }
+                          </p>
+                        </div>
+                      )}
+                      
+                      {/* Show message if no subtasks available but subtask/bompart scope is selected */}
+                      {(formData.appliesTo === 'SUBTASK' || formData.appliesTo === 'BOM_PART') && selectedProcess && 
+                       (!selectedProcess.subtasks || selectedProcess.subtasks.length === 0) && (
+                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <p className="text-sm text-yellow-800">
+                            <strong>No subtasks available</strong> for the selected process. 
+                            You may want to change the scope to 'Specific Process' instead.
+                          </p>
+                        </div>
+                      )}
+                      
+                      {/* BOM Part Selection - Show when 'BOM_PART' is selected and subtask has BOM parts */}
+                      {formData.appliesTo === 'BOM_PART' && selectedSubtask && 
+                       selectedSubtask.bomRequirements && selectedSubtask.bomRequirements.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor="bompart">Select BOM Part (Required)</Label>
+                            <Badge variant="outline" className="text-xs">
+                              {selectedSubtask.bomRequirements.length} parts available
+                            </Badge>
+                          </div>
+                          <Select 
+                            value={formData.bomPartId} 
+                            onValueChange={handleBomPartChange}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a BOM part" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {/* Empty option to ensure manual selection is required */}
+                              <SelectItem value="none" disabled>
+                                <span className="text-muted-foreground">Select a BOM part below...</span>
+                              </SelectItem>
+                              
+                              {selectedSubtask.bomRequirements.map(requirement => (
+                                <SelectItem key={requirement.id} value={requirement.id}>
+                                  <div className="flex flex-col items-start w-full">
+                                    <div className="flex items-center justify-between w-full mb-1">
+                                      <span className="font-medium">
+                                        {requirement.bom_item?.part_number && requirement.bom_item.part_number !== 'UNKNOWN'
+                                          ? requirement.bom_item.part_number 
+                                          : `Part #${requirement.id?.slice(-4) || 'XXXX'}`}
+                                      </span>
+                                      {requirement.requirement_status && (
+                                        <Badge 
+                                          variant={requirement.requirement_status === 'AVAILABLE' ? 'default' : 'secondary'} 
+                                          className="text-xs py-0 px-1"
+                                        >
+                                          {requirement.requirement_status}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {requirement.bom_item?.name && requirement.bom_item.name !== 'Unknown Part' && (
+                                      <span className="text-xs text-muted-foreground">{requirement.bom_item.name}</span>
+                                    )}
+                                    <div className="text-xs text-muted-foreground">
+                                      Required: {requirement.required_quantity > 0 ? requirement.required_quantity : '?'} {requirement.unit}
+                                    </div>
+                                    {requirement.bom_item?.description && requirement.bom_item.description !== 'No BOM item data available' && (
+                                      <div className="text-xs text-muted-foreground italic">
+                                        {requirement.bom_item.description}
+                                      </div>
+                                    )}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Select a specific BOM part for very granular remark targeting about material issues, availability, or quality.
+                          </p>
+                        </div>
+                      )}
+                      
+                      {/* Show message if no BOM parts available but BOM_PART scope is selected */}
+                      {formData.appliesTo === 'BOM_PART' && selectedSubtask && 
+                       (!selectedSubtask.bomRequirements || selectedSubtask.bomRequirements.length === 0) && (
+                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                          <p className="text-sm text-yellow-800">
+                            <strong>No BOM parts required</strong> for the selected subtask. 
+                            You may want to change the scope to 'Specific Subtask' instead.
+                          </p>
+                        </div>
+                      )}
+                      
+                    </div>
+                  )}
+                  
                   <div>
                     <Label htmlFor="title">Title</Label>
-                    <Input id="title" placeholder="Brief description of the issue" />
+                    <Input 
+                      id="title" 
+                      placeholder="Brief description of the issue"
+                      value={formData.title}
+                      onChange={(e) => setFormData(prev => ({...prev, title: e.target.value}))}
+                    />
                   </div>
                   <div>
                     <Label htmlFor="description">Description</Label>
@@ -440,11 +936,19 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                       id="description" 
                       placeholder="Detailed description of the issue, impact, and any immediate actions taken"
                       rows={4}
+                      value={formData.description}
+                      onChange={(e) => setFormData(prev => ({...prev, description: e.target.value}))}
                     />
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button type="submit">Create Remark</Button>
+                  <Button 
+                    type="button" 
+                    onClick={handleCreateRemark}
+                    disabled={submitting}
+                  >
+                    {submitting ? 'Creating...' : 'Create Remark'}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -523,32 +1027,48 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                   <div className="flex items-start justify-between">
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
-                        <Badge className={getTypeColor(remark.type)} variant="outline">
-                          {getTypeIcon(remark.type)}
-                          {remark.type}
+                        <Badge className={getRemarkTypeColor(remark.remarkType as RemarkType)} variant="outline">
+                          {getTypeIcon(remark.remarkType)}
+                          {remark.remarkType}
                         </Badge>
-                        <Badge className={getPriorityColor(remark.priority)}>
+                        <Badge className={getRemarkPriorityColor(remark.priority as RemarkPriority)}>
                           {remark.priority}
                         </Badge>
-                        <Badge className={getStatusColor(remark.status)} variant="outline">
+                        <Badge className={getRemarkStatusColor(remark.status as RemarkStatus)} variant="outline">
                           {remark.status}
                         </Badge>
                       </div>
                       <h3 className="font-semibold">{remark.title}</h3>
                       <p className="text-sm text-muted-foreground">
-                        {remark.level}: {remark.targetName}
+                        <span className="font-medium">{remark.appliesTo}:</span> {remark.contextReference || 'General'}
                       </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Button 
                         size="sm" 
                         variant="outline"
                         onClick={() => setSelectedRemark(remark)}
+                        className="flex-shrink-0"
                       >
                         View Details
                       </Button>
-                      <Button size="sm" variant="ghost">
+                      <Button 
+                        size="sm" 
+                        variant="ghost"
+                        onClick={() => handleEditRemark(remark)}
+                        className="flex-shrink-0"
+                        title="Edit remark"
+                      >
                         <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="ghost"
+                        onClick={() => handleDeleteRemark(remark.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
+                        title="Delete remark"
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
@@ -559,22 +1079,25 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2">
                         <User className="h-3 w-3" />
-                        Created by {remark.createdByName}
+                        Created by User
                       </div>
                       <div className="flex items-center gap-2">
                         <Calendar className="h-3 w-3" />
-                        {new Date(remark.createdAt).toLocaleDateString()}
+                        {new Date(remark.reportedDate).toLocaleDateString()}
                       </div>
-                      {remark.assignedToName && (
+                      {remark.assignedTo && (
                         <div className="flex items-center gap-2">
                           <Flag className="h-3 w-3" />
-                          Assigned to {remark.assignedToName}
+                          Assigned to {remark.assignedTo}
                         </div>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div 
+                      className="flex items-center gap-2"
+                      onMouseEnter={() => loadCommentCount(remark.id)}
+                    >
                       <MessageSquare className="h-3 w-3" />
-                      {remark.comments.length} comments
+                      {commentCounts[remark.id] !== undefined ? commentCounts[remark.id] : '...'} comments
                     </div>
                   </div>
                 </CardContent>
@@ -603,17 +1126,17 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
           <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                {getTypeIcon(selectedRemark.type)}
+                {getTypeIcon(selectedRemark.remarkType)}
                 {selectedRemark.title}
               </DialogTitle>
               <div className="flex items-center gap-2">
-                <Badge className={getTypeColor(selectedRemark.type)} variant="outline">
-                  {selectedRemark.type}
+                <Badge className={getRemarkTypeColor(selectedRemark.remarkType as RemarkType)} variant="outline">
+                  {selectedRemark.remarkType}
                 </Badge>
-                <Badge className={getPriorityColor(selectedRemark.priority)}>
+                <Badge className={getRemarkPriorityColor(selectedRemark.priority as RemarkPriority)}>
                   {selectedRemark.priority}
                 </Badge>
-                <Badge className={getStatusColor(selectedRemark.status)} variant="outline">
+                <Badge className={getRemarkStatusColor(selectedRemark.status as RemarkStatus)} variant="outline">
                   {selectedRemark.status}
                 </Badge>
               </div>
@@ -624,67 +1147,138 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                 <p className="text-sm text-muted-foreground">{selectedRemark.description}</p>
               </div>
               
-              {selectedRemark.resolution && (
+              {selectedRemark.resolutionNotes && (
                 <div>
                   <h4 className="font-medium mb-2">Resolution</h4>
-                  <p className="text-sm text-muted-foreground">{selectedRemark.resolution}</p>
+                  <p className="text-sm text-muted-foreground">{selectedRemark.resolutionNotes}</p>
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="font-medium">Created by:</span> {selectedRemark.createdByName}
+                  <span className="font-medium">Created by:</span> User
                 </div>
                 <div>
-                  <span className="font-medium">Created:</span> {new Date(selectedRemark.createdAt).toLocaleString()}
+                  <span className="font-medium">Created:</span> {new Date(selectedRemark.reportedDate).toLocaleString()}
                 </div>
                 <div>
-                  <span className="font-medium">Applies to:</span> {selectedRemark.level} - {selectedRemark.targetName}
+                  <span className="font-medium">Applies to:</span> {selectedRemark.appliesTo} {selectedRemark.contextReference ? `- ${selectedRemark.contextReference}` : '- General'}
                 </div>
-                {selectedRemark.assignedToName && (
+                {selectedRemark.assignedTo && (
                   <div>
-                    <span className="font-medium">Assigned to:</span> {selectedRemark.assignedToName}
+                    <span className="font-medium">Assigned to:</span> {selectedRemark.assignedTo}
                   </div>
                 )}
               </div>
 
-              {selectedRemark.comments.length > 0 && (
+              {selectedRemark.commentsCount && selectedRemark.commentsCount > 0 && (
                 <div>
-                  <h4 className="font-medium mb-3">Comments ({selectedRemark.comments.length})</h4>
-                  <div className="space-y-3 max-h-48 overflow-y-auto">
-                    {selectedRemark.comments.map((comment) => (
-                      <div key={comment.id} className="flex gap-3">
-                        <Avatar className="h-8 w-8">
-                          <AvatarFallback>
-                            {comment.createdByName.split(' ').map(n => n[0]).join('')}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
+                  <h4 className="font-medium mb-3">Comments ({selectedRemark.commentsCount})</h4>
+                  <p className="text-sm text-muted-foreground">Comments will be loaded when viewing remark details.</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="status">Status</Label>
+                  <Select value={selectedRemark.status} onValueChange={(value) => setSelectedRemark({...selectedRemark, status: value})}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="OPEN">Open</SelectItem>
+                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                      <SelectItem value="RESOLVED">Resolved</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="priority">Priority</Label>
+                  <Select value={selectedRemark.priority} onValueChange={(value) => setSelectedRemark({...selectedRemark, priority: value})}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="LOW">Low</SelectItem>
+                      <SelectItem value="MEDIUM">Medium</SelectItem>
+                      <SelectItem value="HIGH">High</SelectItem>
+                      <SelectItem value="CRITICAL">Critical</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* GitHub-style Comments Section */}
+              <div className="border-t pt-4">
+                <h4 className="font-medium mb-4 flex items-center gap-2">
+                  <span>Comments</span>
+                  <Badge variant="secondary">{comments.length}</Badge>
+                </h4>
+                
+                {/* Comments List */}
+                {loadingComments ? (
+                  <div className="flex justify-center py-4">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                  </div>
+                ) : comments.length > 0 ? (
+                  <div className="space-y-4 mb-4 max-h-64 overflow-y-auto">
+                    {comments.map((comment) => (
+                      <div key={comment.id} className="border rounded-lg p-3 bg-muted/50">
+                        <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm">{comment.createdByName}</span>
+                            <Avatar className="h-6 w-6">
+                              <AvatarFallback>
+                                {comment.creator?.name ? comment.creator.name.charAt(0).toUpperCase() : 'U'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm font-medium">
+                              {comment.creator?.name || 'User'}
+                            </span>
                             <span className="text-xs text-muted-foreground">
                               {new Date(comment.createdAt).toLocaleString()}
                             </span>
                           </div>
-                          <p className="text-sm mt-1">{comment.content}</p>
+                          <Button 
+                            size="sm" 
+                            variant="ghost"
+                            onClick={() => handleDeleteComment(comment.id)}
+                            className="h-6 w-6 p-0 text-muted-foreground hover:text-red-600"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
                         </div>
+                        <p className="text-sm whitespace-pre-wrap">{comment.commentText}</p>
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-sm text-muted-foreground mb-4">No comments yet.</p>
+                )}
 
-              <div>
-                <h4 className="font-medium mb-2">Add Comment</h4>
-                <Textarea placeholder="Add a comment or update..." rows={3} />
-                <Button size="sm" className="mt-2">Post Comment</Button>
+                {/* Add New Comment */}
+                <div>
+                  <Textarea 
+                    placeholder="Add a comment or update..." 
+                    rows={3}
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    className="mb-2"
+                  />
+                  <Button 
+                    size="sm" 
+                    onClick={handlePostComment}
+                    disabled={!newComment.trim() || submittingComment}
+                    className="ml-auto"
+                  >
+                    {submittingComment ? 'Posting...' : 'Post Comment'}
+                  </Button>
+                </div>
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setSelectedRemark(null)}>
                 Close
               </Button>
-              <Button>Update Status</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

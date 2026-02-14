@@ -18,7 +18,6 @@ import { useProcessCosts } from '@/lib/api/hooks/useProcessCosts';
 import { useProcesses } from '@/lib/api/hooks/useProcesses';
 import { VendorRatingEngine } from '@/components/features/supplier-nominations/VendorRatingEngine';
 import { useSupplierNominations } from '@/lib/api/hooks/useSupplierNominations';
-import { BomPartCostAnalysis } from './BomPartCostAnalysis';
 
 interface BOMPart {
   id: string;
@@ -284,7 +283,6 @@ export function EvaluationGroupView({ projectId, bomParts, evaluationGroupName, 
       await deleteTrackingMutation.mutateAsync(trackingId);
       toast.success('RFQ cancelled and removed from tracking');
     } catch (error) {
-      console.error('Delete RFQ error:', error);
       toast.error('Failed to cancel RFQ. Please try again.');
     }
   };
@@ -298,7 +296,6 @@ export function EvaluationGroupView({ projectId, bomParts, evaluationGroupName, 
       await deleteTrackingMutation.mutateAsync(trackingId);
       toast.success('RFQ evaluation deleted and removed from tracking');
     } catch (error) {
-      console.error('Delete RFQ error:', error);
       toast.error('Failed to delete RFQ evaluation. Please try again.');
     }
   };
@@ -397,7 +394,6 @@ We look forward to your competitive proposal and establishing a successful partn
       
     } catch (error) {
       toast.error('Failed to send RFQ. Please try again.');
-      console.error('Failed to send RFQ:', error);
     } finally {
       setIsSubmittingRfq(false);
     }
@@ -881,15 +877,10 @@ We look forward to your competitive proposal and establishing a successful partn
 
                 <TabsContent value="cost-analysis" className="mt-0">
                   <div className="p-6">
-                    <BomPartCostAnalysis
-                      projectId={projectId}
-                      bomParts={bomParts}
-                      selectedVendors={matchedVendors}
-                      onAnalysisComplete={(data) => {
-                        console.log('Cost analysis completed:', data);
-                        // Optional: Handle cost analysis completion
-                      }}
-                    />
+                    <div className="text-center py-8 text-gray-400">
+                      <div className="text-sm">Cost Analysis Feature</div>
+                      <div className="text-xs mt-1">Cost analysis functionality will be implemented here</div>
+                    </div>
                   </div>
                 </TabsContent>
 
@@ -1156,7 +1147,6 @@ We look forward to your competitive proposal and establishing a successful partn
                                 nominationId={supplierNominations[0].id} // Use the first supplier nomination
                                 onScoreUpdate={(scores) => {
                                   // Optional: Handle score updates
-                                  console.log('Vendor rating updated:', scores);
                                 }}
                               />
                             ) : isLoadingNominations ? (

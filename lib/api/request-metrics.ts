@@ -228,8 +228,7 @@ export class RequestMetricsCollector {
       try {
         listener(metric);
       } catch (error) {
-        // Ignore listener errors
-        console.error('Error in metrics listener:', error);
+        // Ignore listener errors - silently handled
       }
     });
   }

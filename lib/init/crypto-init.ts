@@ -20,7 +20,6 @@ export async function initializeCrypto(): Promise<void> {
   
   if (!isHealthy) {
     const errorMessage = 'Crypto API initialization failed - application cannot start safely';
-    console.error(`❌ ${errorMessage}`);
     
     // In production, this should be a hard failure
     if (process.env.NODE_ENV === 'production') {
@@ -31,9 +30,7 @@ export async function initializeCrypto(): Promise<void> {
   // Detailed validation in development
   await devModeCryptoValidation();
 
-  if (process.env.NODE_ENV === 'development') {
-    console.log('🔒 Crypto APIs initialized successfully');
-  }
+  // Crypto APIs initialized successfully
 }
 
 /**

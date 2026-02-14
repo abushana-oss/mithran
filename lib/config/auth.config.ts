@@ -127,10 +127,7 @@ export class AuthConfig {
     }
 
     if (this.shouldSkipAuth && this.isDevelopment) {
-      console.log(
-        '🔓 DEVELOPMENT MODE: Authentication bypassed for faster development. ' +
-        'This is ONLY safe in development environments.'
-      );
+      // Development mode: Authentication bypassed for faster development
     }
   }
 

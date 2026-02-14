@@ -109,7 +109,7 @@ class ApiClient {
       // Update environment validator when health status changes
       healthCheckManager.addListener((health) => {
         envValidator.setApiReachable(health.status !== ServiceStatus.UNHEALTHY);
-        
+
         // Signal backend readiness when health check passes
         if (health.status === ServiceStatus.HEALTHY) {
           appReadiness.setBackendReady();
@@ -151,7 +151,6 @@ class ApiClient {
 
   setAccessToken(token: string | null) {
     // Deprecated: Use authTokenManager.setToken() instead
-    console.warn('[API Client] setAccessToken is deprecated, use authTokenManager.setToken()');
   }
 
   setRefreshToken(token: string | null) {
@@ -197,29 +196,29 @@ class ApiClient {
     if (endpoint === '/health' || endpoint.includes('/health')) {
       return true;
     }
-    
+
     // Bypass circuit breaker for auth validation requests
     // These are critical for the auth coordination system to work
     if (endpoint.includes('/projects?limit=1')) {
       return true;
     }
-    
+
     // Check app readiness state - only use circuit breaker when app is fully ready
     const readinessState = appReadiness.getState();
     const hasToken = !!this.getAuthToken();
-    
+
     // During auth initialization, bypass circuit breaker to prevent false failures
     // This prevents the auth-restore race condition that causes CORS-like errors
     if (readinessState === 'AUTH_INITIALIZING' || readinessState === 'BOOTING') {
       return true;
     }
-    
+
     // If we're in AUTH_READY state but no token, allow bypass for one attempt
     // This handles the case where auth finishes but token isn't available yet
     if (readinessState === 'AUTH_READY' && !hasToken) {
       return true;
     }
-    
+
     return false;
   }
 
@@ -375,7 +374,7 @@ class ApiClient {
     options: RequestOptions = {},
   ): Promise<T | null> {
     const method = options.method || 'GET';
-    
+
     // Use auth request interceptor for all requests
     return authRequestInterceptor.interceptRequest(
       {
@@ -400,11 +399,11 @@ class ApiClient {
     // Queue requests when app is not ready and we don't have a valid token
     const readinessState = appReadiness.getState();
     const hasValidToken = !!this.getAuthToken();
-    
+
     return (
-      (readinessState === AppReadinessState.BOOTING || 
-       readinessState === AppReadinessState.AUTH_INITIALIZING ||
-       (readinessState === AppReadinessState.AUTH_READY && !hasValidToken)) &&
+      (readinessState === AppReadinessState.BOOTING ||
+        readinessState === AppReadinessState.AUTH_INITIALIZING ||
+        (readinessState === AppReadinessState.AUTH_READY && !hasValidToken)) &&
       !options.silent // Don't queue silent requests to avoid hanging UI
     );
   }
@@ -513,7 +512,7 @@ class ApiClient {
         headers['x-mock-user'] = mockUser.role.toLowerCase();
         headers['x-auth-bypass'] = 'true';
         headers['x-dev-mode'] = 'true';
-        
+
         // Optional: Add mock user info for debugging
         if (process.env.NODE_ENV === 'development') {
           headers['x-mock-user-id'] = mockUser.id;
@@ -566,14 +565,14 @@ class ApiClient {
 
       try {
         const startTime = Date.now();
-        
+
         const response = await fetch(requestConfig.url, requestInit);
         const responseTime = Date.now() - startTime;
         clearTimeout(timeoutId);
 
         let data: ApiResponse<T>;
         const contentType = response.headers.get('content-type');
-        
+
         try {
           if (contentType && contentType.includes('application/json')) {
             data = await response.json();
@@ -610,7 +609,7 @@ class ApiClient {
                 const { data: { session }, error } = await supabase.auth.refreshSession();
                 if (!error && session?.access_token) {
                   tracker.incrementRetry();
-                  
+
                   // Update token manager with new token
                   const expiresInSeconds = session.expires_in || 3600;
                   const expiresAt = Date.now() + (expiresInSeconds * 1000);
@@ -618,12 +617,11 @@ class ApiClient {
                     token: session.access_token,
                     expiresAt
                   });
-                  
+
                   return executeRequest(attemptNumber + 1);
                 }
               } catch (error) {
                 // Refresh failed - user needs to log in
-                console.warn('[API] Token refresh failed:', error);
               }
             }
 
@@ -706,7 +704,7 @@ class ApiClient {
 
         // Record success metric
         tracker.recordSuccess(response.status);
-        
+
         // If this was an authenticated request that succeeded, mark auth as validated
         if (token && !appReadiness.isReady() && appReadiness.getState() === AppReadinessState.AUTH_INITIALIZING) {
           appReadiness.setAuthValidated();
@@ -860,13 +858,13 @@ class ApiClient {
           // Only classify as "backend not running" for ACTUAL network failures
           let errorCode: string;
           let errorMessage: string;
-          
+
           if (String(error.message || '').includes('Failed to fetch')) {
             // Improved error classification based on auth state and timing
             const hasValidToken = !!this.getAuthToken();
             const readinessState = appReadiness.getState();
             const isLocalhost = url.includes('localhost') || url.includes('127.0.0.1');
-            
+
             if (readinessState === 'BOOTING' || readinessState === 'AUTH_INITIALIZING') {
               // Auth system still initializing - this is a race condition, not a real error
               errorCode = 'AUTH_INITIALIZING';
@@ -892,7 +890,7 @@ class ApiClient {
             errorCode = 'REQUEST_ABORTED_OR_BLOCKED';
             errorMessage = 'Request was aborted or blocked';
           } else if (String(error.message || '').includes('timeout')) {
-            errorCode = 'TIMEOUT_ERROR';  
+            errorCode = 'TIMEOUT_ERROR';
             errorMessage = 'Request timed out';
           } else {
             // Don't assume backend is down for other TypeErrors
@@ -911,8 +909,8 @@ class ApiClient {
           }
 
           // Retry on network errors and auth initialization race conditions
-          if ((errorCode === 'NETWORK_ERROR' || errorCode === 'AUTH_INITIALIZING' || errorCode === 'BACKEND_UNREACHABLE') 
-              && this.shouldRetry(error, attemptNumber, retry, priority)) {
+          if ((errorCode === 'NETWORK_ERROR' || errorCode === 'AUTH_INITIALIZING' || errorCode === 'BACKEND_UNREACHABLE')
+            && this.shouldRetry(error, attemptNumber, retry, priority)) {
             const backoffMs = this.getBackoffDelay(attemptNumber, priority);
             logger.warn('Network error, retrying', {
               backoffMs,
@@ -951,10 +949,10 @@ class ApiClient {
     };
 
     // Bypass circuit breaker when auth isn't ready to prevent race conditions
-    const shouldBypassCircuitBreaker = bypassCircuitBreaker || 
+    const shouldBypassCircuitBreaker = bypassCircuitBreaker ||
       !appConfig.api.circuitBreaker.enabled ||
       this.shouldBypassForAuth(endpoint);
-    
+
     // Wrap executeRequest with circuit breaker
     // The request queue already handles auth initialization delays,
     // so circuit breaker should work normally here
@@ -1166,7 +1164,7 @@ class ApiClient {
           // Categorize different types of TypeErrors for uploads
           let errorCode: string;
           let errorMessage: string;
-          
+
           if (String(error.message || '').includes('Failed to fetch') || String(error.message || '').includes('fetch')) {
             errorCode = 'NETWORK_ERROR';
             errorMessage = 'Network error during upload - please check your connection';
@@ -1174,7 +1172,7 @@ class ApiClient {
             errorCode = 'REQUEST_ABORTED_OR_BLOCKED';
             errorMessage = 'Upload was aborted or blocked';
           } else if (String(error.message || '').includes('timeout')) {
-            errorCode = 'TIMEOUT_ERROR';  
+            errorCode = 'TIMEOUT_ERROR';
             errorMessage = 'Upload timed out';
           } else {
             errorCode = 'REQUEST_ABORTED_OR_BLOCKED';
@@ -1222,17 +1220,7 @@ export class ApiError extends Error {
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, ApiError);
     }
-    
-    // Enhanced console logging for better debugging
-    console.error('ApiError created:', {
-      message: this.message,
-      statusCode: this.statusCode,
-      code: this.code,
-      details: this.details,
-      timestamp: this.timestamp,
-      isRetryable: this.isRetryable,
-      stack: this.stack
-    });
+
   }
 
   /**

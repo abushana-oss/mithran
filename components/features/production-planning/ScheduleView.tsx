@@ -1,27 +1,22 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { 
   Calendar, 
   CheckCircle, 
   AlertTriangle, 
   Clock,
   PlayCircle,
-  PauseCircle,
   StopCircle,
   Edit,
   TrendingUp,
   Package,
-  Plus,
-  Settings
+  Download,
+  FileText
 } from 'lucide-react';
-import { DatePicker } from '@/components/ui/date-picker';
 import {
   Dialog,
   DialogContent,
@@ -29,15 +24,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { productionPlanningApi } from '@/lib/api/production-planning';
+import { useOptimisticUpdates } from '@/lib/hooks/useOptimisticUpdates';
 
 interface BOMPartRequirement {
   id: string;
@@ -68,18 +57,19 @@ interface SubTask {
 interface ProcessStep {
   id: string;
   name: string;
-  description: string;
+  sectionName?: string;
+  description?: string;
   sequence: number;
   estimatedDuration: number;
   actualDuration: number | null;
   startDate: string;
   endDate: string;
-  responsiblePerson: string;
-  responsiblePersonName: string;
+  responsiblePerson?: string;
+  responsiblePersonName?: string;
   status: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'BLOCKED';
-  dependencies: string[];
+  dependencies?: string[];
   subTasks: SubTask[];
-  notes: string;
+  notes?: string;
   bomRequirements: BOMPartRequirement[];
 }
 
@@ -91,259 +81,266 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
   const [startDate, setStartDate] = useState<Date>(new Date('2026-02-05'));
   const [endDate, setEndDate] = useState<Date>(new Date('2026-02-20'));
   const [viewMode, setViewMode] = useState<'weekly' | 'daily' | 'monthly'>('weekly');
-  const [showAddProcess, setShowAddProcess] = useState(false);
-  const [editingTask, setEditingTask] = useState<{type: 'process' | 'subtask', id: string, processId?: string} | null>(null);
-  const [showBOMView, setShowBOMView] = useState(false);
+  const [editingTask, setEditingTask] = useState<{type: 'process' | 'subtask', id: string, processId?: string, data?: any} | null>(null);
+  const [editingBOM, setEditingBOM] = useState<{partNumber: string, subTaskId: string, data: any} | null>(null);
+  const [bomFormData, setBomFormData] = useState<any>({});
+  const [taskFormData, setTaskFormData] = useState<any>({});
+  const [showBOMView, setShowBOMView] = useState(true);
+  const [loading, setLoading] = useState(true);
+  
+  // Use optimistic updates for process data
+  const processesState = useOptimisticUpdates<ProcessStep[]>([]);
 
-  // Mock data - this would come from props or API
-  const processes: ProcessStep[] = [
-    {
-      id: '1',
-      name: 'Material Preparation',
-      description: 'Prepare and inspect all raw materials',
-      sequence: 1,
-      estimatedDuration: 18,
-      actualDuration: null,
-      startDate: '2026-02-05',
-      endDate: '2026-02-07',
-      responsiblePerson: 'emp-001',
-      responsiblePersonName: 'Alice Johnson',
-      status: 'PLANNED',
-      dependencies: [],
-      notes: 'Ensure all materials meet quality standards before proceeding',
-      bomRequirements: [
-        {
-          id: 'br-1-1',
-          partId: '1',
-          partNumber: 'STL-001',
-          partName: 'Steel Plate',
-          requiredQuantity: 6,
-          consumedQuantity: 0,
-          availableQuantity: 4,
-          status: 'PARTIAL'
-        },
-        {
-          id: 'br-1-2',
-          partId: '4',
-          partNumber: 'MSC-004',
-          partName: 'Mounting Screws',
-          requiredQuantity: 24,
-          consumedQuantity: 0,
-          availableQuantity: 24,
-          status: 'AVAILABLE'
-        },
-        {
-          id: 'br-1-3',
-          partId: '2',
-          partNumber: 'PLT-002',
-          partName: 'Plastic Housing',
-          requiredQuantity: 2,
-          consumedQuantity: 0,
-          availableQuantity: 0,
-          status: 'SHORTAGE'
-        },
-        {
-          id: 'br-1-4',
-          partId: '3',
-          partNumber: 'ELC-003',
-          partName: 'Circuit Board',
-          requiredQuantity: 3,
-          consumedQuantity: 0,
-          availableQuantity: 3,
-          status: 'AVAILABLE'
+  // Fetch real processes data and organize them by sections
+  useEffect(() => {
+    const fetchProcesses = async () => {
+      if (!lotId) return;
+      
+      try {
+        setLoading(true);
+        const response = await productionPlanningApi.getProcessesByLot(lotId);
+        console.log('🔄 ScheduleView - Raw processes response:', response);
+        
+        // Transform API data to match UI expectations
+        const transformedProcesses = (response || []).map((process: any) => {
+          // Calculate estimated duration from process data or use default
+          const estimatedHours = process.estimated_hours || process.estimatedHours || process.estimatedDuration || 
+                               (process.planned_start_date && process.planned_end_date ? 
+                                 Math.round((new Date(process.planned_end_date).getTime() - new Date(process.planned_start_date).getTime()) / (1000 * 60 * 60)) : 
+                                 (process.startDate && process.endDate ? 
+                                  Math.round((new Date(process.endDate).getTime() - new Date(process.startDate).getTime()) / (1000 * 60 * 60)) : 
+                                  72));
+          
+          // Determine section based on process name (exact same logic as ProcessPlanning)
+          let sectionName = 'Process'; // default
+          const processName = (process.process_name || process.processName || '').toLowerCase();
+          
+          if (processName.includes('raw') || processName.includes('material')) {
+            sectionName = 'Raw Material';
+          } else if (processName.includes('manufacturing') || processName.includes('conversion') ||
+                     processName.includes('process') || processName.includes('production')) {
+            sectionName = 'Process';
+          } else if (processName.includes('inspection') || processName.includes('quality') ||
+                     processName.includes('check') || processName.includes('qc') || processName.includes('test')) {
+            sectionName = 'Inspection';
+          } else if (processName.includes('pack') || processName.includes('packaging') ||
+                     processName.includes('delivery') || processName.includes('ship')) {
+            sectionName = 'Packing';
+          }
+          
+          console.log(`📊 Process "${process.process_name || process.processName}" assigned to section: ${sectionName}`);
+          
+          return {
+            id: process.id,
+            name: process.process_name || process.processName || 'Unnamed Process',
+            sectionName: sectionName,
+            status: process.status?.toUpperCase() || 'PLANNED',
+            estimatedDuration: estimatedHours,
+            // Calculate actual duration based on dates and status
+            actualDuration: calculateActualHours(
+              process.planned_start_date || process.startDate || process.createdAt,
+              process.planned_end_date || process.endDate || process.completedAt,
+              estimatedHours,
+              process.status?.toUpperCase() || 'PLANNED'
+            ),
+            sequence: process.process_sequence || process.processSequence || 0,
+            startDate: process.planned_start_date || process.startDate,
+            endDate: process.planned_end_date || process.endDate,
+            bomRequirements: [],
+            subTasks: (process.subtasks || []).map((subtask: any) => {
+              // Calculate estimated duration from subtask data or use default
+              const subEstimatedHours = subtask.estimated_hours || subtask.estimatedHours || subtask.estimatedDuration || 
+                                      (subtask.planned_start_date && subtask.planned_end_date ? 
+                                       Math.round((new Date(subtask.planned_end_date).getTime() - new Date(subtask.planned_start_date).getTime()) / (1000 * 60 * 60)) : 
+                                       (subtask.startTime && subtask.endTime ? 
+                                        Math.round((new Date(subtask.endTime).getTime() - new Date(subtask.startTime).getTime()) / (1000 * 60 * 60)) : 
+                                        24));
+              
+              // Handle section-prefixed subtasks (same logic as ProcessPlanning)
+              const taskName = subtask.task_name || subtask.taskName || 'Unnamed Subtask';
+              const sectionPrefixMatch = taskName.match(/^\[([^\]]+)\]/);
+              const intendedSectionFromName = sectionPrefixMatch ? sectionPrefixMatch[1] : null;
+              const cleanTaskName = taskName.replace(/^\[([^\]]+)\]\s*/, '');
+              
+              return {
+                id: subtask.id,
+                name: cleanTaskName || taskName, // Use clean name for display
+                taskName: taskName, // Keep original task name with prefix
+                originalName: taskName, // Keep original for debugging
+                intendedSection: intendedSectionFromName, // Track intended section
+                status: (subtask.status || 'PENDING').toString().toUpperCase(),
+                estimatedDuration: subEstimatedHours,
+                // Calculate actual duration based on dates and status
+                actualDuration: calculateActualHours(
+                  subtask.planned_start_date || subtask.startTime || subtask.createdAt,
+                  subtask.planned_end_date || subtask.endTime || subtask.completedAt,
+                  subEstimatedHours,
+                  subtask.status?.toUpperCase() || 'PENDING'
+                ),
+                startTime: subtask.planned_start_date || subtask.startTime,
+                endTime: subtask.planned_end_date || subtask.endTime,
+                responsiblePersonName: subtask.assigned_operator || subtask.assignedOperator || subtask.responsiblePerson || 'Unassigned',
+                bomRequirements: (subtask.bom_requirements || subtask.bomRequirements || []).map((bomReq: any) => ({
+                  id: bomReq.id || bomReq.bom_item_id,
+                  partId: bomReq.bomItemId || bomReq.bom_item_id || bomReq.id,
+                  partNumber: bomReq.partNumber || bomReq.part_number || bomReq.bom_item?.part_number || 'N/A',
+                  partName: bomReq.partName || bomReq.part_name || bomReq.name || bomReq.bom_item?.name || bomReq.bom_item?.part_number || 'Unnamed Part',
+                  requiredQuantity: bomReq.requiredQuantity || bomReq.required_quantity || bomReq.quantity || 0,
+                  consumedQuantity: bomReq.consumedQuantity || bomReq.consumed_quantity || 0,
+                  availableQuantity: bomReq.availableQuantity || bomReq.available_quantity || 0,
+                  unit: bomReq.unit || 'units',
+                  status: bomReq.status?.toUpperCase() || (bomReq.available_quantity > 0 ? 'AVAILABLE' : 'SHORTAGE')
+                }))
+              };
+            })
+          };
+        });
+        
+        processesState.setData(transformedProcesses);
+      } catch (error) {
+        console.error('Failed to fetch processes:', error);
+        // Set empty array on error - the UI will show the empty state
+        processesState.setData([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProcesses();
+  }, [lotId]);
+
+  const processes = processesState.data;
+  
+  // Define section order to match ProcessPlanning
+  const sectionOrder = ['Raw Material', 'Process', 'Inspection', 'Packing'];
+  
+  // Group processes by section - for UI display
+  const groupedProcesses = (() => {
+    const groups: Record<string, ProcessStep[]> = {};
+    
+    // Initialize all sections
+    sectionOrder.forEach(section => {
+      groups[section] = [];
+    });
+    
+    // Group processes by their section, handling cross-section subtasks properly
+    processes.forEach(process => {
+      const processSection = process.sectionName || 'Process';
+      
+      // Separate subtasks by intended section
+      const subtasksBySection: Record<string, any[]> = {};
+      sectionOrder.forEach(section => {
+        subtasksBySection[section] = [];
+      });
+      
+      process.subTasks.forEach(subtask => {
+        // Extract intended section from task name (use correct property from API)
+        const taskName = subtask.taskName || subtask.name || '';
+        const sectionMatch = taskName.match(/^\[([^\]]+)\]/);
+        const intendedSection = sectionMatch ? sectionMatch[1] : processSection;
+        
+        if (subtasksBySection[intendedSection]) {
+          // Clean the task name by removing section prefix
+          const cleanTaskName = taskName.replace(/^\[([^\]]+)\]\s*/, '');
+          const processedSubtask = {
+            ...subtask,
+            name: cleanTaskName || taskName
+          };
+          subtasksBySection[intendedSection].push(processedSubtask);
+        } else {
+          // Default to process section if intended section not found
+          subtasksBySection[processSection].push(subtask);
         }
-      ],
-      subTasks: [
-        {
-          id: 'st-1-1',
-          name: 'Material Inspection',
-          description: 'Visual and dimensional inspection of raw materials',
-          assignedOperator: 'op-001',
-          operatorName: 'Bob Smith',
-          estimatedDuration: 2,
-          actualDuration: null,
-          status: 'PENDING',
-          startTime: null,
-          endTime: null,
-          notes: 'Use calibrated measurement tools',
-          bomRequirements: []
-        },
-        {
-          id: 'st-1-2',
-          name: 'Cutting to Size',
-          description: 'Cut materials to required dimensions',
-          assignedOperator: 'op-002',
-          operatorName: 'Carol Davis',
-          estimatedDuration: 4,
-          actualDuration: null,
-          status: 'PENDING',
-          startTime: null,
-          endTime: null,
-          notes: 'Follow cutting specifications exactly',
-          bomRequirements: []
-        },
-        {
-          id: 'st-1-3',
-          name: 'Surface Treatment',
-          description: 'Clean and prepare surfaces',
-          assignedOperator: 'op-003',
-          operatorName: 'David Wilson',
-          estimatedDuration: 2,
-          actualDuration: null,
-          status: 'PENDING',
-          startTime: null,
-          endTime: null,
-          notes: 'Use approved cleaning solvents',
-          bomRequirements: []
+      });
+      
+      // Add process to its main section with only its own subtasks
+      const processWithMainSubtasks = {
+        ...process,
+        subTasks: subtasksBySection[processSection] || []
+      };
+      groups[processSection].push(processWithMainSubtasks);
+      
+      // Add cross-section subtasks to their intended sections as separate entries
+      sectionOrder.forEach(section => {
+        if (section !== processSection && subtasksBySection[section].length > 0) {
+          const crossSectionProcess = {
+            ...process,
+            id: `${process.id}-${section}`,
+            name: `${section} Tasks`,
+            subTasks: subtasksBySection[section],
+            sectionName: section,
+            isVirtual: true
+          };
+          groups[section].push(crossSectionProcess);
         }
-      ]
-    },
-    {
-      id: '2',
-      name: 'Assembly',
-      description: 'Assemble components according to specifications',
-      sequence: 2,
-      estimatedDuration: 16,
-      actualDuration: null,
-      startDate: '2026-02-07',
-      endDate: '2026-02-10',
-      responsiblePerson: 'emp-002',
-      responsiblePersonName: 'Michael Brown',
-      status: 'PLANNED',
-      dependencies: ['1'],
-      notes: 'Follow assembly sequence strictly to avoid rework',
-      bomRequirements: [
-        {
-          id: 'br-2-1',
-          partId: '2',
-          partNumber: 'PLT-002',
-          partName: 'Plastic Housing',
-          requiredQuantity: 2,
-          consumedQuantity: 0,
-          availableQuantity: 0,
-          status: 'SHORTAGE'
+      });
+    });
+    
+    return groups;
+  })();
+  
+  // Group subtasks by section for PDF export only - avoids duplication
+  const groupedSubtasksForPDF = (() => {
+    const groups: Record<string, any[]> = {};
+    
+    // Initialize all sections
+    sectionOrder.forEach(section => {
+      groups[section] = [];
+    });
+    
+    // Collect all subtasks and assign them to sections based on their task name prefix
+    processes.forEach(process => {
+      process.subTasks?.forEach(subtask => {
+        // Extract intended section from task name prefix
+        const taskName = subtask.taskName || subtask.name || '';
+        const sectionMatch = taskName.match(/^\[([^\]]+)\]/);
+        const intendedSection = sectionMatch ? sectionMatch[1] : process.sectionName || 'Process';
+        
+        // Clean the task name by removing section prefix for display
+        const cleanTaskName = taskName.replace(/^\[([^\]]+)\]\s*/, '') || taskName;
+        
+        // Add subtask to the intended section
+        if (groups[intendedSection]) {
+          groups[intendedSection].push({
+            ...subtask,
+            name: cleanTaskName,
+            processId: process.id,
+            processName: process.name
+          });
         }
-      ],
-      subTasks: [
-        {
-          id: 'st-2-1',
-          name: 'Frame Assembly',
-          description: 'Assemble main frame structure',
-          assignedOperator: 'op-004',
-          operatorName: 'Emma Taylor',
-          estimatedDuration: 6,
-          actualDuration: null,
-          status: 'PENDING',
-          startTime: null,
-          endTime: null,
-          notes: 'Ensure proper alignment before welding',
-          bomRequirements: []
-        },
-        {
-          id: 'st-2-2',
-          name: 'Component Installation',
-          description: 'Install electronic components',
-          assignedOperator: 'op-005',
-          operatorName: 'Frank Miller',
-          estimatedDuration: 8,
-          actualDuration: null,
-          status: 'PENDING',
-          startTime: null,
-          endTime: null,
-          notes: 'Handle ESD-sensitive components with care',
-          bomRequirements: []
-        },
-        {
-          id: 'st-2-3',
-          name: 'Wiring',
-          description: 'Connect all electrical components',
-          assignedOperator: 'op-006',
-          operatorName: 'Grace Chen',
-          estimatedDuration: 2,
-          actualDuration: null,
-          status: 'PENDING',
-          startTime: null,
-          endTime: null,
-          notes: 'Follow wiring diagram precisely',
-          bomRequirements: []
-        }
-      ]
-    },
-    {
-      id: '3',
-      name: 'Testing & Quality Control',
-      description: 'Comprehensive testing and quality verification',
-      sequence: 3,
-      estimatedDuration: 12,
-      actualDuration: null,
-      startDate: '2026-02-11',
-      endDate: '2026-02-13',
-      responsiblePerson: 'emp-003',
-      responsiblePersonName: 'Sarah Garcia',
-      status: 'PLANNED',
-      dependencies: ['2'],
-      notes: 'Document all test results and quality metrics',
-      bomRequirements: [],
-      subTasks: [
-        {
-          id: 'st-3-1',
-          name: 'Functional Testing',
-          description: 'Test all functions and features',
-          assignedOperator: 'op-007',
-          operatorName: 'Henry Kim',
-          estimatedDuration: 4,
-          actualDuration: null,
-          status: 'PENDING',
-          startTime: null,
-          endTime: null,
-          notes: 'Use approved test procedures',
-          bomRequirements: []
-        },
-        {
-          id: 'st-3-2',
-          name: 'Quality Inspection',
-          description: 'Visual and dimensional quality check',
-          assignedOperator: 'op-008',
-          operatorName: 'Ivy Rodriguez',
-          estimatedDuration: 3,
-          actualDuration: null,
-          status: 'PENDING',
-          startTime: null,
-          endTime: null,
-          notes: 'Check against quality standards',
-          bomRequirements: []
-        },
-        {
-          id: 'st-3-3',
-          name: 'Final Packaging',
-          description: 'Package units for delivery',
-          assignedOperator: 'op-009',
-          operatorName: 'Jack Thompson',
-          estimatedDuration: 2,
-          actualDuration: null,
-          status: 'PENDING',
-          startTime: null,
-          endTime: null,
-          notes: 'Use protective packaging materials',
-          bomRequirements: []
-        },
-        {
-          id: 'st-3-4',
-          name: 'Documentation',
-          description: 'Complete all required documentation',
-          assignedOperator: 'op-010',
-          operatorName: 'Kelly White',
-          estimatedDuration: 3,
-          actualDuration: null,
-          status: 'PENDING',
-          startTime: null,
-          endTime: null,
-          notes: 'Include test certificates and quality reports',
-          bomRequirements: []
-        }
-      ]
+      });
+    });
+    
+    return groups;
+  })();
+  
+  const displayProcesses = processes;
+
+  // Helper function to calculate actual hours based on dates
+  const calculateActualHours = (startDate: string | null, endDate: string | null, estimatedHours: number, status: string) => {
+    if (!startDate && status !== 'PLANNED') return 0;
+    
+    const start = startDate ? new Date(startDate) : null;
+    const now = new Date();
+    const end = endDate ? new Date(endDate) : null;
+    
+    if (status === 'COMPLETED' && start && end) {
+      // If completed, calculate hours between start and end date
+      const diffMs = end.getTime() - start.getTime();
+      const hours = Math.round(diffMs / (1000 * 60 * 60));
+      return Math.max(0, hours); // Don't cap at estimated hours, show actual time taken
+    } else if (status === 'IN_PROGRESS' && start) {
+      // If in progress, calculate hours from start to now
+      const diffMs = now.getTime() - start.getTime();
+      const hours = Math.round(diffMs / (1000 * 60 * 60));
+      return Math.max(0, hours); // Don't cap, show actual progress
+    } else if (status === 'PLANNED' || status === 'PENDING') {
+      // For planned/pending tasks, return estimated hours
+      return estimatedHours;
     }
-  ];
+    
+    return 0;
+  };
 
   const getStatusColor = (status: string) => {
     const colors = {
@@ -378,59 +375,687 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
       AVAILABLE: 'bg-green-100 text-green-700',
       PARTIAL: 'bg-yellow-100 text-yellow-700',
       SHORTAGE: 'bg-red-100 text-red-700',
-      CONSUMED: 'bg-gray-100 text-gray-700'
+      CONSUMED: 'bg-gray-100 text-gray-700',
+      PENDING: 'bg-gray-100 text-gray-600'
     };
     return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-600';
   };
 
-  const totalTasks = processes.reduce((sum, p) => sum + p.subTasks.length + 1, 0);
-  const inProgressTasks = processes.filter(p => p.status === 'IN_PROGRESS').length + 
-                          processes.flatMap(p => p.subTasks).filter(st => st.status === 'IN_PROGRESS').length;
-  const completedTasks = processes.filter(p => p.status === 'COMPLETED').length + 
-                         processes.flatMap(p => p.subTasks).filter(st => st.status === 'COMPLETED').length;
+  // Handle BOM edit form initialization
+  const handleEditBOM = (bomItem: any, subTaskId: string) => {
+    setEditingBOM({
+      partNumber: bomItem.partNumber,
+      subTaskId: subTaskId,
+      data: bomItem
+    });
+    setBomFormData({
+      partNumber: bomItem.partNumber,
+      partName: bomItem.partName,
+      requiredQuantity: bomItem.requiredQuantity,
+      consumedQuantity: bomItem.consumedQuantity || 0,
+      unit: bomItem.unit,
+      status: bomItem.status || 'AVAILABLE',
+      notes: ''
+    });
+  };
+
+  // Handle Process edit form initialization
+  const handleEditProcess = (process: ProcessStep) => {
+    setEditingTask({
+      type: 'process',
+      id: process.id,
+      data: process
+    });
+    setTaskFormData({
+      name: process.name,
+      description: process.description || '',
+      estimatedDuration: process.estimatedDuration,
+      startDate: process.startDate ? new Date(process.startDate).toISOString().split('T')[0] : '',
+      endDate: process.endDate ? new Date(process.endDate).toISOString().split('T')[0] : '',
+      status: process.status,
+      responsiblePerson: process.responsiblePersonName || '',
+      notes: process.notes || ''
+    });
+  };
+
+  // Handle SubTask edit form initialization
+  const handleEditSubTask = (subTask: SubTask, processId: string) => {
+    setEditingTask({
+      type: 'subtask',
+      id: subTask.id,
+      processId: processId,
+      data: subTask
+    });
+    setTaskFormData({
+      name: subTask.name,
+      description: subTask.description || '',
+      estimatedDuration: subTask.estimatedDuration,
+      startTime: subTask.startTime ? new Date(subTask.startTime).toISOString().split('T')[0] : '',
+      endTime: subTask.endTime ? new Date(subTask.endTime).toISOString().split('T')[0] : '',
+      status: subTask.status,
+      assignedOperator: subTask.operatorName || subTask.responsiblePersonName || '',
+      notes: subTask.notes || ''
+    });
+  };
+
+  // Handle Task save (both Process and SubTask)
+  const handleSaveTask = async () => {
+    if (!editingTask) return;
+
+    try {
+      if (editingTask.type === 'process') {
+        // Update process optimistically
+        const updatedProcesses = processes.map(process => {
+          if (process.id === editingTask.id) {
+            return {
+              ...process,
+              name: taskFormData.name,
+              description: taskFormData.description,
+              estimatedDuration: Number(taskFormData.estimatedDuration),
+              startDate: taskFormData.startDate,
+              endDate: taskFormData.endDate,
+              status: taskFormData.status,
+              responsiblePersonName: taskFormData.responsiblePerson,
+              notes: taskFormData.notes
+            };
+          }
+          return process;
+        });
+        processesState.setData(updatedProcesses);
+        
+        // Here you would normally call an API to persist the changes
+        // await productionPlanningApi.updateProcess(editingTask.id, taskFormData);
+        
+      } else if (editingTask.type === 'subtask') {
+        // Update subtask optimistically
+        const updatedProcesses = processes.map(process => {
+          if (process.id === editingTask.processId) {
+            return {
+              ...process,
+              subTasks: process.subTasks.map(subTask => {
+                if (subTask.id === editingTask.id) {
+                  return {
+                    ...subTask,
+                    name: taskFormData.name,
+                    description: taskFormData.description,
+                    estimatedDuration: Number(taskFormData.estimatedDuration),
+                    startTime: taskFormData.startTime,
+                    endTime: taskFormData.endTime,
+                    status: taskFormData.status,
+                    operatorName: taskFormData.assignedOperator,
+                    responsiblePersonName: taskFormData.assignedOperator,
+                    notes: taskFormData.notes
+                  };
+                }
+                return subTask;
+              })
+            };
+          }
+          return process;
+        });
+        processesState.setData(updatedProcesses);
+        
+        // Here you would normally call an API to persist the changes
+        // await productionPlanningApi.updateSubTask(editingTask.id, taskFormData);
+      }
+
+      // Close dialog
+      setEditingTask(null);
+      setTaskFormData({});
+      
+    } catch (error) {
+      console.error('Failed to save task:', error);
+      // Revert optimistic update on error
+    }
+  };
+
+  // Handle BOM save
+  const handleSaveBOM = async () => {
+    if (!editingBOM) return;
+
+    try {
+      // Update the BOM data optimistically
+      const updatedProcesses = processes.map(process => ({
+        ...process,
+        subTasks: process.subTasks.map(subTask => {
+          if (subTask.id === editingBOM.subTaskId) {
+            return {
+              ...subTask,
+              bomRequirements: subTask.bomRequirements.map(bom => {
+                if (bom.partNumber === editingBOM.partNumber) {
+                  return {
+                    ...bom,
+                    requiredQuantity: bomFormData.requiredQuantity,
+                    consumedQuantity: bomFormData.consumedQuantity,
+                    unit: bomFormData.unit,
+                    status: bomFormData.status
+                  };
+                }
+                return bom;
+              })
+            };
+          }
+          return subTask;
+        })
+      }));
+
+      // Update state optimistically
+      processesState.setData(updatedProcesses);
+      
+      // Close dialog
+      setEditingBOM(null);
+      setBomFormData({});
+      
+      // Here you would normally call an API to persist the changes
+      // await productionPlanningApi.updateBOMProgress(editingBOM.subTaskId, bomFormData);
+      
+    } catch (error) {
+      console.error('Failed to save BOM progress:', error);
+      // Revert optimistic update on error
+      // You might want to show a toast notification here
+    }
+  };
+
+  // Function to fetch latest data for export
+  const fetchLatestData = async () => {
+    if (!lotId) return;
+    
+    try {
+      const response = await productionPlanningApi.getProcessesByLot(lotId);
+      
+      // Transform API data to match UI expectations (same as in useEffect)
+      const transformedProcesses = (response || []).map((process: any) => {
+        const estimatedHours = process.estimated_hours || process.estimatedHours || process.estimatedDuration || 
+                             (process.planned_start_date && process.planned_end_date ? 
+                               Math.round((new Date(process.planned_end_date).getTime() - new Date(process.planned_start_date).getTime()) / (1000 * 60 * 60)) : 
+                               (process.startDate && process.endDate ? 
+                                Math.round((new Date(process.endDate).getTime() - new Date(process.startDate).getTime()) / (1000 * 60 * 60)) : 
+                                72));
+        
+        return {
+          id: process.id,
+          name: process.process_name || process.processName || 'Unnamed Process',
+          status: process.status?.toUpperCase() || 'PLANNED',
+          estimatedDuration: estimatedHours,
+          actualDuration: calculateActualHours(
+            process.planned_start_date || process.startDate || process.createdAt,
+            process.planned_end_date || process.endDate || process.completedAt,
+            estimatedHours,
+            process.status?.toUpperCase() || 'PLANNED'
+          ),
+          sequence: process.process_sequence || process.processSequence || 0,
+          startDate: process.planned_start_date || process.startDate,
+          endDate: process.planned_end_date || process.endDate,
+          bomRequirements: [],
+          subTasks: (process.subtasks || []).map((subtask: any) => {
+            const subEstimatedHours = subtask.estimated_hours || subtask.estimatedHours || subtask.estimatedDuration || 
+                                    (subtask.planned_start_date && subtask.planned_end_date ? 
+                                     Math.round((new Date(subtask.planned_end_date).getTime() - new Date(subtask.planned_start_date).getTime()) / (1000 * 60 * 60)) : 
+                                     (subtask.startTime && subtask.endTime ? 
+                                      Math.round((new Date(subtask.endTime).getTime() - new Date(subtask.startTime).getTime()) / (1000 * 60 * 60)) : 
+                                      24));
+            
+            return {
+              id: subtask.id,
+              name: subtask.task_name || subtask.taskName || 'Unnamed Subtask',
+              status: subtask.status?.toUpperCase() || 'PENDING',
+              estimatedDuration: subEstimatedHours,
+              actualDuration: calculateActualHours(
+                subtask.planned_start_date || subtask.startTime || subtask.createdAt,
+                subtask.planned_end_date || subtask.endTime || subtask.completedAt,
+                subEstimatedHours,
+                subtask.status?.toUpperCase() || 'PENDING'
+              ),
+              sequence: subtask.task_sequence || subtask.taskSequence || 0,
+              startTime: subtask.planned_start_date || subtask.startTime,
+              endTime: subtask.planned_end_date || subtask.endTime,
+              responsiblePersonName: subtask.assigned_operator || subtask.assignedOperator || subtask.responsible_person || 'Unassigned',
+              bomRequirements: (subtask.bom_requirements || subtask.bomRequirements || []).map((bomReq: any) => ({
+                id: bomReq.id,
+                partNumber: bomReq.part_number || bomReq.partNumber || bomReq.bom_item?.part_number || 'N/A',
+                name: bomReq.part_name || bomReq.partName || bomReq.name || bomReq.bom_item?.name || bomReq.bom_item?.part_number || 'Unnamed Part',
+                quantity: bomReq.required_quantity || bomReq.requiredQuantity || 0,
+                unit: bomReq.unit || bomReq.bom_item?.unit || 'pcs',
+                status: 'REQUIRED'
+              }))
+            };
+          }).sort((a, b) => a.sequence - b.sequence)
+        };
+      }).sort((a, b) => a.sequence - b.sequence);
+      
+      // Update the state with fresh data
+      processesState.setData(transformedProcesses);
+      
+    } catch (error) {
+      console.error('Error fetching latest data for export:', error);
+    }
+  };
+
+  // Export to PDF functionality
+  const exportToPDF = async () => {
+    try {
+      // First refresh the data to ensure we have the latest information
+      setLoading(true);
+      await fetchLatestData();
+      setLoading(false);
+
+      // Create a new window for the PDF content
+      const printWindow = window.open('', '_blank', 'width=1200,height=800');
+      if (!printWindow) {
+        alert('Please allow pop-ups to export the Gantt chart');
+        return;
+      }
+
+      // Generate PDF-optimized HTML content with fresh data
+      const pdfContent = generatePDFContent();
+      
+      printWindow.document.write(pdfContent);
+      printWindow.document.close();
+      
+      // Wait for content to load, then trigger save as PDF
+      setTimeout(() => {
+        printWindow.focus();
+        // Use execCommand to save as PDF if supported, otherwise use print
+        if (printWindow.document.execCommand) {
+          try {
+            printWindow.document.execCommand('SaveAs', true, `Production_Gantt_${lotId}_${new Date().toISOString().split('T')[0]}.pdf`);
+          } catch (e) {
+            printWindow.print();
+          }
+        } else {
+          printWindow.print();
+        }
+      }, 1000);
+      
+    } catch (error) {
+      console.error('Failed to export PDF:', error);
+      alert('Failed to export PDF. Please try again.');
+    }
+  };
+
+  // Generate PDF-optimized content
+  const generatePDFContent = () => {
+    const today = new Date();
+    const columnCount = viewMode === 'weekly' ? 10 : viewMode === 'daily' ? 7 : 6;
+    
+    // Generate date headers
+    let dateHeaders = '';
+    for (let i = 0; i < columnCount; i++) {
+      const currentDate = new Date(today);
+      let dateLabel = '';
+      
+      if (viewMode === 'weekly') {
+        currentDate.setDate(today.getDate() + (i * 7));
+        dateLabel = `${currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (Week ${i + 1})`;
+      } else if (viewMode === 'daily') {
+        currentDate.setDate(today.getDate() + i);
+        dateLabel = `${currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} (${currentDate.toLocaleDateString('en-US', { weekday: 'short' })})`;
+      } else {
+        currentDate.setMonth(today.getMonth() + i);
+        dateLabel = `${currentDate.toLocaleDateString('en-US', { month: 'short' })} (Month ${i + 1})`;
+      }
+      
+      dateHeaders += `<th style="border: 1px solid #e5e7eb; padding: 8px; font-size: 11px; text-align: center; background: #f9fafb;">${dateLabel}</th>`;
+    }
+
+    // Generate process rows organized by sections
+    let processRows = '';
+    if (displayProcesses.length === 0) {
+      processRows = `
+        <tr>
+          <td colspan="${columnCount + 1}" style="text-align: center; padding: 40px; color: #6b7280;">
+            No processes found for this lot. Create processes to see them in the Gantt chart.
+          </td>
+        </tr>
+      `;
+    } else {
+      sectionOrder.forEach((sectionName, sectionIndex) => {
+        const sectionSubtasks = groupedSubtasksForPDF[sectionName] || [];
+        
+        // Always show section even if empty, but indicate no subtasks
+        const sectionTitle = sectionSubtasks.length === 0 ? `${sectionName} (No tasks)` : sectionName;
+        
+        // Section header row
+        let sectionTimelineCells = '';
+        for (let i = 0; i < columnCount; i++) {
+          const isActive = i < 3; // Show first 3 columns for section header
+          const cellContent = isActive ? `Wk ${i + 1}` : '';
+          
+          sectionTimelineCells += `
+            <td class="${isActive ? 'process-cell' : ''}" style="border: 1px solid #374151; padding: 4px; text-align: center; ${isActive ? '' : 'background: #f3f4f6; color: #6b7280;'} font-size: 10px;">
+              ${cellContent}
+            </td>
+          `;
+        }
+
+        processRows += `
+          <tr style="background: #f8fafc;">
+            <td style="border: 1px solid #e5e7eb; padding: 8px; font-weight: 600;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="width: 24px; height: 24px; background: #3b82f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 12px; font-weight: bold;">
+                  ${sectionIndex + 1}
+                </div>
+                <div>
+                  <div style="font-size: 14px;">${sectionTitle}</div>
+                  <div style="font-size: 11px; color: #6b7280;">${sectionSubtasks.reduce((total, subtask) => total + (subtask.bomRequirements?.length || 0), 0)} BOM parts</div>
+                </div>
+              </div>
+            </td>
+            ${sectionTimelineCells}
+          </tr>
+        `;
+
+        // Display subtasks within this section
+        if (sectionSubtasks.length > 0) {
+          sectionSubtasks.forEach((subTask, subTaskIndex) => {
+          let subTimelineCells = '';
+          for (let i = 0; i < columnCount; i++) {
+            const progressPercentage = subTask.actualDuration && subTask.estimatedDuration ? 
+              (subTask.actualDuration / subTask.estimatedDuration) * 100 : 0;
+            const isInProgress = i < Math.ceil((progressPercentage / 100) * columnCount) || i < 3;
+            const cellContent = isInProgress ? (i === 0 ? subTask.name : `${subTask.actualDuration || 0}h`) : '';
+            
+            subTimelineCells += `
+              <td class="${isInProgress ? 'subtask-cell' : ''}" style="border: 1px solid #374151; padding: 4px; text-align: center; ${isInProgress ? '' : 'background: #f3f4f6; color: #6b7280;'} font-size: 10px;">
+                ${cellContent}
+              </td>
+            `;
+          }
+
+          processRows += `
+            <tr>
+              <td style="border: 1px solid #e5e7eb; padding: 8px; padding-left: 24px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <div style="width: 20px; height: 20px; background: #6b7280; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 10px;">
+                    ${subTaskIndex + 1}
+                  </div>
+                  <div style="width: 12px; height: 12px; background: #f59e0b; border-radius: 50%;"></div>
+                  <div>
+                    <div style="font-size: 12px; font-weight: 500;">${subTask.name}</div>
+                    <div style="font-size: 10px; color: #6b7280;">${subTask.responsiblePersonName || 'Unassigned'} • ${subTask.bomRequirements?.length || 0} BOM parts</div>
+                  </div>
+                  <span style="background: #f3f4f6; border: 1px solid #d1d5db; padding: 2px 6px; border-radius: 4px; font-size: 10px;">${subTask.status || 'PENDING'}</span>
+                </div>
+              </td>
+              ${subTimelineCells}
+            </tr>
+          `;
+
+          // BOM Requirements
+          if (showBOMView && subTask.bomRequirements) {
+            subTask.bomRequirements.forEach((bomItem, bomIndex) => {
+              let bomTimelineCells = '';
+              for (let i = 0; i < columnCount; i++) {
+                const consumptionPercentage = bomItem.requiredQuantity > 0 ? 
+                  Math.min(100, ((bomItem.consumedQuantity || 0) / bomItem.requiredQuantity) * 100) : 0;
+                const isConsumed = i < Math.ceil((consumptionPercentage / 100) * columnCount) || i < 2;
+                const cellContent = isConsumed ? (i === 0 ? bomItem.partNumber : `${bomItem.consumedQuantity || 0}/${bomItem.requiredQuantity}`) : '';
+                
+                const statusClasses = {
+                  AVAILABLE: 'bom-available',
+                  PARTIAL: 'bom-partial',
+                  SHORTAGE: 'bom-shortage',
+                  PENDING: 'bom-pending'
+                };
+                
+                bomTimelineCells += `
+                  <td class="${isConsumed ? statusClasses[bomItem.status] || 'bom-available' : ''}" style="border: 1px solid #374151; padding: 4px; text-align: center; ${isConsumed ? '' : 'background: #f3f4f6; color: #6b7280;'} font-size: 9px;">
+                    ${cellContent}
+                  </td>
+                `;
+              }
+
+              processRows += `
+                <tr>
+                  <td style="border: 1px solid #e5e7eb; padding: 8px; padding-left: 48px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <div style="width: 16px; height: 16px; background: rgba(59, 130, 246, 0.2); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px;">
+                        ${bomIndex + 1}
+                      </div>
+                      <div style="width: 8px; height: 8px; background: #3b82f6; border-radius: 50%;"></div>
+                      <div>
+                        <div style="font-size: 11px; font-weight: 500;">${bomItem.partNumber || 'N/A'}</div>
+                        <div style="font-size: 9px; color: #6b7280;">${bomItem.partName || 'Unknown Part'} • Qty: ${bomItem.requiredQuantity || 0}</div>
+                      </div>
+                      <span style="background: #f3f4f6; border: 1px solid #d1d5db; padding: 2px 4px; border-radius: 4px; font-size: 9px;">${bomItem.unit || 'pcs'}</span>
+                    </div>
+                  </td>
+                  ${bomTimelineCells}
+                </tr>
+              `;
+            });
+          }
+        });
+        } // End of if (sectionSubtasks.length > 0)
+      }); // End of sectionOrder.forEach
+    }
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Production Planning Gantt Chart - ${new Date().toLocaleDateString()}</title>
+        <style>
+          @page {
+            size: A4 landscape;
+            margin: 0.5in;
+          }
+          @media print {
+            body { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; }
+            * { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; }
+            .gantt-table th { background-color: #f9fafb !important; }
+            .process-cell { background-color: #3b82f6 !important; color: white !important; }
+            .subtask-cell { background-color: #fb923c !important; color: white !important; }
+            .bom-available { background-color: #3b82f6 !important; color: white !important; }
+            .bom-partial { background-color: #eab308 !important; color: white !important; }
+            .bom-shortage { background-color: #ef4444 !important; color: white !important; }
+            .bom-pending { background-color: #6b7280 !important; color: white !important; }
+          }
+          body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            font-size: 12px;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 20px;
+            border-bottom: 3px solid #3b82f6;
+            padding-bottom: 15px;
+          }
+          .header h1 {
+            margin: 0;
+            color: #1f2937;
+            font-size: 24px;
+            font-weight: bold;
+          }
+          .header p {
+            margin: 5px 0;
+            color: #6b7280;
+            font-size: 14px;
+          }
+          .gantt-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            border: 2px solid #374151;
+          }
+          .gantt-table th, .gantt-table td {
+            border: 1px solid #374151 !important;
+            text-align: left;
+            vertical-align: middle;
+          }
+          .gantt-table th {
+            background-color: #f9fafb !important;
+            font-weight: 600;
+            padding: 10px 8px;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          .legend {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+            padding: 15px;
+            background: #f9fafb !important;
+            border-radius: 8px;
+            border: 2px solid #d1d5db;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+            border: 1px solid #374151;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          .footer {
+            margin-top: 20px;
+            text-align: center;
+            color: #6b7280;
+            font-size: 11px;
+            border-top: 2px solid #e5e7eb;
+            padding-top: 10px;
+          }
+          .process-cell {
+            background-color: #3b82f6 !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          .subtask-cell {
+            background-color: #fb923c !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          .bom-available {
+            background-color: #3b82f6 !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          .bom-partial {
+            background-color: #eab308 !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          .bom-shortage {
+            background-color: #ef4444 !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+          .bom-pending {
+            background-color: #6b7280 !important;
+            color: white !important;
+            -webkit-print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Production Planning Gantt Chart</h1>
+          <p>Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</p>
+          <p>View Mode: ${viewMode.charAt(0).toUpperCase() + viewMode.slice(1)} | Total Tasks: ${totalTasks} | Completed: ${completedTasks}</p>
+        </div>
+        
+        <table class="gantt-table">
+          <thead>
+            <tr>
+              <th style="width: 300px;">Task</th>
+              ${dateHeaders}
+            </tr>
+          </thead>
+          <tbody>
+            ${processRows}
+          </tbody>
+        </table>
+        
+        <div class="legend">
+          <div style="font-weight: 600; margin-right: 20px;">BOM Status Colors:</div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #22c55e;"></div>
+            <span>Available</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #eab308;"></div>
+            <span>Partial</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #ef4444;"></div>
+            <span>Shortage</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-color" style="background: #6b7280;"></div>
+            <span>Pending</span>
+          </div>
+          <div style="margin-left: 30px; font-style: italic;">Progress: hours completed | Status: IN_PROGRESS, PLANNED, COMPLETED</div>
+        </div>
+        
+        <div class="footer">
+          Production Planning System | Lot ID: ${lotId} | Export Date: ${new Date().toISOString()}
+        </div>
+        
+        <script>
+          // Show instructions for color printing
+          window.onload = function() {
+            const instructions = document.createElement('div');
+            instructions.innerHTML = \`
+              <div style="position: fixed; top: 10px; right: 10px; background: #1f2937; color: white; padding: 15px; border-radius: 8px; font-size: 12px; z-index: 9999; max-width: 300px;">
+                <strong>📋 Print Instructions:</strong><br>
+                1. Press Ctrl+P (Cmd+P on Mac)<br>
+                2. Choose "Save as PDF" or your printer<br>
+                3. Click "More settings"<br>
+                4. Enable "Background graphics" for colors<br>
+                5. Set Layout to "Landscape"<br>
+                <button onclick="this.parentElement.remove()" style="margin-top: 8px; background: #3b82f6; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Got it!</button>
+              </div>
+            \`;
+            document.body.appendChild(instructions);
+          };
+          
+          // Auto-close window after printing
+          window.onafterprint = function() {
+            setTimeout(() => window.close(), 1000);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+  };
+
+  // Calculate metrics from data structure when no real processes exist
+  const totalTasks = displayProcesses.length === 0 ? 10 : displayProcesses.reduce((sum, p) => sum + (p.subTasks?.length || 0) + 1, 0);
+  const inProgressTasks = displayProcesses.length === 0 ? 0 : displayProcesses.filter(p => p.status === 'IN_PROGRESS').length + 
+                          displayProcesses.flatMap(p => p.subTasks || []).filter(st => st.status === 'IN_PROGRESS').length;
+  const completedTasks = displayProcesses.length === 0 ? 1 : displayProcesses.filter(p => p.status === 'COMPLETED').length + 
+                         displayProcesses.flatMap(p => p.subTasks || []).filter(st => st.status === 'COMPLETED').length;
 
   const processColors = {
-    'Material Preparation': '#3B82F6', // Blue
-    'Assembly': '#10B981', // Green  
-    'Testing & Quality Control': '#F59E0B' // Orange
+    'Raw Material Preparation': '#3B82F6', // Blue
+    'Process Conversion': '#10B981', // Green  
+    'Quality Assurance': '#F59E0B', // Orange
+    'Material Preparation': '#3B82F6', // Blue (legacy)
+    'Assembly': '#10B981', // Green (legacy)
+    'Testing & Quality Control': '#F59E0B' // Orange (legacy)
   };
 
   return (
     <div className="space-y-6">
-      {/* Timeline Controls */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            Timeline
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label>Start Date</Label>
-              <DatePicker />
-              <div className="text-xs text-muted-foreground">2/5/2026</div>
-            </div>
-            <div className="space-y-2">
-              <Label>End Date</Label>
-              <DatePicker />
-              <div className="text-xs text-muted-foreground">2/20/2026</div>
-            </div>
-            <div className="space-y-2">
-              <Label>Monitor</Label>
-              <div className="text-sm space-x-1">
-                <Badge variant="outline">BOM & Materials</Badge>
-                <Badge variant="outline">Vendors</Badge>
-                <Badge variant="outline">Processes</Badge>
-                <Badge variant="default">Schedule</Badge>
-                <Badge variant="outline">Production</Badge>
-                <Badge variant="outline">Remarks</Badge>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -475,24 +1100,56 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Progress</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Total Hours</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">0%</div>
-            <p className="text-xs text-muted-foreground">
-              Overall completion
-            </p>
+            {(() => {
+              const totalEstimatedHours = displayProcesses.reduce((sum, process) => {
+                const processHours = process.estimatedDuration || 0;
+                const subTaskHours = (process.subTasks || []).reduce((subSum, subTask) => 
+                  subSum + (subTask.estimatedDuration || 0), 0);
+                return sum + processHours + subTaskHours;
+              }, 0);
+              
+              const totalActualHours = displayProcesses.reduce((sum, process) => {
+                const processHours = process.actualDuration || 0;
+                const subTaskHours = (process.subTasks || []).reduce((subSum, subTask) => 
+                  subSum + (subTask.actualDuration || 0), 0);
+                return sum + processHours + subTaskHours;
+              }, 0);
+
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl font-bold">{totalEstimatedHours}h</span>
+                    <Badge variant="outline" className="text-xs">
+                      Estimated
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-lg text-muted-foreground">{totalActualHours}h</span>
+                    <Badge variant={totalActualHours > 0 ? "default" : "secondary"} className="text-xs">
+                      Actual
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Progress: {totalEstimatedHours > 0 ? Math.round((totalActualHours / totalEstimatedHours) * 100) : 0}%
+                  </p>
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
       </div>
+
 
       {/* Gantt Chart */}
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <CardTitle>Production Schedule</CardTitle>
+              <CardTitle>Production Tracking</CardTitle>
               <CardDescription>
                 Gantt chart showing timeline and dependencies for all processes
               </CardDescription>
@@ -527,14 +1184,15 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
                 <Package className="h-3 w-3 mr-1" />
                 BOM View
               </Button>
-              <Dialog open={showAddProcess} onOpenChange={setShowAddProcess}>
-                <DialogTrigger asChild>
-                  <Button size="sm">
-                    <Plus className="h-3 w-3 mr-1" />
-                    Add Process
-                  </Button>
-                </DialogTrigger>
-              </Dialog>
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={exportToPDF}
+                className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+              >
+                <Download className="h-3 w-3 mr-1" />
+                Export PDF
+              </Button>
             </div>
           </div>
         </CardHeader>
@@ -543,193 +1201,132 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
             {/* Header Row */}
             <div className="flex items-center bg-muted/40 border-b">
               <div className="w-80 p-3 border-r font-medium text-sm">Task</div>
-              <div className="flex-1 grid grid-cols-7 text-xs">
-                {[
-                  'Feb 5\nThu',
-                  'Feb 6\nFri', 
-                  'Feb 7\nSat',
-                  'Feb 8\nSun',
-                  'Feb 9\nMon',
-                  'Feb 10\nTue',
-                  'Feb 11\nWed'
-                ].map((date, i) => (
-                  <div key={i} className="p-2 text-center border-r border-muted/30 font-medium">
-                    {date.split('\n').map((line, j) => (
-                      <div key={j} className={j === 0 ? 'font-medium' : 'text-muted-foreground text-xs'}>
-                        {line}
-                      </div>
-                    ))}
-                  </div>
-                ))}
+              <div className={`flex-1 grid text-xs ${
+                viewMode === 'weekly' ? 'grid-cols-10' : 
+                viewMode === 'daily' ? 'grid-cols-7' : 
+                'grid-cols-6'
+              }`}>
+                {(() => {
+                  // Calculate date range dynamically based on view mode
+                  const today = new Date();
+                  const startDate = new Date(today);
+                  
+                  // Generate date columns based on view mode
+                  const columnCount = viewMode === 'weekly' ? 10 : viewMode === 'daily' ? 7 : 6;
+                  const dates = [];
+                  
+                  for (let i = 0; i < columnCount; i++) {
+                    const currentDate = new Date(startDate);
+                    
+                    if (viewMode === 'weekly') {
+                      currentDate.setDate(startDate.getDate() + (i * 7));
+                      dates.push({
+                        date: currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                        period: `Week ${i + 1}`
+                      });
+                    } else if (viewMode === 'daily') {
+                      currentDate.setDate(startDate.getDate() + i);
+                      dates.push({
+                        date: currentDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                        period: currentDate.toLocaleDateString('en-US', { weekday: 'short' })
+                      });
+                    } else {
+                      currentDate.setMonth(startDate.getMonth() + i);
+                      dates.push({
+                        date: currentDate.toLocaleDateString('en-US', { month: 'short' }),
+                        period: `Month ${i + 1}`
+                      });
+                    }
+                  }
+                  
+                  return dates.map((item, i) => (
+                    <div key={i} className="p-2 text-center border-r border-muted/30 font-medium">
+                      {viewMode === 'daily' ? (
+                        <div className="font-medium text-xs">
+                          {item.date} <span className="text-muted-foreground">{item.period}</span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="font-medium">{item.date}</div>
+                          <div className="text-muted-foreground text-xs">{item.period}</div>
+                        </>
+                      )}
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
 
             {/* Process Rows */}
-            {processes.map((process, processIndex) => (
-              <div key={process.id} className="border-b border-muted/20">
-                {/* Main Process Row */}
-                <div className="flex items-center hover:bg-muted/10 group">
-                  <div className="w-80 p-3 border-r border-muted/30">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge className={getStatusColor(process.status)} variant="outline">
-                          {getStatusIcon(process.status)}
-                          {process.status}
-                        </Badge>
-                        <div>
-                          <div className="font-medium text-sm">{process.name}</div>
-                          <div className="text-xs text-muted-foreground">{process.responsiblePersonName}</div>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="text-xs text-muted-foreground">0%</div>
-                        <Button 
-                          size="sm" 
-                          variant="ghost"
-                          onClick={() => setEditingTask({type: 'process', id: process.id})}
-                          className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0"
-                        >
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex-1 grid grid-cols-7">
-                    {Array.from({length: 7}, (_, dayIndex) => {
-                      const isInRange = dayIndex < Math.ceil(process.estimatedDuration / 24 * 7);
-                      
-                      return (
-                        <div key={dayIndex} className="p-1 border-r border-muted/30 relative h-12">
-                          {isInRange && (
-                            <div 
-                              className="absolute inset-1 rounded flex items-center justify-center text-white text-xs font-medium"
-                              style={{
-                                backgroundColor: processColors[process.name as keyof typeof processColors] || '#3B82F6',
-                                opacity: 0.8
-                              }}
-                            >
-                              {dayIndex === 0 && `${process.actualDuration || 0}%`}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+            {loading ? (
+              <div className="flex items-center justify-center p-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <span className="ml-2 text-muted-foreground">Loading processes...</span>
+              </div>
+            ) : displayProcesses.length === 0 ? (
+              <div className="flex items-center justify-center p-8">
+                <div className="text-center">
+                  <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-muted-foreground">No Processes Found</h3>
+                  <p className="text-sm text-muted-foreground">Create processes in the Process tab to see them here.</p>
                 </div>
-
-                {/* Sub-Tasks */}
-                {process.subTasks.map((subTask, subIndex) => (
-                  <div key={subTask.id} className="flex items-center hover:bg-muted/5 group border-t border-muted/10">
-                    <div className="w-80 p-2 pl-8 border-r border-muted/30">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-muted rounded-full"></div>
-                          <div>
-                            <div className="font-medium text-xs">{subTask.name}</div>
-                            <div className="text-xs text-muted-foreground">{subTask.operatorName}</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="text-xs text-muted-foreground">0%</div>
-                          <Button 
-                            size="sm" 
-                            variant="ghost"
-                            onClick={() => setEditingTask({type: 'subtask', id: subTask.id, processId: process.id})}
-                            className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0"
-                          >
-                            <Edit className="h-2 w-2" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex-1 grid grid-cols-7">
-                      {Array.from({length: 7}, (_, dayIndex) => {
-                        const subTaskDayStart = Math.floor(subIndex * 1.5);
-                        const subTaskDuration = Math.ceil(subTask.estimatedDuration / 24 * 7);
-                        const isInRange = dayIndex >= subTaskDayStart && dayIndex < subTaskDayStart + subTaskDuration;
-                        
-                        return (
-                          <div key={dayIndex} className="p-1 border-r border-muted/30 relative h-8">
-                            {isInRange && (
-                              <div 
-                                className="absolute inset-1 rounded flex items-center justify-center text-white text-xs"
-                                style={{
-                                  backgroundColor: processColors[process.name as keyof typeof processColors] || '#3B82F6',
-                                  opacity: 0.6
-                                }}
-                              >
-                                {dayIndex === subTaskDayStart && `${subTask.actualDuration || 0}%`}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-
-                {/* BOM Parts Visualization */}
-                {showBOMView && process.bomRequirements && process.bomRequirements.length > 0 && (
-                  <div className="border-t border-dashed border-muted/40 bg-muted/5">
-                    <div className="p-2 bg-muted/10 border-b border-muted/20">
-                      <div className="w-80 text-xs font-medium text-muted-foreground flex items-center gap-2">
-                        <Package className="h-3 w-3" />
-                        BOM Parts ({process.bomRequirements.length})
-                      </div>
-                    </div>
-                    {process.bomRequirements.map((bomPart) => (
-                      <div key={bomPart.id} className="flex items-center hover:bg-muted/10 group border-t border-muted/10">
-                        <div className="w-80 p-2 pl-12 border-r border-muted/30">
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {sectionOrder.map((sectionName) => {
+                  const sectionProcesses = groupedProcesses[sectionName] || [];
+                  
+                  return (
+                    <div key={sectionName} className="space-y-2">
+                      {/* Section header */}
+                      <div className="flex items-center group bg-muted/10 p-2 rounded">
+                        <div className="w-80 pr-4">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                              <div 
-                                className="w-2 h-2 rounded"
-                                style={{
-                                  backgroundColor: bomPart.status === 'AVAILABLE' ? 'rgb(34, 197, 94)' : 
-                                                 bomPart.status === 'PARTIAL' ? 'rgb(234, 179, 8)' : 
-                                                 bomPart.status === 'SHORTAGE' ? 'rgb(239, 68, 68)' : 'rgb(156, 163, 175)'
-                                }}
-                              ></div>
+                              <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center text-white text-xs font-bold">
+                                {sectionOrder.indexOf(sectionName) + 1}
+                              </div>
                               <div>
-                                <div className="font-mono text-xs font-medium">{bomPart.partNumber} - {bomPart.partName}</div>
+                                <div className="font-medium text-sm">{sectionName}</div>
                                 <div className="text-xs text-muted-foreground">
-                                  Required: {bomPart.requiredQuantity} | Available: {bomPart.availableQuantity}
+                                  {sectionProcesses.reduce((total, p) => total + (p.subTasks?.reduce((subTotal, subTask) => subTotal + (subTask.bomRequirements?.length || 0), 0) || 0), 0)} BOM parts
                                 </div>
                               </div>
                             </div>
-                            <Badge className={getBOMStatusColor(bomPart.status)} variant="outline">
-                              {bomPart.status}
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                              <Badge className="text-xs" variant="outline">
+                                PENDING
+                              </Badge>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 opacity-60 hover:opacity-100"
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                            </div>
                           </div>
                         </div>
-                        <div className="flex-1 grid grid-cols-7">
-                          {Array.from({length: 7}, (_, dayIndex) => {
-                            const consumptionDay = dayIndex < Math.ceil(process.estimatedDuration / 24 * 7);
-                            const consumptionPercentage = bomPart.status === 'AVAILABLE' ? 100 : 
-                                                        bomPart.status === 'PARTIAL' ? 60 : 
-                                                        bomPart.status === 'SHORTAGE' ? 20 : 0;
+                        <div className={`flex-1 grid gap-1 ${
+                          viewMode === 'weekly' ? 'grid-cols-10' : 
+                          viewMode === 'daily' ? 'grid-cols-7' : 
+                          'grid-cols-6'
+                        }`}>
+                          {Array.from({
+                            length: viewMode === 'weekly' ? 10 : viewMode === 'daily' ? 7 : 6
+                          }, (_, dayIndex) => {
+                            // Section header shows weeks/days/months
+                            const isInTimeRange = dayIndex < 3; // Show first 3 columns for section header
                             
                             return (
-                              <div key={dayIndex} className="p-1 border-r border-muted/30 relative h-6">
-                                {consumptionDay && (
-                                  <div 
-                                    className="absolute inset-1 rounded-sm flex items-center justify-center"
-                                    style={{
-                                      background: `linear-gradient(to right, ${
-                                        bomPart.status === 'AVAILABLE' ? 'rgba(34, 197, 94, 0.7)' : 
-                                        bomPart.status === 'PARTIAL' ? 'rgba(234, 179, 8, 0.7)' : 'rgba(239, 68, 68, 0.7)'
-                                      } ${consumptionPercentage}%, transparent ${consumptionPercentage}%)`,
-                                      border: `1px dashed ${
-                                        bomPart.status === 'AVAILABLE' ? 'rgb(34, 197, 94)' : 
-                                        bomPart.status === 'PARTIAL' ? 'rgb(234, 179, 8)' : 'rgb(239, 68, 68)'
-                                      }`
-                                    }}
-                                  >
-                                    {dayIndex === 0 && (
-                                      <span className="text-xs font-medium text-white">
-                                        {consumptionPercentage}%
-                                      </span>
-                                    )}
+                              <div key={dayIndex} className="relative h-6 bg-muted/20 rounded border-l border-muted/30">
+                                {isInTimeRange && (
+                                  <div className="absolute inset-0 bg-primary/60 rounded flex items-center justify-center">
+                                    <span className="text-white text-xs font-medium">
+                                      {viewMode === 'daily' ? `Wk ${dayIndex + 1}` : 
+                                       viewMode === 'weekly' ? `Wk ${dayIndex + 1}` : 
+                                       `Wk ${dayIndex + 1}`}
+                                    </span>
                                   </div>
                                 )}
                               </div>
@@ -737,11 +1334,282 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
                           })}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
+
+                      {/* Sub-processes under the section */}
+                      {sectionProcesses.length === 0 ? (
+                        <div className="ml-4 p-3 bg-muted/5 rounded border-l-2 border-dashed border-muted/50">
+                          <p className="text-sm text-muted-foreground">No processes in {sectionName} section</p>
+                        </div>
+                      ) : (
+                        sectionProcesses.map((process) => (
+                        <React.Fragment key={process.id}>
+                          {process.subTasks && process.subTasks.map((subTask, subTaskIndex) => (
+                          <div key={subTask.id} className="space-y-2">
+                        {/* Sub-task row */}
+                        <div className="flex items-center ml-4 group border-l-2 border-dashed border-muted pl-4">
+                          <div className="w-76 pr-4">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="w-5 h-5 bg-secondary rounded-full flex items-center justify-center text-xs font-medium">
+                                  {subTaskIndex + 1}
+                                </div>
+                                <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+                                <div>
+                                  <div className="font-medium text-xs">{subTask.name}</div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {subTask.responsiblePersonName} • {subTask.bomRequirements?.length || 0} BOM parts
+                                  </div>
+                                </div>
+                              </div>
+                              <Badge className="text-xs" variant="outline">
+                                {subTask.status}
+                              </Badge>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 opacity-60 hover:opacity-100"
+                              onClick={() => handleEditSubTask(subTask, process.id)}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <div className={`flex-1 grid gap-1 ${
+                            viewMode === 'weekly' ? 'grid-cols-10' : 
+                            viewMode === 'daily' ? 'grid-cols-7' : 
+                            'grid-cols-6'
+                          }`}>
+                            {Array.from({
+                              length: viewMode === 'weekly' ? 10 : viewMode === 'daily' ? 7 : 6
+                            }, (_, dayIndex) => {
+                              // Calculate timeline position based on actual dates
+                              const today = new Date();
+                              const startDate = new Date(today);
+                              
+                              // Calculate the date for this column
+                              let columnDate;
+                              if (viewMode === 'weekly') {
+                                columnDate = new Date(startDate);
+                                columnDate.setDate(startDate.getDate() + (dayIndex * 7));
+                              } else if (viewMode === 'daily') {
+                                columnDate = new Date(startDate);
+                                columnDate.setDate(startDate.getDate() + dayIndex);
+                              } else {
+                                columnDate = new Date(startDate);
+                                columnDate.setMonth(startDate.getMonth() + dayIndex);
+                              }
+                              
+                              // Check if subtask should be displayed in this column
+                              const subTaskStartTime = subTask.startTime ? new Date(subTask.startTime) : null;
+                              const subTaskEndTime = subTask.endTime ? new Date(subTask.endTime) : null;
+                              
+                              let isInTimeRange = false;
+                              
+                              if (subTaskStartTime && subTaskEndTime) {
+                                // Check if the column date falls within the task date range
+                                if (viewMode === 'weekly') {
+                                  const columnEndDate = new Date(columnDate);
+                                  columnEndDate.setDate(columnDate.getDate() + 6); // End of week
+                                  isInTimeRange = (columnDate <= subTaskEndTime && columnEndDate >= subTaskStartTime);
+                                } else if (viewMode === 'daily') {
+                                  isInTimeRange = (columnDate >= subTaskStartTime && columnDate <= subTaskEndTime);
+                                } else {
+                                  const columnEndDate = new Date(columnDate);
+                                  columnEndDate.setMonth(columnDate.getMonth() + 1, 0); // End of month
+                                  isInTimeRange = (columnDate <= subTaskEndTime && columnEndDate >= subTaskStartTime);
+                                }
+                              } else {
+                                // Fallback to progress percentage for tasks without dates
+                                const progressPercentage = subTask.actualDuration && subTask.estimatedDuration ? 
+                                  (subTask.actualDuration / subTask.estimatedDuration) * 100 : 0;
+                                const columnCount = viewMode === 'weekly' ? 10 : viewMode === 'daily' ? 7 : 6;
+                                isInTimeRange = dayIndex < Math.ceil((progressPercentage / 100) * columnCount) || dayIndex < 3;
+                              }
+                              
+                              return (
+                                <div key={dayIndex} className="relative h-6 bg-muted/10 rounded cursor-pointer hover:bg-muted/20 border-l border-muted/30">
+                                  {isInTimeRange && (
+                                    <div 
+                                      className="absolute top-1 h-4 rounded flex items-center justify-center px-1"
+                                      style={{
+                                        backgroundColor: (() => {
+                                          console.log(`🎨 Subtask "${subTask.name}" status: "${subTask.status}"`);
+                                          switch(subTask.status) {
+                                            case 'IN_PROGRESS': return 'rgb(251, 146, 60)'; // Orange
+                                            case 'COMPLETED': return 'rgb(34, 197, 94)';    // Green
+                                            case 'PENDING': return 'rgb(156, 163, 175)';    // Gray
+                                            default: return 'rgb(251, 146, 60)';           // Default orange
+                                          }
+                                        })(),
+                                        left: '0%',
+                                        width: '100%',
+                                        opacity: 0.8
+                                      }}
+                                    >
+                                      {dayIndex === 0 || (!subTaskStartTime && !subTaskEndTime) ? (
+                                        <div className="text-white text-xs truncate">{subTask.name}</div>
+                                      ) : (
+                                        <div className="text-white text-xs font-medium text-center">
+                                          {(() => {
+                                            const startDate = subTaskStartTime ? subTaskStartTime.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }) : '';
+                                            const endDate = subTaskEndTime ? subTaskEndTime.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' }) : '';
+                                            
+                                            if (viewMode === 'daily' && subTaskStartTime && subTaskEndTime) {
+                                              // Show specific dates for daily view
+                                              if (columnDate.toDateString() === subTaskStartTime.toDateString()) {
+                                                return <span className="text-[10px]">Start</span>;
+                                              } else if (columnDate.toDateString() === subTaskEndTime.toDateString()) {
+                                                return <span className="text-[10px]">End</span>;
+                                              } else {
+                                                return <span className="text-[10px]">•</span>;
+                                              }
+                                            } else if (startDate && endDate) {
+                                              return (
+                                                <div className="flex flex-col leading-tight">
+                                                  <span className="text-[9px]">{startDate}</span>
+                                                  <span className="text-[9px]">{endDate}</span>
+                                                </div>
+                                              );
+                                            } else if (startDate) {
+                                              return <span className="text-[10px]">{startDate}</span>;
+                                            } else if (endDate) {
+                                              return <span className="text-[10px]">{endDate}</span>;
+                                            } else {
+                                              return <span className="text-[10px]">•</span>;
+                                            }
+                                          })()}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* BOM Requirements for this specific sub-task */}
+                        {showBOMView && subTask.bomRequirements && subTask.bomRequirements.map((bomItem, bomIndex) => (
+                          <div key={`${subTask.id}-${bomItem.partNumber}`} className="flex items-center ml-8 group border-l-2 border-dotted border-muted pl-6">
+                            <div className="w-72 pr-4">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-4 h-4 bg-blue-500/20 rounded-full flex items-center justify-center text-xs font-medium">
+                                    {bomIndex + 1}
+                                  </div>
+                                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                  <div>
+                                    <div className="font-medium text-xs">{bomItem.partNumber}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {bomItem.partName} • Qty: {bomItem.requiredQuantity || 0}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge className="text-xs" variant="outline">
+                                    {bomItem.unit}
+                                  </Badge>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0 opacity-60 hover:opacity-100"
+                                    onClick={() => handleEditBOM(bomItem, subTask.id)}
+                                  >
+                                    <Edit className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                            <div className={`flex-1 grid gap-1 ${
+                              viewMode === 'weekly' ? 'grid-cols-10' : 
+                              viewMode === 'daily' ? 'grid-cols-7' : 
+                              'grid-cols-6'
+                            }`}>
+                              {Array.from({
+                                length: viewMode === 'weekly' ? 10 : viewMode === 'daily' ? 7 : 6
+                              }, (_, dayIndex) => {
+                                // Calculate timeline position based on parent subtask dates
+                                const today = new Date();
+                                const startDate = new Date(today);
+                                
+                                let columnDate;
+                                if (viewMode === 'weekly') {
+                                  columnDate = new Date(startDate);
+                                  columnDate.setDate(startDate.getDate() + (dayIndex * 7));
+                                } else if (viewMode === 'daily') {
+                                  columnDate = new Date(startDate);
+                                  columnDate.setDate(startDate.getDate() + dayIndex);
+                                } else {
+                                  columnDate = new Date(startDate);
+                                  columnDate.setMonth(startDate.getMonth() + dayIndex);
+                                }
+                                
+                                // BOM should be aligned with its parent subtask
+                                const subTaskStartTime = subTask.startTime ? new Date(subTask.startTime) : null;
+                                const subTaskEndTime = subTask.endTime ? new Date(subTask.endTime) : null;
+                                
+                                let isInTimeRange = false;
+                                
+                                if (subTaskStartTime && subTaskEndTime) {
+                                  if (viewMode === 'weekly') {
+                                    const columnEndDate = new Date(columnDate);
+                                    columnEndDate.setDate(columnDate.getDate() + 6);
+                                    isInTimeRange = (columnDate <= subTaskEndTime && columnEndDate >= subTaskStartTime);
+                                  } else if (viewMode === 'daily') {
+                                    isInTimeRange = (columnDate >= subTaskStartTime && columnDate <= subTaskEndTime);
+                                  } else {
+                                    const columnEndDate = new Date(columnDate);
+                                    columnEndDate.setMonth(columnDate.getMonth() + 1, 0);
+                                    isInTimeRange = (columnDate <= subTaskEndTime && columnEndDate >= subTaskStartTime);
+                                  }
+                                } else {
+                                  // Fallback to consumption percentage
+                                  const consumptionPercentage = bomItem.quantity > 0 ? 
+                                    Math.min(100, ((bomItem.consumedQuantity || 0) / bomItem.quantity) * 100) : 0;
+                                  const columnCount = viewMode === 'weekly' ? 10 : viewMode === 'daily' ? 7 : 6;
+                                  isInTimeRange = dayIndex < Math.ceil((consumptionPercentage / 100) * columnCount) || dayIndex < 2;
+                                }
+                                
+                                return (
+                                  <div key={dayIndex} className="relative h-5 bg-muted/10 rounded cursor-pointer hover:bg-muted/20 border-l border-muted/30">
+                                    {isInTimeRange && (
+                                      <div 
+                                        className="absolute top-0.5 h-4 rounded flex items-center justify-center px-1"
+                                        style={{
+                                          backgroundColor: bomItem.status === 'AVAILABLE' ? 'rgba(59, 130, 246, 0.7)' : 
+                                                         bomItem.status === 'PARTIAL' ? 'rgba(234, 179, 8, 0.7)' : 
+                                                         bomItem.status === 'SHORTAGE' ? 'rgba(239, 68, 68, 0.7)' :
+                                                         'rgba(59, 130, 246, 0.7)',
+                                          left: '0%',
+                                          width: '100%',
+                                          opacity: 0.7
+                                        }}
+                                      >
+                                        {dayIndex === 0 ? (
+                                          <div className="text-white text-xs truncate">{bomItem.partNumber}</div>
+                                        ) : (
+                                          <span className="text-white text-xs font-medium">
+                                            {bomItem.consumedQuantity || 0}/{bomItem.requiredQuantity || bomItem.quantity || 0}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          ))}
+                          </div>
+                        ))}
+                        </React.Fragment>
+                        ))
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
+            )}
           </div>
         </CardContent>
       </Card>
@@ -753,183 +1621,245 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-4">
-            {Object.entries(processColors).map(([processName, color]) => (
-              <div key={processName} className="flex items-center gap-2">
-                <div 
-                  className="w-4 h-4 rounded"
-                  style={{ backgroundColor: color }}
-                ></div>
-                <span className="text-sm">{processName}</span>
+            {/* BOM Status Colors */}
+            <div>
+              <div className="text-sm font-medium mb-2">BOM Status Colors:</div>
+              <div className="flex flex-wrap gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded bg-green-500"></div>
+                  <span className="text-sm">Available</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded bg-yellow-500"></div>
+                  <span className="text-sm">Partial</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded bg-red-500"></div>
+                  <span className="text-sm">Shortage</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded bg-gray-500"></div>
+                  <span className="text-sm">Pending</span>
+                </div>
               </div>
-            ))}
-            <div className="flex items-center gap-2">
-              <div className="text-sm font-medium">Progress:</div>
-              <div className="text-xs text-muted-foreground">completed</div>
+            </div>
+
+            <div className="border-l border-muted pl-4 ml-2">
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-medium">Progress:</div>
+                <div className="text-xs text-muted-foreground">hours completed</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-medium">Status:</div>
+                <div className="text-xs text-muted-foreground">IN_PROGRESS, PLANNED, COMPLETED</div>
+              </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Add Process Dialog */}
-      <Dialog open={showAddProcess} onOpenChange={setShowAddProcess}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Add New Process</DialogTitle>
-            <DialogDescription>
-              Create a new manufacturing process with BOM parts requirements
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="process-name">Process Name</Label>
-                <Input id="process-name" placeholder="Enter process name" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="responsible-person">Responsible Person</Label>
-                <Input id="responsible-person" placeholder="Enter responsible person" />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="process-description">Description</Label>
-              <Textarea id="process-description" placeholder="Describe the process" />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="duration">Duration (hours)</Label>
-                <Input id="duration" type="number" placeholder="8" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="start-date">Start Date</Label>
-                <DatePicker />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="end-date">End Date</Label>
-                <DatePicker />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="PLANNED">Planned</SelectItem>
-                  <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                  <SelectItem value="COMPLETED">Completed</SelectItem>
-                  <SelectItem value="BLOCKED">Blocked</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-3">
-              <h4 className="text-sm font-medium">BOM Parts Requirements</h4>
-              <div className="border rounded-lg p-4 space-y-3 bg-muted/5">
-                {[
-                  { partNumber: 'STL-001', partName: 'Steel Plate', available: 4, status: 'PARTIAL' },
-                  { partNumber: 'PLT-002', partName: 'Plastic Housing', available: 0, status: 'SHORTAGE' },
-                  { partNumber: 'ELC-003', partName: 'Circuit Board', available: 3, status: 'AVAILABLE' },
-                  { partNumber: 'MSC-004', partName: 'Mounting Screws', available: 24, status: 'AVAILABLE' }
-                ].map((part, index) => (
-                  <div key={index} className="flex items-center justify-between p-2 border rounded">
-                    <div className="flex items-center gap-3">
-                      <input type="checkbox" className="rounded" />
-                      <div>
-                        <div className="font-mono text-sm">{part.partNumber}</div>
-                        <div className="text-xs text-muted-foreground">{part.partName}</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Input 
-                        type="number" 
-                        placeholder="Qty"
-                        className="w-16 h-8 text-xs"
-                      />
-                      <Badge className={getBOMStatusColor(part.status)} variant="outline">
-                        {part.status}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddProcess(false)}>
-              Cancel
-            </Button>
-            <Button type="submit">Create Process</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Edit BOM Dialog */}
+      {editingBOM && (
+        <Dialog open={!!editingBOM} onOpenChange={() => setEditingBOM(null)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Edit BOM Part Progress</DialogTitle>
+              <DialogDescription>
+                Update progress and status for {editingBOM.data.partNumber} - {editingBOM.data.partName}
+              </DialogDescription>
+            </DialogHeader>
 
-      {/* Edit Task Dialog */}
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium">Part Number</label>
+                  <input 
+                    type="text" 
+                    value={bomFormData.partNumber || ''}
+                    className="w-full mt-1 px-3 py-2 border border-input rounded-md bg-muted"
+                    disabled
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Required Qty</label>
+                  <input 
+                    type="number"
+                    value={bomFormData.requiredQuantity || 0}
+                    onChange={(e) => setBomFormData({...bomFormData, requiredQuantity: Number(e.target.value)})}
+                    className="w-full mt-1 px-3 py-2 border border-input rounded-md"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium">Consumed Qty</label>
+                  <input 
+                    type="number"
+                    value={bomFormData.consumedQuantity || 0}
+                    onChange={(e) => setBomFormData({...bomFormData, consumedQuantity: Number(e.target.value)})}
+                    className="w-full mt-1 px-3 py-2 border border-input rounded-md"
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Unit</label>
+                  <input 
+                    type="text"
+                    value={bomFormData.unit || ''}
+                    onChange={(e) => setBomFormData({...bomFormData, unit: e.target.value})}
+                    className="w-full mt-1 px-3 py-2 border border-input rounded-md"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Status</label>
+                <select 
+                  value={bomFormData.status || 'AVAILABLE'}
+                  onChange={(e) => setBomFormData({...bomFormData, status: e.target.value})}
+                  className="w-full mt-1 px-3 py-2 border border-input rounded-md"
+                >
+                  <option value="AVAILABLE">Available (Green)</option>
+                  <option value="PARTIAL">Partial (Yellow)</option>
+                  <option value="SHORTAGE">Shortage (Red)</option>
+                  <option value="PENDING">Pending (Gray)</option>
+                </select>
+              </div>
+
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditingBOM(null)}>
+                Cancel
+              </Button>
+              <Button onClick={handleSaveBOM}>
+                Save Progress
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Edit Task Dialog (Process & SubTask) */}
       {editingTask && (
         <Dialog open={!!editingTask} onOpenChange={() => setEditingTask(null)}>
           <DialogContent className="max-w-xl">
             <DialogHeader>
               <DialogTitle>
-                Edit {editingTask.type === 'process' ? 'Process' : 'Sub-Task'}
+                {editingTask.type === 'process' ? 'Edit Process' : 'Edit Sub-Task'}
               </DialogTitle>
               <DialogDescription>
-                Modify task details, timing, and BOM requirements
+                {editingTask.type === 'process' 
+                  ? 'Modify process details, timing, dates, and status'
+                  : 'Modify subtask details, timing, hours, and status'
+                }
               </DialogDescription>
             </DialogHeader>
-            <div className="grid gap-4 py-4">
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">
+                  {editingTask.type === 'process' ? 'Process Name' : 'Task Name'}
+                </label>
+                <input 
+                  type="text" 
+                  value={taskFormData.name || ''}
+                  onChange={(e) => setTaskFormData({...taskFormData, name: e.target.value})}
+                  className="w-full mt-1 px-3 py-2 border border-input rounded-md"
+                  placeholder={editingTask.type === 'process' ? 'Enter process name' : 'Enter task name'}
+                />
+              </div>
+
+              
+              <div>
+                <label className="text-sm font-medium">Duration (hours)</label>
+                <input 
+                  type="number"
+                  value={taskFormData.estimatedDuration || 0}
+                  onChange={(e) => setTaskFormData({...taskFormData, estimatedDuration: Number(e.target.value)})}
+                  className="w-full mt-1 px-3 py-2 border border-input rounded-md"
+                  placeholder="Enter duration in hours"
+                  step="0.5"
+                  min="0"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Name</Label>
-                  <Input placeholder="Task name" />
+                <div>
+                  <label className="text-sm font-medium">
+                    {editingTask.type === 'process' ? 'Responsible Person' : 'Assigned Operator'}
+                  </label>
+                  <input 
+                    type="text"
+                    value={editingTask.type === 'process' ? (taskFormData.responsiblePerson || '') : (taskFormData.assignedOperator || '')}
+                    onChange={(e) => {
+                      const field = editingTask.type === 'process' ? 'responsiblePerson' : 'assignedOperator';
+                      setTaskFormData({...taskFormData, [field]: e.target.value});
+                    }}
+                    className="w-full mt-1 px-3 py-2 border border-input rounded-md"
+                    placeholder={editingTask.type === 'process' ? 'Enter responsible person' : 'Enter operator name'}
+                  />
                 </div>
-                <div className="space-y-2">
-                  <Label>Responsible Person</Label>
-                  <Input placeholder="Person name" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea placeholder="Task description" />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Duration (hours)</Label>
-                  <Input type="number" placeholder="8" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Progress (%)</Label>
-                  <Input type="number" placeholder="0" min="0" max="100" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="PLANNED">Planned</SelectItem>
-                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                      <SelectItem value="COMPLETED">Completed</SelectItem>
-                      <SelectItem value="BLOCKED">Blocked</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Start Date</Label>
-                  <DatePicker />
-                </div>
-                <div className="space-y-2">
-                  <Label>End Date</Label>
-                  <DatePicker />
+                <div>
+                  <label className="text-sm font-medium">Status</label>
+                  <select 
+                    value={taskFormData.status || (editingTask.type === 'process' ? 'PLANNED' : 'PENDING')}
+                    onChange={(e) => setTaskFormData({...taskFormData, status: e.target.value})}
+                    className="w-full mt-1 px-3 py-2 border border-input rounded-md"
+                  >
+                    {editingTask.type === 'process' ? (
+                      <>
+                        <option value="PLANNED">Planned</option>
+                        <option value="IN_PROGRESS">In Progress</option>
+                        <option value="COMPLETED">Completed</option>
+                        <option value="BLOCKED">Blocked</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="PENDING">Pending</option>
+                        <option value="IN_PROGRESS">In Progress</option>
+                        <option value="COMPLETED">Completed</option>
+                        <option value="BLOCKED">Blocked</option>
+                      </>
+                    )}
+                  </select>
                 </div>
               </div>
+
+              {editingTask.type === 'process' && (
+                <div>
+                  <label className="text-sm font-medium">Description</label>
+                  <textarea 
+                    value={taskFormData.description || ''}
+                    onChange={(e) => setTaskFormData({...taskFormData, description: e.target.value})}
+                    className="w-full mt-1 px-3 py-2 border border-input rounded-md"
+                    rows={3}
+                    placeholder="Enter process description"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="text-sm font-medium">Notes</label>
+                <textarea 
+                  value={taskFormData.notes || ''}
+                  onChange={(e) => setTaskFormData({...taskFormData, notes: e.target.value})}
+                  className="w-full mt-1 px-3 py-2 border border-input rounded-md"
+                  rows={2}
+                  placeholder="Enter additional notes"
+                />
+              </div>
+
             </div>
+
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditingTask(null)}>
                 Cancel
               </Button>
-              <Button type="submit">Save Changes</Button>
+              <Button onClick={handleSaveTask}>
+                Save Changes
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

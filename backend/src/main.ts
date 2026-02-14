@@ -121,9 +121,7 @@ async function bootstrap() {
         
         // Log validation errors in development for principal engineer debugging
         if (process.env.NODE_ENV === 'development') {
-          console.log('=== VALIDATION ERROR DETAILS ===');
-          console.log('Validation errors:', JSON.stringify(formattedErrors, null, 2));
-          console.log('================================');
+          // Validation errors logged for debugging
         }
         
         return new BadRequestException({

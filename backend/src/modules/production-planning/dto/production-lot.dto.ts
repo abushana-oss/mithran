@@ -1,5 +1,12 @@
 import { IsUUID, IsString, IsInt, IsOptional, IsDateString, IsEnum, IsDecimal, Min, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
+import { 
+  SanitizedString, 
+  SanitizedDate, 
+  SanitizedUUID, 
+  SanitizedLotNumber,
+  SanitizedQuantity 
+} from '@/common/decorators/validate-input.decorator';
 
 export enum LotStatus {
   PLANNED = 'planned',
@@ -59,25 +66,24 @@ export class CreateProductionLotDto {
 }
 
 export class UpdateProductionLotDto {
+  @SanitizedLotNumber()
   @IsOptional()
-  @IsString()
   lotNumber?: string;
 
+  @SanitizedQuantity({ min: 1, max: 1000000 })
   @IsOptional()
-  @IsInt()
-  @Min(1)
+  @IsInt({ message: 'Production quantity must be a whole number' })
+  @Min(1, { message: 'Production quantity must be at least 1' })
   productionQuantity?: number;
 
   @IsOptional()
-  @IsEnum(LotStatus)
+  @IsEnum(LotStatus, { message: 'Invalid status value' })
   status?: LotStatus;
 
-  @IsOptional()
-  @IsDateString()
+  @SanitizedDate({ required: false })
   plannedStartDate?: string;
 
-  @IsOptional()
-  @IsDateString()
+  @SanitizedDate({ required: false })
   plannedEndDate?: string;
 
   @IsOptional()

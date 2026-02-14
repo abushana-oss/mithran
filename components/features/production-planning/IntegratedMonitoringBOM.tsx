@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { RemarksApi } from '@/lib/api/remarks';
+import { RemarkStatus } from '@/types/remarks';
+import { productionPlanningApi } from '@/lib/api/production-planning';
 import { 
   useIntegratedDashboard, 
   useProductionMonitoring, 
@@ -145,6 +148,7 @@ interface IntegratedMonitoringBOMProps {
 }
 
 export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps) => {
+  const queryClient = useQueryClient();
   const [timeRange, setTimeRange] = useState<'day' | 'week' | 'month'>('week');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -175,9 +179,23 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
     refetch: refetchAlerts 
   } = useProductionAlerts(lotId);
 
+  // Fetch real remarks data instead of mock alerts
+  const { data: remarksData, isLoading: remarksLoading } = useQuery({
+    queryKey: ['remarks', lotId],
+    queryFn: () => RemarksApi.getRemarksByLot(lotId),
+    enabled: !!lotId,
+  });
+
   // Mutations
   const updateMaterialMutation = useUpdateMaterialStatus();
   const resolveAlertMutation = useResolveAlert();
+  
+  const resolveRemarkMutation = useMutation({
+    mutationFn: (remarkId: string) => RemarksApi.updateRemark(remarkId, { status: RemarkStatus.RESOLVED }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['remarks', lotId] });
+    },
+  });
   const initializeMaterialsMutation = useInitializeLotMaterials();
   
   // Refresh utilities
@@ -186,11 +204,79 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
   // Real-time updates handled by refetchInterval in queries
 
   // Extract data from API responses with proper structure
-  const processProgress = dashboardData?.data?.processes || [];
+  // Get real production processes instead of mock dashboard data
+  const { data: realProcesses, isLoading: processesLoading } = useQuery({
+    queryKey: ['processes', lotId],
+    queryFn: () => productionPlanningApi.getProcessesByLot(lotId),
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  // Transform real processes data to timeline format
+  const processProgress = (realProcesses || []).map((process: any, index: number) => {
+    // Calculate progress based on subtasks
+    const subtasks = process.subtasks || [];
+    const completedSubtasks = subtasks.filter((st: any) => st.status === 'COMPLETED').length;
+    const totalSubtasks = subtasks.length;
+    const progress = totalSubtasks > 0 ? Math.round((completedSubtasks / totalSubtasks) * 100) : 0;
+
+    // Calculate material readiness from BOM requirements
+    const allBomReqs = subtasks.flatMap((st: any) => st.bom_requirements || st.bomRequirements || []);
+    const readyBomReqs = allBomReqs.filter((bom: any) => bom.material_status === 'AVAILABLE' || bom.materialStatus === 'AVAILABLE').length;
+    const materialReadiness = allBomReqs.length > 0 ? Math.round((readyBomReqs / allBomReqs.length) * 100) : 100;
+
+    // Get required materials list
+    const requiredMaterials = [...new Set(allBomReqs.map((bom: any) => bom.part_number || bom.partNumber))];
+
+    // Identify bottlenecks based on real data
+    const bottlenecks = [];
+    if (progress < 30 && materialReadiness < 50) {
+      bottlenecks.push('Insufficient material availability for process initiation');
+    }
+    if (materialReadiness < progress) {
+      bottlenecks.push('Material procurement delays affecting production timeline');
+    }
+
+    return {
+      id: process.id,
+      name: process.process_name || process.processName || `Process ${index + 1}`,
+      status: (process.status || 'PENDING').toUpperCase(),
+      progress: progress,
+      materialReadiness: materialReadiness,
+      startDate: process.planned_start_date || process.plannedStartDate,
+      endDate: process.planned_end_date || process.plannedEndDate,
+      requiredMaterials: requiredMaterials,
+      bottlenecks: bottlenecks,
+      totalSubtasks: totalSubtasks,
+      completedSubtasks: completedSubtasks
+    };
+  });
+
   const bomItems = dashboardData?.data?.materials || [];
-  const integratedAlerts = dashboardData?.data?.alerts || [];
+  
+  // Debug logging to understand data structure
+  console.log('📊 IntegratedMonitoringBOM Debug Data:', {
+    dashboardData: dashboardData?.data,
+    processProgress,
+    bomItems,
+    remarksData
+  });
+  
+  // Use real remarks data instead of mock alerts
+  const integratedAlerts = (remarksData || []).map((remark: any) => ({
+    id: remark.id,
+    title: remark.title,
+    description: remark.description || 'No description provided',
+    impact: 'Production may be affected if not addressed',
+    suggestedAction: 'Please review and take appropriate action',
+    severity: remark.priority || 'MEDIUM',
+    type: remark.remark_type || 'GENERAL',
+    source: 'REMARKS',
+    status: remark.status || RemarkStatus.OPEN,
+    createdAt: remark.created_at,
+    relatedItems: remark.bom_part_id ? [`${remark.bom_part_id}`] : []
+  })).filter((alert: any) => alert.status === RemarkStatus.OPEN); // Only show open remarks
   const metrics = dashboardData?.data?.metrics || {};
-  const loading = isLoading;
+  const loading = isLoading || remarksLoading || processesLoading;
 
   const handleRefresh = async () => {
     refreshAll();
@@ -225,9 +311,10 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
   // Handle alert resolution
   const handleResolveAlert = async (alertId: string, notes: string) => {
     try {
-      await resolveAlertMutation.mutateAsync({ alertId, notes });
+      // Resolve the remark instead of mock alert
+      await resolveRemarkMutation.mutateAsync(alertId);
     } catch (error) {
-      console.error('Failed to resolve alert:', error);
+      console.error('Failed to resolve remark:', error);
     }
   };
 
@@ -306,14 +393,25 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
     return matchesSearch && matchesStatus && matchesCriticality;
   });
 
-  // Use backend-calculated metrics with safe defaults
-  const totalProgress = metrics.productionProgress || 0;
-  const materialReadiness = metrics.materialReadiness || 0;
-  const criticalAlerts = metrics.criticalAlerts || 0;
+  // Calculate real-time metrics from actual data instead of relying on potentially faulty backend metrics
+  const totalProgress = processProgress.length > 0 
+    ? Math.round(processProgress.reduce((sum, p) => sum + (p.progress || 0), 0) / processProgress.length)
+    : 0;
+    
+  const materialReadiness = bomItems.length > 0
+    ? Math.round(bomItems.reduce((sum, item) => {
+        const required = item.required_quantity || 0;
+        const approved = item.approved_quantity || 0;
+        return sum + (required > 0 ? (approved / required) * 100 : 0);
+      }, 0) / bomItems.length)
+    : 0;
+    
+  const criticalAlerts = integratedAlerts.filter(a => a.severity === 'CRITICAL').length;
   const highAlerts = integratedAlerts.filter(a => a.severity === 'HIGH').length;
-  const blockedProcesses = metrics.blockedProcesses || 0;
-  const totalEstimatedCost = metrics.totalCost || 0;
-  const totalActualCost = bomItems.reduce((sum, item) => sum + (item.actual_cost || 0), 0);
+  const blockedProcesses = processProgress.filter(p => p.status === 'BLOCKED').length;
+  
+  const totalEstimatedCost = bomItems.reduce((sum, item) => sum + (item.estimated_cost || 0), 0);
+  const totalActualCost = bomItems.reduce((sum, item) => sum + (item.actual_cost || item.estimated_cost || 0), 0);
 
   if (loading) {
     return (
@@ -381,7 +479,8 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
               {materialReadiness}%
             </div>
             <p className="text-xs text-muted-foreground">
-              Average across all processes
+              {bomItems.length === 0 ? 'No materials initialized' : 
+               `Average across ${bomItems.length} materials`}
             </p>
           </CardContent>
         </Card>
@@ -399,7 +498,8 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
               {blockedProcesses}
             </div>
             <p className="text-xs text-muted-foreground">
-              {blockedProcesses > 0 ? 'Need immediate attention' : 'All processes active'}
+              {blockedProcesses > 0 ? 'Need immediate attention' : 
+               processProgress.length === 0 ? 'No processes configured' : 'All processes active'}
             </p>
           </CardContent>
         </Card>
@@ -414,7 +514,7 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
               {integratedAlerts.length}
             </div>
             <p className="text-xs text-muted-foreground">
-              {criticalAlerts} critical, {highAlerts} high priority
+              {integratedAlerts.length === 0 ? 'No active issues' : `${criticalAlerts} critical, ${highAlerts} high priority`}
             </p>
           </CardContent>
         </Card>
@@ -427,9 +527,9 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
           <CardContent>
             <div className="text-2xl font-bold">₹{totalActualCost.toLocaleString()}</div>
             <p className={`text-xs ${totalActualCost <= totalEstimatedCost ? 'text-green-600' : 'text-red-600'}`}>
-              {totalActualCost > 0 ? 
+              {totalActualCost > 0 && totalEstimatedCost > 0 ? 
                 `${((totalActualCost - totalEstimatedCost) / totalEstimatedCost * 100).toFixed(1)}% vs estimate` : 
-                'Pending invoices'
+                totalEstimatedCost > 0 ? 'Based on estimates' : 'No cost data available'
               }
             </p>
           </CardContent>
@@ -438,10 +538,9 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
 
       {/* Main Integrated Dashboard */}
       <Tabs defaultValue="materials" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="materials">Material Tracking</TabsTrigger>
           <TabsTrigger value="alerts">Integrated Alerts</TabsTrigger>
-          <TabsTrigger value="timeline">Production Timeline</TabsTrigger>
         </TabsList>
 
         <TabsContent value="materials" className="space-y-4">
@@ -459,7 +558,7 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
                   onClick={handleShowAddMaterialDialog}
                 >
                   <Plus className="h-4 w-4" />
-                  Add Material
+                  Initialize Materials
                 </Button>
               </div>
             </CardHeader>
@@ -575,7 +674,7 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
                           </TableCell>
                           <TableCell>
                             <div className="space-y-1">
-                              {(item.processImpact || ['Material Preparation', 'Assembly']).map((processName, index) => {
+                              {(item.processImpact || []).map((processName, index) => {
                                 const process = processProgress.find(p => p.name === processName);
                                 return (
                                   <Badge 
@@ -754,12 +853,9 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
                         size="sm" 
                         variant="outline"
                         onClick={() => handleResolveAlert(alert.id, 'Resolved from dashboard')}
-                        disabled={resolveAlertMutation.isPending}
+                        disabled={resolveRemarkMutation.isPending}
                       >
-                        {resolveAlertMutation.isPending ? 'Resolving...' : 'Resolve'}
-                      </Button>
-                      <Button size="sm" variant="outline">
-                        Assign
+                        {resolveRemarkMutation.isPending ? 'Resolving...' : 'Resolve'}
                       </Button>
                       <Button size="sm" variant="outline">
                         View Details
@@ -771,9 +867,9 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
                 {integratedAlerts.length === 0 && (
                   <div className="text-center py-8">
                     <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                    <div className="text-lg font-medium mb-2">All Systems Optimal</div>
+                    <div className="text-lg font-medium mb-2">No Active Issues</div>
                     <div className="text-muted-foreground">
-                      No critical alerts for production or materials
+                      All remarks have been resolved or no issues have been reported
                     </div>
                   </div>
                 )}
@@ -782,101 +878,6 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
           </Card>
         </TabsContent>
 
-        <TabsContent value="timeline" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Production Timeline with Material Dependencies</CardTitle>
-              <CardDescription>
-                Integrated timeline showing process progress and material availability
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {processProgress.map((process, index) => (
-                  <div key={process.id} className="relative">
-                    <div className="flex items-start gap-4">
-                      <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary text-primary-foreground font-semibold text-sm">
-                        {index + 1}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between mb-2">
-                          <h3 className="font-medium">{process.name}</h3>
-                          <Badge className={getStatusColor(process.status)}>
-                            {process.status}
-                          </Badge>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                          <div>
-                            <div className="text-sm text-muted-foreground mb-2">Production Progress</div>
-                            <Progress value={process.progress} className="h-3" />
-                            <div className="flex justify-between text-sm mt-1">
-                              <span>{process.progress}%</span>
-                              <span className="text-muted-foreground">
-                                {new Date(process.startDate).toLocaleDateString()} - {new Date(process.endDate).toLocaleDateString()}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <div>
-                            <div className="text-sm text-muted-foreground mb-2">Material Readiness</div>
-                            <Progress 
-                              value={process.materialReadiness} 
-                              className={`h-3 ${process.materialReadiness < 50 ? 'bg-red-100' : process.materialReadiness < 80 ? 'bg-yellow-100' : 'bg-green-100'}`}
-                            />
-                            <div className="flex justify-between text-sm mt-1">
-                              <span className={process.materialReadiness < 50 ? 'text-red-600' : process.materialReadiness < 80 ? 'text-yellow-600' : 'text-green-600'}>
-                                {process.materialReadiness}%
-                              </span>
-                              <span className="text-muted-foreground">Materials Ready</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {process.requiredMaterials?.length > 0 && (
-                          <div className="mb-4">
-                            <div className="text-sm font-medium mb-2">Required Materials:</div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              {process.requiredMaterials?.map(materialId => {
-                                const material = bomItems.find(item => item.partNumber === materialId);
-                                return material ? (
-                                  <div key={materialId} className="flex items-center justify-between p-2 border rounded text-sm">
-                                    <span>{material.partName}</span>
-                                    <Badge className={getStatusColor(material.materialStatus)} variant="outline">
-                                      {material.materialStatus}
-                                    </Badge>
-                                  </div>
-                                ) : null;
-                              })}
-                            </div>
-                          </div>
-                        )}
-
-                        {process.bottlenecks?.length > 0 && (
-                          <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
-                            <div className="flex items-center gap-2 text-orange-800 font-medium mb-1">
-                              <AlertTriangle className="h-4 w-4" />
-                              Material Bottlenecks
-                            </div>
-                            <ul className="text-sm text-orange-700">
-                              {process.bottlenecks?.map((bottleneck, idx) => (
-                                <li key={idx}>• {bottleneck}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    
-                    {index < processProgress.length - 1 && (
-                      <div className="w-px h-6 bg-border ml-5 mt-2"></div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       {/* Material Detail Modal */}
@@ -948,10 +949,10 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Package className="h-5 w-5" />
-              Add Materials from BOM
+              Initialize Materials from Selected BOM Items
             </DialogTitle>
             <DialogDescription>
-              This will automatically add all materials from the BOM to this production lot for tracking.
+              This will initialize material tracking for the BOM items that are selected for this production lot.
             </DialogDescription>
           </DialogHeader>
           
@@ -962,9 +963,9 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
                 <span className="text-sm font-medium text-blue-900">What this will do:</span>
               </div>
               <ul className="text-sm text-blue-800 space-y-1">
-                <li>• Load all BOM items for this production lot</li>
+                <li>• Load only the selected BOM items for this production lot</li>
                 <li>• Calculate required quantities based on production quantity</li>
-                <li>• Set up material tracking for each item</li>
+                <li>• Set up material tracking for selected items only</li>
                 <li>• Enable vendor assignment and status tracking</li>
               </ul>
             </div>

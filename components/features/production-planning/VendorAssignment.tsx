@@ -34,7 +34,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DatePicker } from '@/components/ui/date-picker';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { useAuth, useAuthReady } from '@/lib/providers/auth';
@@ -97,7 +96,7 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
   const [selectedBOMItem, setSelectedBOMItem] = useState<string>('');
   const [selectedVendor, setSelectedVendor] = useState<string>('');
   const [quotedPrice, setQuotedPrice] = useState<string>('');
-  const [deliveryDate, setDeliveryDate] = useState<Date | undefined>(undefined);
+  const [deliveryDate, setDeliveryDate] = useState<string>('');
   // const [leadTimeDays, setLeadTimeDays] = useState<string>('');
   const [editingAssignment, setEditingAssignment] = useState<VendorAssignment | null>(null);
 
@@ -225,7 +224,7 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
   });
 
   const handleAssignVendor = async () => {
-    if (!selectedBOMItem || !selectedVendor || !quotedPrice || !deliveryDate) {
+    if (!selectedBOMItem || !selectedVendor || !quotedPrice || !deliveryDate.trim()) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -254,7 +253,7 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
         vendorId: selectedVendor,
         requiredQuantity: requiredQuantity,
         unitCost: parseFloat(quotedPrice),
-        expectedDeliveryDate: deliveryDate.toISOString().split('T')[0],
+        expectedDeliveryDate: deliveryDate,
         remarks: 'Assigned via production planning'
       };
 
@@ -268,7 +267,7 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
       setSelectedBOMItem('');
       setSelectedVendor('');
       setQuotedPrice('');
-      setDeliveryDate(undefined);
+      setDeliveryDate('');
       // setLeadTimeDays('');
 
       // Refresh assignments
@@ -306,12 +305,12 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
     setSelectedBOMItem(assignment.bom_item_id);
     setSelectedVendor(assignment.vendor_id);
     setQuotedPrice(assignment.quoted_price.toString());
-    setDeliveryDate(assignment.delivery_date ? new Date(assignment.delivery_date) : undefined);
+    setDeliveryDate(assignment.delivery_date ? new Date(assignment.delivery_date).toISOString().split('T')[0] || '' : '');
     setShowNewAssignment(true);
   };
 
   const handleUpdateAssignment = async () => {
-    if (!editingAssignment || !selectedBOMItem || !selectedVendor || !quotedPrice || !deliveryDate) {
+    if (!editingAssignment || !selectedBOMItem || !selectedVendor || !quotedPrice || !deliveryDate.trim()) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -334,7 +333,7 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
         vendorId: selectedVendor,
         requiredQuantity: requiredQuantity,
         unitCost: parseFloat(quotedPrice),
-        expectedDeliveryDate: deliveryDate.toISOString().split('T')[0],
+        expectedDeliveryDate: deliveryDate,
         remarks: 'Updated via production planning'
       };
 
@@ -348,7 +347,7 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
       setSelectedBOMItem('');
       setSelectedVendor('');
       setQuotedPrice('');
-      setDeliveryDate(undefined);
+      setDeliveryDate('');
       // setLeadTimeDays('');
 
       // Refresh assignments
@@ -528,9 +527,11 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="delivery" className="text-right">Delivery Date</Label>
                     <div className="col-span-3">
-                      <DatePicker
-                        date={deliveryDate}
-                        onDateChange={setDeliveryDate}
+                      <Input
+                        id="delivery"
+                        type="date"
+                        value={deliveryDate}
+                        onChange={(e) => setDeliveryDate(e.target.value)}
                       />
                     </div>
                   </div>
@@ -544,7 +545,7 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
                       setSelectedBOMItem('');
                       setSelectedVendor('');
                       setQuotedPrice('');
-                      setDeliveryDate(undefined);
+                      setDeliveryDate('');
                     }}
                   >
                     Cancel

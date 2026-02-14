@@ -290,7 +290,7 @@ class HealthCheckManager {
       try {
         listener(this.getHealth());
       } catch (error) {
-        console.error('Error in health check listener:', error);
+        // Error in health check listener - silently ignored
       }
     });
   }

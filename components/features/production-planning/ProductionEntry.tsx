@@ -8,20 +8,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  AlertTriangle, 
+import {
+  TrendingUp,
+  TrendingDown,
+  AlertTriangle,
   CheckCircle,
   Clock,
-  Search,
   Plus,
   Edit,
-  Calendar,
   BarChart3,
   Target,
-  XCircle,
-  AlertCircle
+  XCircle
 } from 'lucide-react';
 import {
   Dialog,
@@ -39,8 +36,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DatePicker } from '@/components/ui/date-picker';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { productionEntriesApi, CreateProductionEntryRequest } from '@/lib/api/production-entries';
 
 interface ProductionEntry {
   id: string;
@@ -79,95 +76,260 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
   const [filterDate, setFilterDate] = useState<string>('');
   const [filterProcess, setFilterProcess] = useState<string>('all');
   const [showNewEntry, setShowNewEntry] = useState(false);
+  const [showEditEntry, setShowEditEntry] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<ProductionEntry | null>(null);
   const [entryType, setEntryType] = useState<'daily' | 'weekly'>('daily');
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [formData, setFormData] = useState<Partial<CreateProductionEntryRequest>>({
+    lotId: lotId,
+    entryDate: new Date().toISOString().split('T')[0],
+    shift: 'MORNING',
+    targetQuantity: 0,
+    producedQuantity: 0,
+    rejectedQuantity: 0,
+    reworkQuantity: 0,
+    downtimeMinutes: 0,
+    downtimeReason: '',
+    qualityIssues: '',
+    operatorNotes: '',
+    processName: ''
+  });
 
   useEffect(() => {
     const fetchProductionData = async () => {
-      try {
-        // Mock production entry data
-        const mockEntries: ProductionEntry[] = [
-          {
-            id: '1',
-            date: '2026-02-05',
-            shift: 'MORNING',
-            processId: '1',
-            processName: 'Material Preparation',
-            targetQuantity: 10,
-            producedQuantity: 8,
-            rejectedQuantity: 1,
-            reworkQuantity: 1,
-            downtimeMinutes: 30,
-            downtimeReason: 'Equipment calibration',
-            qualityIssues: 'Minor surface scratches on 1 unit',
-            operatorNotes: 'New operator training session conducted',
-            enteredBy: 'Alice Johnson',
-            enteredAt: '2026-02-05T16:30:00'
-          },
-          {
-            id: '2',
-            date: '2026-02-05',
-            shift: 'AFTERNOON',
-            processId: '1',
-            processName: 'Material Preparation',
-            targetQuantity: 10,
-            producedQuantity: 9,
-            rejectedQuantity: 0,
-            reworkQuantity: 1,
-            downtimeMinutes: 15,
-            downtimeReason: 'Tool change',
-            qualityIssues: '',
-            operatorNotes: 'Smooth operation, good quality output',
-            enteredBy: 'Bob Smith',
-            enteredAt: '2026-02-05T22:15:00'
-          },
-          {
-            id: '3',
-            date: '2026-02-06',
-            shift: 'MORNING',
-            processId: '2',
-            processName: 'Assembly',
-            targetQuantity: 8,
-            producedQuantity: 6,
-            rejectedQuantity: 1,
-            reworkQuantity: 1,
-            downtimeMinutes: 45,
-            downtimeReason: 'Material delay',
-            qualityIssues: 'Alignment issue in 1 unit, corrected',
-            operatorNotes: 'Waiting for steel plates delivery affected production',
-            enteredBy: 'Michael Brown',
-            enteredAt: '2026-02-06T16:45:00'
-          }
-        ];
+      if (!lotId) return;
 
-        // Mock weekly entries
-        const mockWeeklyEntries: WeeklyEntry[] = [
-          {
-            week: 'Week 6 (Feb 3-9)',
-            targetQuantity: 50,
-            producedQuantity: 42,
-            rejectedQuantity: 3,
-            efficiency: 84
-          },
-          {
-            week: 'Week 7 (Feb 10-16)',
-            targetQuantity: 60,
-            producedQuantity: 0,
-            rejectedQuantity: 0,
-            efficiency: 0
-          }
-        ];
-        
-        setEntries(mockEntries);
-        setWeeklyEntries(mockWeeklyEntries);
+      try {
+        setLoading(true);
+
+        // Fetch production entries from API
+        const entriesData = await productionEntriesApi.getProductionEntriesForLot(lotId);
+
+        // Check if entriesData is an array before mapping
+        if (Array.isArray(entriesData)) {
+          setEntries(entriesData.map(entry => ({
+            id: entry.id,
+            date: entry.entryDate,
+            shift: entry.shift,
+            processId: entry.processId,
+            processName: entry.processName,
+            targetQuantity: entry.targetQuantity,
+            producedQuantity: entry.producedQuantity,
+            rejectedQuantity: entry.rejectedQuantity,
+            reworkQuantity: entry.reworkQuantity,
+            downtimeMinutes: entry.downtimeMinutes,
+            downtimeReason: entry.downtimeReason,
+            qualityIssues: entry.qualityIssues,
+            operatorNotes: entry.operatorNotes,
+            enteredBy: entry.enteredBy,
+            enteredAt: entry.createdAt
+          })));
+        } else {
+          console.warn('Production entries data is not an array:', entriesData);
+          setEntries([]);
+        }
+
+        // Fetch weekly summary from API
+        const weeklyData = await productionEntriesApi.getWeeklySummary(lotId);
+
+        // Check if weeklyData is an array before mapping
+        if (Array.isArray(weeklyData)) {
+          setWeeklyEntries(weeklyData.map(week => ({
+            week: week.week,
+            targetQuantity: week.targetQuantity,
+            producedQuantity: week.producedQuantity,
+            rejectedQuantity: week.rejectedQuantity,
+            efficiency: week.efficiency
+          })));
+        } else {
+          console.warn('Weekly summary data is not an array:', weeklyData);
+          setWeeklyEntries([]);
+        }
+
         setLoading(false);
       } catch (error) {
         console.error('Error fetching production entry data:', error);
+        setEntries([]);
+        setWeeklyEntries([]);
         setLoading(false);
       }
     };
 
     fetchProductionData();
   }, [lotId]);
+
+  const refreshData = async () => {
+    try {
+      const entriesData = await productionEntriesApi.getProductionEntriesForLot(lotId);
+      if (Array.isArray(entriesData)) {
+        setEntries(entriesData.map(entry => ({
+          id: entry.id,
+          date: entry.entryDate,
+          shift: entry.shift,
+          processId: entry.processId,
+          processName: entry.processName,
+          targetQuantity: entry.targetQuantity,
+          producedQuantity: entry.producedQuantity,
+          rejectedQuantity: entry.rejectedQuantity,
+          reworkQuantity: entry.reworkQuantity,
+          downtimeMinutes: entry.downtimeMinutes,
+          downtimeReason: entry.downtimeReason,
+          qualityIssues: entry.qualityIssues,
+          operatorNotes: entry.operatorNotes,
+          enteredBy: entry.enteredBy,
+          enteredAt: entry.createdAt
+        })));
+      }
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    }
+  };
+
+  const handleSaveEntry = async () => {
+    if (!formData.processName || !formData.entryDate || !formData.shift) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      await productionEntriesApi.createProductionEntry({
+        lotId: lotId,
+        processName: formData.processName,
+        entryDate: formData.entryDate,
+        shift: formData.shift as 'MORNING' | 'AFTERNOON' | 'NIGHT',
+        targetQuantity: formData.targetQuantity || 0,
+        producedQuantity: formData.producedQuantity || 0,
+        rejectedQuantity: formData.rejectedQuantity || 0,
+        reworkQuantity: formData.reworkQuantity || 0,
+        downtimeMinutes: formData.downtimeMinutes || 0,
+        downtimeReason: formData.downtimeReason || '',
+        qualityIssues: formData.qualityIssues || '',
+        operatorNotes: formData.operatorNotes || ''
+      });
+
+      // Refresh data after successful save
+      await refreshData();
+
+      // Reset form and close dialog
+      setFormData({
+        lotId: lotId,
+        entryDate: new Date().toISOString().split('T')[0],
+        shift: 'MORNING',
+        targetQuantity: 0,
+        producedQuantity: 0,
+        rejectedQuantity: 0,
+        reworkQuantity: 0,
+        downtimeMinutes: 0,
+        downtimeReason: '',
+        qualityIssues: '',
+        operatorNotes: '',
+        processName: ''
+      });
+      setShowNewEntry(false);
+
+    } catch (error) {
+      console.error('Error saving production entry:', error);
+      alert('Failed to save production entry. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEditEntry = (entry: ProductionEntry) => {
+    setEditingEntry(entry);
+    setFormData({
+      lotId: lotId,
+      processId: entry.processId,
+      processName: entry.processName,
+      entryDate: entry.date,
+      shift: entry.shift as 'MORNING' | 'AFTERNOON' | 'NIGHT',
+      targetQuantity: entry.targetQuantity,
+      producedQuantity: entry.producedQuantity,
+      rejectedQuantity: entry.rejectedQuantity,
+      reworkQuantity: entry.reworkQuantity,
+      downtimeMinutes: entry.downtimeMinutes,
+      downtimeReason: entry.downtimeReason,
+      qualityIssues: entry.qualityIssues,
+      operatorNotes: entry.operatorNotes
+    });
+    setShowEditEntry(true);
+  };
+
+  const handleUpdateEntry = async () => {
+    if (!editingEntry || !formData.processName || !formData.entryDate || !formData.shift) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      await productionEntriesApi.updateProductionEntry(editingEntry.id, {
+        processName: formData.processName,
+        entryDate: formData.entryDate,
+        shift: formData.shift as 'MORNING' | 'AFTERNOON' | 'NIGHT',
+        targetQuantity: formData.targetQuantity,
+        producedQuantity: formData.producedQuantity,
+        rejectedQuantity: formData.rejectedQuantity,
+        reworkQuantity: formData.reworkQuantity,
+        downtimeMinutes: formData.downtimeMinutes,
+        downtimeReason: formData.downtimeReason,
+        qualityIssues: formData.qualityIssues,
+        operatorNotes: formData.operatorNotes
+      });
+
+      // Refresh data after successful update
+      await refreshData();
+
+      // Reset form and close dialog
+      setFormData({
+        lotId: lotId,
+        entryDate: new Date().toISOString().split('T')[0],
+        shift: 'MORNING',
+        targetQuantity: 0,
+        producedQuantity: 0,
+        rejectedQuantity: 0,
+        reworkQuantity: 0,
+        downtimeMinutes: 0,
+        downtimeReason: '',
+        qualityIssues: '',
+        operatorNotes: '',
+        processName: ''
+      });
+      setEditingEntry(null);
+      setShowEditEntry(false);
+
+    } catch (error) {
+      console.error('Error updating production entry:', error);
+      alert('Failed to update production entry. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteEntry = async (entryId: string) => {
+    if (!confirm('Are you sure you want to delete this production entry?')) {
+      return;
+    }
+
+    try {
+      setDeleting(entryId);
+
+      await productionEntriesApi.deleteProductionEntry(entryId);
+
+      // Refresh data after successful delete
+      await refreshData();
+
+    } catch (error) {
+      console.error('Error deleting production entry:', error);
+      alert('Failed to delete production entry. Please try again.');
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   const getShiftColor = (shift: string) => {
     const colors = {
@@ -298,11 +460,16 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="entry-date">Date</Label>
-                      <DatePicker />
+                      <Input
+                        id="entry-date"
+                        type="date"
+                        value={formData.entryDate || ''}
+                        onChange={(e) => setFormData({ ...formData, entryDate: e.target.value })}
+                      />
                     </div>
                     <div>
                       <Label htmlFor="shift">Shift</Label>
-                      <Select>
+                      <Select value={formData.shift} onValueChange={(value) => setFormData({ ...formData, shift: value as 'MORNING' | 'AFTERNOON' | 'NIGHT' })}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select shift" />
                         </SelectTrigger>
@@ -316,56 +483,238 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
                   </div>
                   <div>
                     <Label htmlFor="process">Process</Label>
-                    <Select>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select process" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">Material Preparation</SelectItem>
-                        <SelectItem value="2">Assembly</SelectItem>
-                        <SelectItem value="3">Testing & Quality Control</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <Input
+                      id="process"
+                      value={formData.processName || ''}
+                      onChange={(e) => setFormData({ ...formData, processName: e.target.value })}
+                      placeholder="Enter process name"
+                    />
                   </div>
                   <div className="grid grid-cols-4 gap-4">
                     <div>
                       <Label htmlFor="target">Target Qty</Label>
-                      <Input id="target" type="number" placeholder="10" />
+                      <Input
+                        id="target"
+                        type="number"
+                        value={formData.targetQuantity || 0}
+                        onChange={(e) => setFormData({ ...formData, targetQuantity: Number(e.target.value) })}
+                        placeholder="10"
+                      />
                     </div>
                     <div>
                       <Label htmlFor="produced">Produced</Label>
-                      <Input id="produced" type="number" placeholder="8" />
+                      <Input
+                        id="produced"
+                        type="number"
+                        value={formData.producedQuantity || 0}
+                        onChange={(e) => setFormData({ ...formData, producedQuantity: Number(e.target.value) })}
+                        placeholder="8"
+                      />
                     </div>
                     <div>
                       <Label htmlFor="rejected">Rejected</Label>
-                      <Input id="rejected" type="number" placeholder="1" />
+                      <Input
+                        id="rejected"
+                        type="number"
+                        value={formData.rejectedQuantity || 0}
+                        onChange={(e) => setFormData({ ...formData, rejectedQuantity: Number(e.target.value) })}
+                        placeholder="1"
+                      />
                     </div>
                     <div>
                       <Label htmlFor="rework">Rework</Label>
-                      <Input id="rework" type="number" placeholder="1" />
+                      <Input
+                        id="rework"
+                        type="number"
+                        value={formData.reworkQuantity || 0}
+                        onChange={(e) => setFormData({ ...formData, reworkQuantity: Number(e.target.value) })}
+                        placeholder="1"
+                      />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="downtime">Downtime (minutes)</Label>
-                      <Input id="downtime" type="number" placeholder="30" />
+                      <Input
+                        id="downtime"
+                        type="number"
+                        value={formData.downtimeMinutes || 0}
+                        onChange={(e) => setFormData({ ...formData, downtimeMinutes: Number(e.target.value) })}
+                        placeholder="30"
+                      />
                     </div>
                     <div>
                       <Label htmlFor="downtime-reason">Downtime Reason</Label>
-                      <Input id="downtime-reason" placeholder="Equipment maintenance" />
+                      <Input
+                        id="downtime-reason"
+                        value={formData.downtimeReason || ''}
+                        onChange={(e) => setFormData({ ...formData, downtimeReason: e.target.value })}
+                        placeholder="Equipment maintenance"
+                      />
                     </div>
                   </div>
                   <div>
                     <Label htmlFor="quality-issues">Quality Issues</Label>
-                    <Textarea id="quality-issues" placeholder="Describe any quality issues observed" />
+                    <Textarea
+                      id="quality-issues"
+                      value={formData.qualityIssues || ''}
+                      onChange={(e) => setFormData({ ...formData, qualityIssues: e.target.value })}
+                      placeholder="Describe any quality issues observed"
+                    />
                   </div>
                   <div>
                     <Label htmlFor="notes">Operator Notes</Label>
-                    <Textarea id="notes" placeholder="Additional notes or observations" />
+                    <Textarea
+                      id="notes"
+                      value={formData.operatorNotes || ''}
+                      onChange={(e) => setFormData({ ...formData, operatorNotes: e.target.value })}
+                      placeholder="Additional notes or observations"
+                    />
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button type="submit">Save Entry</Button>
+                  <Button
+                    onClick={handleSaveEntry}
+                    disabled={saving}
+                  >
+                    {saving ? 'Saving...' : 'Save Entry'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            {/* Edit Entry Dialog */}
+            <Dialog open={showEditEntry} onOpenChange={setShowEditEntry}>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Edit Production Entry</DialogTitle>
+                  <DialogDescription>
+                    Update production data for this entry
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="edit-entry-date">Date</Label>
+                      <Input
+                        id="edit-entry-date"
+                        type="date"
+                        value={formData.entryDate || ''}
+                        onChange={(e) => setFormData({ ...formData, entryDate: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-shift">Shift</Label>
+                      <Select value={formData.shift} onValueChange={(value) => setFormData({ ...formData, shift: value as 'MORNING' | 'AFTERNOON' | 'NIGHT' })}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select shift" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="MORNING">Morning (6 AM - 2 PM)</SelectItem>
+                          <SelectItem value="AFTERNOON">Afternoon (2 PM - 10 PM)</SelectItem>
+                          <SelectItem value="NIGHT">Night (10 PM - 6 AM)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-process">Process</Label>
+                    <Input
+                      id="edit-process"
+                      value={formData.processName || ''}
+                      onChange={(e) => setFormData({ ...formData, processName: e.target.value })}
+                      placeholder="Enter process name"
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 gap-4">
+                    <div>
+                      <Label htmlFor="edit-target">Target Qty</Label>
+                      <Input
+                        id="edit-target"
+                        type="number"
+                        value={formData.targetQuantity || 0}
+                        onChange={(e) => setFormData({ ...formData, targetQuantity: Number(e.target.value) })}
+                        placeholder="10"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-produced">Produced</Label>
+                      <Input
+                        id="edit-produced"
+                        type="number"
+                        value={formData.producedQuantity || 0}
+                        onChange={(e) => setFormData({ ...formData, producedQuantity: Number(e.target.value) })}
+                        placeholder="8"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-rejected">Rejected</Label>
+                      <Input
+                        id="edit-rejected"
+                        type="number"
+                        value={formData.rejectedQuantity || 0}
+                        onChange={(e) => setFormData({ ...formData, rejectedQuantity: Number(e.target.value) })}
+                        placeholder="1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-rework">Rework</Label>
+                      <Input
+                        id="edit-rework"
+                        type="number"
+                        value={formData.reworkQuantity || 0}
+                        onChange={(e) => setFormData({ ...formData, reworkQuantity: Number(e.target.value) })}
+                        placeholder="1"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="edit-downtime">Downtime (minutes)</Label>
+                      <Input
+                        id="edit-downtime"
+                        type="number"
+                        value={formData.downtimeMinutes || 0}
+                        onChange={(e) => setFormData({ ...formData, downtimeMinutes: Number(e.target.value) })}
+                        placeholder="30"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-downtime-reason">Downtime Reason</Label>
+                      <Input
+                        id="edit-downtime-reason"
+                        value={formData.downtimeReason || ''}
+                        onChange={(e) => setFormData({ ...formData, downtimeReason: e.target.value })}
+                        placeholder="Equipment maintenance"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-quality-issues">Quality Issues</Label>
+                    <Textarea
+                      id="edit-quality-issues"
+                      value={formData.qualityIssues || ''}
+                      onChange={(e) => setFormData({ ...formData, qualityIssues: e.target.value })}
+                      placeholder="Describe any quality issues observed"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="edit-notes">Operator Notes</Label>
+                    <Textarea
+                      id="edit-notes"
+                      value={formData.operatorNotes || ''}
+                      onChange={(e) => setFormData({ ...formData, operatorNotes: e.target.value })}
+                      placeholder="Additional notes or observations"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button
+                    onClick={handleUpdateEntry}
+                    disabled={saving}
+                  >
+                    {saving ? 'Updating...' : 'Update Entry'}
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -491,9 +840,29 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
                             )}
                           </TableCell>
                           <TableCell>
-                            <Button size="sm" variant="ghost">
-                              <Edit className="h-4 w-4" />
-                            </Button>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleEditEntry(entry)}
+                                disabled={deleting === entry.id}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDeleteEntry(entry.id)}
+                                disabled={deleting === entry.id}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                {deleting === entry.id ? (
+                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
+                                ) : (
+                                  <XCircle className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -507,7 +876,7 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
                   <BarChart3 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <div className="text-lg font-medium mb-2">No production entries found</div>
                   <div className="text-muted-foreground">
-                    {filterDate || filterProcess !== 'all' 
+                    {filterDate || filterProcess !== 'all'
                       ? 'Try adjusting your filter criteria'
                       : 'Start recording daily production data'
                     }

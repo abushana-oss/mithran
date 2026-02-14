@@ -107,7 +107,7 @@ export default function ProcessPage() {
 
 
   // Fetch processes from database
-  const { data: processesData } = useProcesses();
+  const { data: processesData, isLoading: processesLoading, error: processesError } = useProcesses();
 
   // Fetch reference tables for selected process (from old functionality)
   const { data: referenceTables, isLoading: loadingTables } = useReferenceTables(selectedProcessId || undefined);
@@ -196,7 +196,7 @@ export default function ProcessPage() {
       setEditingTableId(null);
       setEditedTableData({});
     } catch (error) {
-      console.error('Failed to save table:', error);
+      // Failed to save table
     }
   };
 
@@ -256,9 +256,9 @@ export default function ProcessPage() {
       // Try row_data (snake_case from DB) first, then rowData (camelCase)
       const rowData = row.row_data || row.rowData || row;
 
-      // Debug log for problematic tables
+      // Handle empty row data
       if (!rowData || Object.keys(rowData).length === 0) {
-        console.warn('Empty row data detected:', row);
+        // Row data is empty or malformed
       }
 
       return rowData;
@@ -433,7 +433,6 @@ export default function ProcessPage() {
       setIsAddMappingDialogOpen(false);
     } catch (error) {
       toast.error('Failed to save calculator mapping');
-      console.error(error);
     }
   };
 
@@ -445,14 +444,14 @@ export default function ProcessPage() {
       toast.success('Calculator mapping deleted successfully');
     } catch (error) {
       toast.error('Failed to delete calculator mapping');
-      console.error(error);
     }
   };
 
   const renderProcessTables = () => {
     if (!selectedProcessId) return null;
 
-    const process = processesData?.processes.find(p => p.id === selectedProcessId);
+    const processes = processesData?.data?.processes || processesData?.processes || [];
+    const process = processes.find(p => p.id === selectedProcessId);
     if (!process) return null;
 
     return (
@@ -643,7 +642,8 @@ export default function ProcessPage() {
                         calculatorMappings?.mappings.map((mapping) => {
                           const handleProcessRouteClick = () => {
                             // Find the process by name (processRoute)
-                            const process = processesData?.processes.find(
+                            const processes = processesData?.data?.processes || processesData?.processes || [];
+                            const process = processes.find(
                               p => p.processName === mapping.processRoute
                             );
                             
@@ -653,7 +653,8 @@ export default function ProcessPage() {
                               setIsLookupTableModalOpen(true);
                             } else {
                               // Process not found - show user-friendly message
-                              toast.error(`Process "${mapping.processRoute}" not found. Please update the calculator mapping to use one of: ${processesData?.processes.map(p => p.processName).join(', ')}`);
+                              const processes = processesData?.data?.processes || processesData?.processes || [];
+                              toast.error(`Process "${mapping.processRoute}" not found. Please update the calculator mapping to use one of: ${processes.map(p => p.processName).join(', ')}`);
                             }
                           };
 
@@ -703,6 +704,49 @@ export default function ProcessPage() {
           </CardContent>
         </Card>
 
+        {/* STATUS INFO */}
+        {processesLoading && (
+          <Card className="border-blue-200 bg-blue-50">
+            <CardContent className="p-4">
+              <p className="text-blue-800">Loading manufacturing processes...</p>
+            </CardContent>
+          </Card>
+        )}
+        
+        {processesError && (
+          <Card className="border-red-200 bg-red-50">
+            <CardContent className="p-4">
+              <p className="text-red-800">Error loading processes: {processesError.message}</p>
+              <p className="text-sm text-red-600 mt-2">
+                This page loads general manufacturing processes. If you're looking for production lot processes, 
+                navigate to a specific production lot instead.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {!processesLoading && !processesError && (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="p-4">
+              <p className="text-amber-800">
+                <strong>Note:</strong> This page shows general manufacturing process templates and calculator mappings.
+              </p>
+              <p className="text-sm text-amber-600 mt-1">
+                For production lot-specific processes, navigate to Production Planning → select a lot.
+              </p>
+              {processesData?.data?.processes && processesData.data.processes.length > 0 && (
+                <p className="text-sm text-green-600 mt-2">
+                  ✅ Found {processesData.data.processes.length} process templates
+                </p>
+              )}
+              {processesData?.processes && processesData.processes.length > 0 && (
+                <p className="text-sm text-green-600 mt-2">
+                  ✅ Found {processesData.processes.length} process templates
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* PROCESS-SPECIFIC TABLES */}
         {renderProcessTables()}

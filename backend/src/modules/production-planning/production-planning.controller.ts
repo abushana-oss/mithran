@@ -10,9 +10,15 @@ import {
   Query,
   UseGuards,
   ParseUUIDPipe,
+  Logger,
+  HttpException,
+  HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '@/common/guards/supabase-auth.guard';
+import { RateLimitGuard } from '@/common/guards/rate-limit.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
+import { RateLimit, RateLimits } from '@/common/decorators/rate-limit.decorator';
 import { createResponse, ApiResponse } from '@/common/dto/api-response.dto';
 import { ProductionPlanningService } from './production-planning.service';
 import { ProductionMaterialTrackingService } from './services/production-material-tracking.service';
@@ -40,12 +46,22 @@ import {
 } from './dto/daily-production.dto';
 
 @Controller('production-planning')
-@UseGuards(SupabaseAuthGuard)
+@UseGuards(SupabaseAuthGuard, RateLimitGuard)
 export class ProductionPlanningController {
+  private readonly logger = new Logger(ProductionPlanningController.name);
+
   constructor(
     private readonly productionPlanningService: ProductionPlanningService,
     private readonly materialTrackingService: ProductionMaterialTrackingService,
   ) {}
+
+  /**
+   * Helper method to safely extract user ID from user object
+   * Handles cases where user object might be undefined (dev/legacy auth)
+   */
+  private getUserId(user: any): string {
+    return user?.id || 'legacy-user';
+  }
 
   // ============================================================================
   // PRODUCTION LOTS ENDPOINTS
@@ -56,7 +72,7 @@ export class ProductionPlanningController {
     @Body() createDto: CreateProductionLotDto,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<ProductionLotResponseDto>> {
-    const result = await this.productionPlanningService.createProductionLot(createDto, user.id);
+    const result = await this.productionPlanningService.createProductionLot(createDto, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -67,7 +83,7 @@ export class ProductionPlanningController {
     @Query('bomId') bomId?: string,
     @Query('priority') priority?: string,
   ): Promise<ApiResponse<ProductionLotResponseDto[]>> {
-    const result = await this.productionPlanningService.getProductionLots(user.id, {
+    const result = await this.productionPlanningService.getProductionLots(this.getUserId(user), {
       status,
       bomId,
       priority,
@@ -80,7 +96,7 @@ export class ProductionPlanningController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<ProductionLotResponseDto>> {
-    const result = await this.productionPlanningService.getProductionLotById(id, user.id);
+    const result = await this.productionPlanningService.getProductionLotById(id, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -89,7 +105,7 @@ export class ProductionPlanningController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any[]>> {
-    const result = await this.productionPlanningService.getProductionLotBomItems(id, user.id);
+    const result = await this.productionPlanningService.getProductionLotBomItems(id, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -98,7 +114,7 @@ export class ProductionPlanningController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any[]>> {
-    const result = await this.productionPlanningService.getProductionLotVendorAssignments(id, user.id);
+    const result = await this.productionPlanningService.getProductionLotVendorAssignments(id, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -108,7 +124,7 @@ export class ProductionPlanningController {
     @Body() assignmentData: any,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any>> {
-    const result = await this.productionPlanningService.createVendorAssignment(assignmentData, user.id);
+    const result = await this.productionPlanningService.createVendorAssignment(assignmentData, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -119,18 +135,52 @@ export class ProductionPlanningController {
     @Body() updateData: any,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any>> {
-    const result = await this.productionPlanningService.updateVendorAssignment(assignmentId, updateData, user.id);
+    const result = await this.productionPlanningService.updateVendorAssignment(assignmentId, updateData, this.getUserId(user));
     return createResponse(result);
   }
 
   @Put('lots/:id')
+  @RateLimit(RateLimits.CRITICAL_OPERATIONS)
   async updateProductionLot(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateDto: UpdateProductionLotDto,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<ProductionLotResponseDto>> {
-    const result = await this.productionPlanningService.updateProductionLot(id, updateDto, user.id);
-    return createResponse(result);
+    try {
+      this.logger.log(`Updating production lot ${id} for user ${this.getUserId(user)}`);
+      
+      // Additional date validation
+      if (updateDto.plannedStartDate && updateDto.plannedEndDate) {
+        const startDate = new Date(updateDto.plannedStartDate);
+        const endDate = new Date(updateDto.plannedEndDate);
+        
+        if (startDate >= endDate) {
+          throw new HttpException(
+            'Start date must be before end date',
+            HttpStatus.BAD_REQUEST
+          );
+        }
+        
+        // Validate dates are not too far in the future (business rule)
+        const maxFutureDate = new Date();
+        maxFutureDate.setFullYear(maxFutureDate.getFullYear() + 2);
+        
+        if (startDate > maxFutureDate || endDate > maxFutureDate) {
+          throw new HttpException(
+            'Dates cannot be more than 2 years in the future',
+            HttpStatus.BAD_REQUEST
+          );
+        }
+      }
+      
+      const result = await this.productionPlanningService.updateProductionLot(id, updateDto, this.getUserId(user));
+      this.logger.log(`Successfully updated production lot ${id}`);
+      
+      return createResponse(result);
+    } catch (error) {
+      this.logger.error(`Failed to update production lot ${id}:`, error);
+      throw error;
+    }
   }
 
   @Delete('lots/:id')
@@ -138,7 +188,7 @@ export class ProductionPlanningController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<void>> {
-    await this.productionPlanningService.deleteProductionLot(id, user.id);
+    await this.productionPlanningService.deleteProductionLot(id, this.getUserId(user));
     return createResponse(undefined);
   }
 
@@ -153,7 +203,7 @@ export class ProductionPlanningController {
     @Body() createDto: CreateProductionProcessDto,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any>> {
-    const result = await this.productionPlanningService.createProductionProcess(createDto, user.id);
+    const result = await this.productionPlanningService.createProductionProcess(createDto, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -163,7 +213,7 @@ export class ProductionPlanningController {
     @CurrentUser() user: any,
     @Query('status') status?: string,
   ): Promise<ApiResponse<any[]>> {
-    const result = await this.productionPlanningService.getProductionProcesses(lotId, user.id, { status });
+    const result = await this.productionPlanningService.getProductionProcesses(lotId, this.getUserId(user), { status });
     return createResponse(result);
   }
 
@@ -173,7 +223,7 @@ export class ProductionPlanningController {
     @Body() updateDto: UpdateProductionProcessDto,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any>> {
-    const result = await this.productionPlanningService.updateProductionProcess(id, updateDto, user.id);
+    const result = await this.productionPlanningService.updateProductionProcess(id, updateDto, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -182,7 +232,7 @@ export class ProductionPlanningController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<void>> {
-    await this.productionPlanningService.deleteProductionProcess(id, user.id);
+    await this.productionPlanningService.deleteProductionProcess(id, this.getUserId(user));
     return createResponse(undefined);
   }
 
@@ -196,7 +246,14 @@ export class ProductionPlanningController {
     @Body() createDto: CreateProcessSubtaskDto,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any>> {
-    const result = await this.productionPlanningService.createProcessSubtask(createDto, user.id);
+    const userId = this.getUserId(user);
+    
+    // Validate that processId in URL matches productionProcessId in DTO
+    if (processId !== createDto.productionProcessId) {
+      throw new BadRequestException('Process ID in URL must match productionProcessId in request body');
+    }
+    
+    const result = await this.productionPlanningService.createProcessSubtask(createDto, userId);
     return createResponse(result);
   }
 
@@ -205,7 +262,8 @@ export class ProductionPlanningController {
     @Param('processId', ParseUUIDPipe) processId: string,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any[]>> {
-    const result = await this.productionPlanningService.getProcessSubtasks(processId, user.id);
+    const userId = this.getUserId(user);
+    const result = await this.productionPlanningService.getProcessSubtasks(processId, userId);
     return createResponse(result);
   }
 
@@ -215,8 +273,17 @@ export class ProductionPlanningController {
     @Body() updateDto: UpdateProcessSubtaskDto,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any>> {
-    const result = await this.productionPlanningService.updateProcessSubtask(id, updateDto, user.id);
+    const result = await this.productionPlanningService.updateProcessSubtask(id, updateDto, this.getUserId(user));
     return createResponse(result);
+  }
+
+  @Delete('subtasks/:id')
+  async deleteProcessSubtask(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ): Promise<ApiResponse<void>> {
+    await this.productionPlanningService.deleteProcessSubtask(id, this.getUserId(user));
+    return createResponse(undefined);
   }
 
   // ============================================================================
@@ -229,7 +296,7 @@ export class ProductionPlanningController {
     @Body() createDto: CreateDailyProductionEntryDto,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<DailyProductionEntryResponseDto>> {
-    const result = await this.productionPlanningService.createDailyProductionEntry(createDto, user.id);
+    const result = await this.productionPlanningService.createDailyProductionEntry(createDto, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -241,7 +308,7 @@ export class ProductionPlanningController {
     @Query('endDate') endDate?: string,
     @Query('entryType') entryType?: string,
   ): Promise<ApiResponse<DailyProductionEntryResponseDto[]>> {
-    const result = await this.productionPlanningService.getDailyProductionEntries(lotId, user.id, {
+    const result = await this.productionPlanningService.getDailyProductionEntries(lotId, this.getUserId(user), {
       startDate,
       endDate,
       entryType,
@@ -255,7 +322,7 @@ export class ProductionPlanningController {
     @Body() updateDto: UpdateDailyProductionEntryDto,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<DailyProductionEntryResponseDto>> {
-    const result = await this.productionPlanningService.updateDailyProductionEntry(id, updateDto, user.id);
+    const result = await this.productionPlanningService.updateDailyProductionEntry(id, updateDto, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -268,7 +335,7 @@ export class ProductionPlanningController {
     @Param('lotId', ParseUUIDPipe) lotId: string,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<ProductionSummaryDto>> {
-    const result = await this.productionPlanningService.getProductionSummary(lotId, user.id);
+    const result = await this.productionPlanningService.getProductionSummary(lotId, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -278,7 +345,7 @@ export class ProductionPlanningController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ): Promise<ApiResponse<any>> {
-    const result = await this.productionPlanningService.getDashboardData(user.id, { startDate, endDate });
+    const result = await this.productionPlanningService.getDashboardData(this.getUserId(user), { startDate, endDate });
     return createResponse(result);
   }
 
@@ -287,9 +354,10 @@ export class ProductionPlanningController {
     @Param('lotId', ParseUUIDPipe) lotId: string,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any>> {
-    const result = await this.productionPlanningService.getGanttData(lotId, user.id);
+    const result = await this.productionPlanningService.getGanttData(lotId, this.getUserId(user));
     return createResponse(result);
   }
+
 
   // ============================================================================
   // MATERIAL TRACKING ENDPOINTS
@@ -300,7 +368,7 @@ export class ProductionPlanningController {
     @Param('lotId', ParseUUIDPipe) lotId: string,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any[]>> {
-    const result = await this.materialTrackingService.initializeProductionLotMaterials(lotId, user.id);
+    const result = await this.materialTrackingService.initializeProductionLotMaterials(lotId, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -309,7 +377,7 @@ export class ProductionPlanningController {
     @Param('lotId', ParseUUIDPipe) lotId: string,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any[]>> {
-    const result = await this.materialTrackingService.getProductionLotMaterials(lotId, user.id);
+    const result = await this.materialTrackingService.getProductionLotMaterials(lotId, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -319,7 +387,7 @@ export class ProductionPlanningController {
     @Body() updateData: any,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any>> {
-    const result = await this.materialTrackingService.updateMaterialStatus(materialId, updateData, user.id);
+    const result = await this.materialTrackingService.updateMaterialStatus(materialId, updateData, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -328,7 +396,7 @@ export class ProductionPlanningController {
     @Param('materialId', ParseUUIDPipe) materialId: string,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any[]>> {
-    const result = await this.materialTrackingService.getMaterialTrackingHistory(materialId, user.id);
+    const result = await this.materialTrackingService.getMaterialTrackingHistory(materialId, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -341,7 +409,7 @@ export class ProductionPlanningController {
     @Param('lotId', ParseUUIDPipe) lotId: string,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any>> {
-    const result = await this.materialTrackingService.getProductionMonitoringData(lotId, user.id);
+    const result = await this.materialTrackingService.getProductionMonitoringData(lotId, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -350,7 +418,7 @@ export class ProductionPlanningController {
     @Param('lotId', ParseUUIDPipe) lotId: string,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any>> {
-    const result = await this.materialTrackingService.getIntegratedDashboardData(lotId, user.id);
+    const result = await this.materialTrackingService.getIntegratedDashboardData(lotId, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -360,7 +428,7 @@ export class ProductionPlanningController {
     @Body() metricsData: any,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any>> {
-    const result = await this.materialTrackingService.recordProductionMetrics(lotId, metricsData, user.id);
+    const result = await this.materialTrackingService.recordProductionMetrics(lotId, metricsData, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -373,7 +441,7 @@ export class ProductionPlanningController {
     @Param('lotId', ParseUUIDPipe) lotId: string,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any[]>> {
-    const result = await this.materialTrackingService.getProductionAlerts(lotId, user.id);
+    const result = await this.materialTrackingService.getProductionAlerts(lotId, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -383,7 +451,7 @@ export class ProductionPlanningController {
     @Body() alertData: any,
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any>> {
-    const result = await this.materialTrackingService.createManualAlert(lotId, alertData, user.id);
+    const result = await this.materialTrackingService.createManualAlert(lotId, alertData, this.getUserId(user));
     return createResponse(result);
   }
 
@@ -393,7 +461,63 @@ export class ProductionPlanningController {
     @Body() resolutionData: { notes: string },
     @CurrentUser() user: any,
   ): Promise<ApiResponse<any>> {
-    const result = await this.materialTrackingService.resolveAlert(alertId, resolutionData.notes, user.id);
+    const result = await this.materialTrackingService.resolveAlert(alertId, resolutionData.notes, this.getUserId(user));
     return createResponse(result);
+  }
+
+  // ============================================================================
+  // DIRECT SUBTASKS ENDPOINT
+  // ============================================================================
+
+  @Get('lots/:lotId/subtasks-direct')
+  async getSubtasksDirectByLot(
+    @Param('lotId', ParseUUIDPipe) lotId: string,
+    @CurrentUser() user: any,
+  ): Promise<ApiResponse<any[]>> {
+    const result = await this.productionPlanningService.getSubtasksDirectByLot(lotId, this.getUserId(user));
+    return createResponse(result);
+  }
+
+  // ============================================================================
+  // PROCESS TEMPLATES ENDPOINTS
+  // ============================================================================
+
+  @Get('process-templates')
+  async getDefaultProcessTemplates(
+    @CurrentUser() user: any,
+  ): Promise<ApiResponse<any[]>> {
+    const result = await this.productionPlanningService.getDefaultProcessTemplates(this.getUserId(user));
+    return createResponse(result);
+  }
+
+  @Post('process-templates')
+  async createProcessTemplate(
+    @Body() templateData: {
+      name: string;
+      description?: string;
+      category?: string;
+    },
+    @CurrentUser() user: any,
+  ): Promise<ApiResponse<any>> {
+    const result = await this.productionPlanningService.createProcessTemplate(this.getUserId(user), templateData);
+    return createResponse(result);
+  }
+
+  @Post('lots/:id/update-status-by-progress')
+  async updateLotStatusByProgress(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ): Promise<ApiResponse<void>> {
+    await this.productionPlanningService.updateLotStatusByProgress(id, this.getUserId(user));
+    return createResponse(undefined);
+  }
+
+  @Post('lots/:id/cleanup-materials')
+  async cleanupLotMaterials(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: any,
+  ): Promise<ApiResponse<void>> {
+    await this.productionPlanningService.cleanupProductionLotMaterials(id, this.getUserId(user));
+    return createResponse(undefined);
   }
 }

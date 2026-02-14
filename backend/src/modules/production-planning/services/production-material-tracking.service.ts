@@ -66,14 +66,18 @@ export class ProductionMaterialTrackingService {
   async initializeProductionLotMaterials(lotId: string, userId: string): Promise<any[]> {
     const supabase = this.supabaseService.getClient();
 
-    // Get all BOM items for this production lot
+    // Get production lot with selected BOM items
     const { data: lotData } = await supabase
       .from('production_lots')
       .select(`
         id,
         production_quantity,
         bom_id,
-        boms!inner(user_id)
+        boms!inner(user_id),
+        selected_bom_items:production_lot_bom_items(
+          bom_item_id,
+          bom_item:bom_items(*)
+        )
       `)
       .eq('id', lotId)
       .eq('boms.user_id', userId)
@@ -83,13 +87,22 @@ export class ProductionMaterialTrackingService {
       throw new NotFoundException('Production lot not found');
     }
 
-    // Get BOM items
-    const { data: bomItems } = await supabase
-      .from('bom_items')
-      .select('*')
-      .eq('bom_id', lotData.bom_id);
+    // Get selected BOM items or fall back to all BOM items if none selected
+    let bomItems = [];
+    
+    if (lotData.selected_bom_items && lotData.selected_bom_items.length > 0) {
+      // Use only the selected BOM items
+      bomItems = lotData.selected_bom_items.map((item: any) => item.bom_item);
+    } else {
+      // No specific items selected, get all BOM items (fallback for legacy lots)
+      const { data: allBomItems } = await supabase
+        .from('bom_items')
+        .select('*')
+        .eq('bom_id', lotData.bom_id);
+      bomItems = allBomItems || [];
+    }
 
-    if (!bomItems) {
+    if (!bomItems || bomItems.length === 0) {
       return [];
     }
 
@@ -131,7 +144,14 @@ export class ProductionMaterialTrackingService {
   async getProductionLotMaterials(lotId: string, userId: string): Promise<any[]> {
     const supabase = this.supabaseService.getClient();
 
-    const { data: materials, error } = await supabase
+    // First check if there are specific BOM items selected for this lot
+    const { data: selectedBomItems } = await supabase
+      .from('production_lot_bom_items')
+      .select('bom_item_id')
+      .eq('production_lot_id', lotId);
+
+    // Build the query
+    let query = supabase
       .from('production_lot_materials')
       .select(`
         *,
@@ -151,8 +171,15 @@ export class ProductionMaterialTrackingService {
           company_email
         )
       `)
-      .eq('production_lot_id', lotId)
-      .order('created_at');
+      .eq('production_lot_id', lotId);
+
+    // If there are specific BOM items selected, filter by them
+    if (selectedBomItems && selectedBomItems.length > 0) {
+      const selectedBomItemIds = selectedBomItems.map(item => item.bom_item_id);
+      query = query.in('bom_item_id', selectedBomItemIds);
+    }
+
+    const { data: materials, error } = await query.order('created_at');
 
     if (error) {
       throw new BadRequestException(`Failed to fetch materials: ${error.message}`);

@@ -316,11 +316,7 @@ export class RawMaterialsController {
 
           // Log first 5 errors with details
           if (errors.length <= 5) {
-            console.error(`❌ Row ${errorDetail.row} error:`, {
-              message: errorDetail.message,
-              type: errorDetail.type,
-              data: errorDetail.sampleData,
-            });
+            // Error details tracked for row processing
           }
         }
       }

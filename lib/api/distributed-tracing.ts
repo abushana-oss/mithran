@@ -274,7 +274,7 @@ export class TraceManager {
       try {
         listener(span);
       } catch (error) {
-        console.error('Error in span listener:', error);
+        // Error in span listener - silently ignored
       }
     });
   }
@@ -398,17 +398,9 @@ export interface TracingExporter {
  * Console exporter for development
  */
 export class ConsoleTracingExporter implements TracingExporter {
-  async export(spans: Span[]): Promise<void> {
-    spans.forEach((span) => {
-      console.log(`[TRACE] ${span.name}`, {
-        traceId: span.traceId,
-        spanId: span.spanId,
-        parentSpanId: span.parentSpanId,
-        duration: span.duration,
-        status: span.status,
-        attributes: span.attributes,
-      });
-    });
+  async export(_spans: Span[]): Promise<void> {
+    // Console tracing exporter - spans processed silently in production
+    // In development, tracing data can be accessed via traceManager.getSpans()
   }
 }
 
@@ -428,7 +420,7 @@ export class HttpTracingExporter implements TracingExporter {
         body: JSON.stringify(traceManager.exportSpans(spans)),
       });
     } catch (error) {
-      console.error('Failed to export traces:', error);
+      // Failed to export traces - error silently ignored
     }
   }
 }
@@ -471,7 +463,7 @@ export class BatchTracingExporter {
     try {
       await this.exporter.export(spans);
     } catch (error) {
-      console.error('Failed to flush traces:', error);
+      // Failed to flush traces - error silently ignored
     }
   }
 

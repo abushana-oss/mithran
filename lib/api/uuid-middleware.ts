@@ -137,16 +137,35 @@ function extractUUIDsFromBody(body: any): Array<{ field: string; value: any }> {
       }
     }
 
-    // Check arrays for UUID values
+    // Check arrays for UUID values (only process arrays of primitives, not objects)
     if (Array.isArray(value)) {
-      value.forEach((item, index) => {
-        if (typeof item === 'string' && item.trim() !== '' && uuidValidator.looksLike(item)) {
-          uuids.push({
-            field: `${key}[${index}]`,
-            value: item
-          });
-        }
-      });
+      // Skip arrays of objects - only process arrays of primitive values (strings)
+      const hasObjects = value.some(item => typeof item === 'object' && item !== null);
+      if (hasObjects) {
+        // This is an array of objects (like bomParts), recursively check nested properties
+        value.forEach((item, index) => {
+          if (typeof item === 'object' && item !== null) {
+            // Recursively extract UUIDs from nested object properties
+            const nestedUUIDs = extractUUIDsFromBody(item);
+            nestedUUIDs.forEach(nested => {
+              uuids.push({
+                field: `${key}[${index}].${nested.field}`,
+                value: nested.value
+              });
+            });
+          }
+        });
+      } else {
+        // Array of primitives - check for UUID strings
+        value.forEach((item, index) => {
+          if (typeof item === 'string' && item.trim() !== '' && uuidValidator.looksLike(item)) {
+            uuids.push({
+              field: `${key}[${index}]`,
+              value: item
+            });
+          }
+        });
+      }
     }
   });
 
@@ -174,6 +193,11 @@ export const uuidRequestInterceptor: RequestInterceptor = async (config: Request
   try {
     const endpoint = config.endpoint || '';
 
+    // Debug logging for bomParts
+    if (config.body && (config.body as any).bomParts) {
+      // Processing bomParts
+    }
+
     // Extract and validate UUIDs from path
     const pathUUIDs = extractUUIDsFromPath(endpoint);
     for (const { value, position } of pathUUIDs) {
@@ -190,7 +214,7 @@ export const uuidRequestInterceptor: RequestInterceptor = async (config: Request
         config.url = config.url.replace(value, validation.sanitized);
 
         if (process.env.NODE_ENV === 'development') {
-          console.warn(`[UUID Middleware] Normalized path UUID: ${value} → ${validation.sanitized}`);
+          // Path UUID normalized
         }
       }
     }
@@ -214,7 +238,7 @@ export const uuidRequestInterceptor: RequestInterceptor = async (config: Request
         );
 
         if (process.env.NODE_ENV === 'development') {
-          console.warn(`[UUID Middleware] Normalized query UUID: ${field} ${value} → ${validation.sanitized}`);
+          // Query UUID normalized
         }
       }
     }
@@ -229,8 +253,51 @@ export const uuidRequestInterceptor: RequestInterceptor = async (config: Request
     let modifiedBody = config.body;
 
     for (const { field, value } of bodyUUIDs) {
-      // Handle array fields
-      if (field.includes('[') && field.includes(']')) {
+      // Handle nested object fields in arrays (e.g., bomParts[0].bom_item_id)
+      if (field.includes('[') && field.includes(']') && field.includes('.')) {
+        // This is a nested field like "bomParts[0].bom_item_id"
+        const match = field.match(/^(.+?)\[(\d+)\]\.(.+)$/);
+        if (match) {
+          const arrayField = match[1];
+          const indexStr = match[2];
+          const nestedField = match[3];
+          if (!arrayField || !indexStr || !nestedField) continue;
+          const index = parseInt(indexStr);
+
+          const bodyObj = modifiedBody as Record<string, any>;
+          if (arrayField && index >= 0 && Array.isArray(bodyObj[arrayField]) && bodyObj[arrayField][index]) {
+            // Skip validation for empty/null values
+            if (value === '' || value === null || value === undefined) {
+              continue;
+            }
+
+            const validation = uuidValidator.validate(value, field);
+
+            if (!validation.isValid) {
+              throw createUUIDError(field, value, validation);
+            }
+
+            if (validation.sanitized && validation.sanitized !== value) {
+              // Deep clone the array and nested object to avoid mutation
+              if (!modifiedBody || typeof modifiedBody !== 'object') {
+                modifiedBody = {};
+              }
+              const currentBody = modifiedBody as Record<string, any>;
+              if (!currentBody[arrayField]) {
+                currentBody[arrayField] = JSON.parse(JSON.stringify((config.body as Record<string, any>)[arrayField]));
+              }
+              // Update the nested field
+              currentBody[arrayField][index][nestedField] = validation.sanitized;
+
+              if (process.env.NODE_ENV === 'development') {
+                // Nested UUID normalized
+              }
+            }
+          }
+        }
+      }
+      // Handle simple array fields (e.g., itemIds[0])
+      else if (field.includes('[') && field.includes(']')) {
         const parts = field.split('[');
         if (parts.length >= 2) {
           const arrayField = parts[0];
@@ -243,7 +310,7 @@ export const uuidRequestInterceptor: RequestInterceptor = async (config: Request
             if (value === '' || value === null || value === undefined) {
               continue; // Skip empty optional fields in arrays
             }
-            
+
             const validation = uuidValidator.validate(value, field);
 
             if (!validation.isValid) {
@@ -261,7 +328,7 @@ export const uuidRequestInterceptor: RequestInterceptor = async (config: Request
               currentBody[arrayField][index] = validation.sanitized;
 
               if (process.env.NODE_ENV === 'development') {
-                console.warn(`[UUID Middleware] Normalized body UUID: ${field} ${value} → ${validation.sanitized}`);
+                // Array UUID normalized
               }
             }
           }
@@ -271,12 +338,12 @@ export const uuidRequestInterceptor: RequestInterceptor = async (config: Request
         if (value === '' || value === null || value === undefined) {
           continue; // Skip empty optional fields
         }
-        
+
         // Skip array fields as they should be handled by array logic above
         if (UUID_ARRAY_FIELD_NAMES.includes(field) && Array.isArray(value)) {
           continue;
         }
-        
+
         const validation = uuidValidator.validate(value, field);
 
         if (!validation.isValid) {
@@ -290,7 +357,7 @@ export const uuidRequestInterceptor: RequestInterceptor = async (config: Request
           modifiedBody = { ...modifiedBody, [field]: validation.sanitized };
 
           if (process.env.NODE_ENV === 'development') {
-            console.warn(`[UUID Middleware] Normalized body UUID: ${field} ${value} → ${validation.sanitized}`);
+            // Body UUID normalized
           }
         }
       }
@@ -299,6 +366,11 @@ export const uuidRequestInterceptor: RequestInterceptor = async (config: Request
     // Update config with modified body if changes were made
     if (modifiedBody !== config.body) {
       config.body = modifiedBody;
+    }
+
+    // Debug logging after processing
+    if (config.body && (config.body as any).bomParts) {
+      // bomParts processing completed
     }
 
     return config;
@@ -310,7 +382,7 @@ export const uuidRequestInterceptor: RequestInterceptor = async (config: Request
 
     // Log unexpected errors but don't block the request
     if (process.env.NODE_ENV === 'development') {
-      console.error('[UUID Middleware] Unexpected error:', error);
+      // Unexpected error occurred
     }
 
     return config;
@@ -364,22 +436,20 @@ export function logUUIDValidationDetails(config: any): void {
     return;
   }
 
-  console.group('🔍 UUID Validation Details');
+  // UUID Validation Details
 
   const pathUUIDs = extractUUIDsFromPath(config.endpoint);
   if (pathUUIDs.length > 0) {
-    console.log('Path UUIDs:', pathUUIDs);
+    // Path UUIDs found
   }
 
   const queryUUIDs = extractUUIDsFromQuery(config.url);
   if (queryUUIDs.length > 0) {
-    console.log('Query UUIDs:', queryUUIDs);
+    // Query UUIDs found
   }
 
   const bodyUUIDs = extractUUIDsFromBody(config.body);
   if (bodyUUIDs.length > 0) {
-    console.log('Body UUIDs:', bodyUUIDs);
+    // Body UUIDs found
   }
-
-  console.groupEnd();
 }

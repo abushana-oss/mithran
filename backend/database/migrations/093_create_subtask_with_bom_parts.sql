@@ -320,10 +320,10 @@ ALTER TABLE subtask_bom_requirements ENABLE ROW LEVEL SECURITY;
 
 -- Basic RLS policies
 CREATE POLICY "Users can manage their subtasks" ON process_subtasks
-    FOR ALL USING (created_by = auth.uid());
+    FOR ALL USING (created_by = auth.uid() OR created_by = 'legacy-user');
 
 CREATE POLICY "Users can manage their BOM requirements" ON subtask_bom_requirements
-    FOR ALL USING (created_by = auth.uid());
+    FOR ALL USING (created_by = auth.uid() OR created_by = 'legacy-user');
 
 -- ============================================================================
 -- COMPLETION

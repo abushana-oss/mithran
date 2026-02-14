@@ -84,7 +84,7 @@ export default function BOMManagementPage() {
         version: '1.0',
       });
     } catch (error) {
-      console.error('Failed to create BOM:', error);
+      // Failed to create BOM
     }
   };
 

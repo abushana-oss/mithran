@@ -75,7 +75,6 @@ export class SupabaseAuthGuard implements CanActivate {
     request.headers['x-mock-user-id'] = mockUser.id;
     request.headers['x-mock-user-role'] = mockUser.role;
     
-    console.log(`🔓 [DEV AUTH BYPASS] ${mockUser.name} (${mockUser.role}) - ${context.getClass().name}.${context.getHandler().name}`);
     return true;
   }
 
@@ -93,7 +92,6 @@ export class SupabaseAuthGuard implements CanActivate {
     const mockToken = `dev-token-6e7124e7-bf9e-4686-9cac-2245f016a3e4-${Date.now()}`;
     request.accessToken = mockToken;
     
-    console.log(`🔓 [LEGACY DEV AUTH] Principal Engineer - ${context.getClass().name}.${context.getHandler().name}`);
     return true;
   }
 

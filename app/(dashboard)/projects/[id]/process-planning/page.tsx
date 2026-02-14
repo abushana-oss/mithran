@@ -21,7 +21,7 @@ if (typeof window !== 'undefined') {
   try {
     apiClient.resetCircuitBreaker();
   } catch (error) {
-    console.warn('Could not reset circuit breaker:', error);
+    // Could not reset circuit breaker
   }
 }
 import { BOMSelectionCard } from '@/components/features/process-planning/BOMSelectionCard';
@@ -314,7 +314,6 @@ function ProcessPlanningPageContent() {
           setFile3dUrl(null);
         }
       } catch (error) {
-        console.error('Failed to load 3D file URL:', error);
         setFile3dUrl(null);
       }
     };
@@ -328,7 +327,6 @@ function ProcessPlanningPageContent() {
           setFile2dUrl(null);
         }
       } catch (error) {
-        console.error('Failed to load 2D file URL:', error);
         setFile2dUrl(null);
       }
     };

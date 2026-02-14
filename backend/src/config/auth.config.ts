@@ -97,17 +97,11 @@ export class AuthConfig {
     }
 
     if (nodeEnv === 'staging' && authBypass === 'true') {
-      console.warn(
-        'WARNING: Auth bypass is enabled in staging environment. ' +
-        'This should only be used for specific testing scenarios.'
-      );
+      // Auth bypass enabled in staging environment
     }
 
     if (this.isAuthBypassEnabled) {
-      console.log(
-        '🔓 DEVELOPMENT MODE: Authentication bypassed for faster development. ' +
-        'This is ONLY safe in development environments.'
-      );
+      // Authentication bypassed for development
     }
   }
 

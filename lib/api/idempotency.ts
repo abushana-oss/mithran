@@ -43,9 +43,7 @@ async function hashBody(body: any): Promise<string> {
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
     } catch (error) {
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('[Idempotency] Web Crypto API failed, using fallback:', error);
-      }
+      // Web Crypto API failed, using fallback
     }
   }
   
@@ -55,9 +53,6 @@ async function hashBody(body: any): Promise<string> {
     return crypto.createHash('sha256').update(text).digest('hex');
   } catch {
     // Ultimate fallback: Simple hash (not cryptographically secure)
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('[Idempotency] Using simple hash fallback - not cryptographically secure');
-    }
     let hash = 0;
     for (let i = 0; i < text.length; i++) {
       const char = text.charCodeAt(i);
@@ -225,9 +220,7 @@ export class IdempotencyManager {
 
     toDelete.forEach((key) => this.records.delete(key));
 
-    if (process.env.NODE_ENV === 'development' && toDelete.length > 0) {
-      console.log(`[Idempotency] Cleaned up ${toDelete.length} expired records`);
-    }
+    // Cleanup completed
   }
 
   /**

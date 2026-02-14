@@ -14,7 +14,6 @@ function CallbackContent() {
     const handleCallback = async () => {
       try {
         if (!supabase) {
-          console.error('Supabase client not configured')
           toast.error('Google Sign-In is not configured.')
           router.push('/auth')
           return
@@ -25,7 +24,6 @@ function CallbackContent() {
         const { data: { session }, error } = await supabase.auth.getSession()
 
         if (error) {
-          console.error('Auth callback error:', error)
           toast.error('Authentication failed. Please try again.')
           router.push('/auth')
           return
@@ -37,7 +35,6 @@ function CallbackContent() {
             const { data: isAuthorized, error: authError } = await supabase.rpc('is_user_authorized')
 
             if (authError) {
-              console.error('Authorization RPC failed:', authError)
               // Fallback to manual check (though likely to fail if RLS blocks it)
               const { data: authData, error: queryError } = await supabase
                 .from('authorized_users')
@@ -75,7 +72,6 @@ function CallbackContent() {
           router.push('/auth')
         }
       } catch (error: any) {
-        console.error('Unexpected error during auth callback:', error)
         toast.error('An unexpected error occurred. Please try again.')
         router.push('/auth')
       }

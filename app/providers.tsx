@@ -33,7 +33,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
       // Then initialize API client with interceptors
       initializeApiClient()
     }).catch((error) => {
-      console.error('Failed to initialize crypto APIs:', error)
       // In production, this would prevent app startup
       if (process.env.NODE_ENV === 'production') {
         throw error

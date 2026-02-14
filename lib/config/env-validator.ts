@@ -134,23 +134,9 @@ class EnvironmentValidator {
     const result = this.getValidationResult();
     const config = this.getConfig();
 
-    console.group('🔧 Environment');
-    console.log('API:', config.api.baseUrl);
-
     const apiReachable = await this.checkApiReachability();
-    console.log('Status:', apiReachable ? '✅ Online' : '❌ Offline');
-    console.log('Supabase:', config.supabase.isConfigured ? '✅' : '⚠️');
 
-    // Only show errors if they exist
-    if (result.errors.length > 0) {
-      console.error('Errors:', result.errors.join(', '));
-    }
-
-    if (result.isValid) {
-      console.log('✅ Ready');
-    }
-
-    console.groupEnd();
+    // Validation completed - results available through getValidationResult()
   }
 
   private getApiUrl(): string {

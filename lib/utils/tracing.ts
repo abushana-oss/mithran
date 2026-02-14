@@ -353,22 +353,13 @@ export async function traceOperation<T>(
     const result = await operation();
     const timing = tracer.end(operationName);
     
-    console.log(`[TRACE] ${operationName}`, {
-      ...timing.metadata,
-      success: true,
-      ...metadata
-    });
+    // Operation completed successfully
     
     return result;
   } catch (error) {
     const timing = tracer.end(operationName);
     
-    console.error(`[TRACE] ${operationName} FAILED`, {
-      ...timing.metadata,
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      ...metadata
-    });
+    // Operation failed - error will be thrown
     
     throw error;
   }

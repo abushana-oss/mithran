@@ -145,6 +145,15 @@ export function ProjectModules({ projectId, bomCount, firstBomId }: ProjectModul
       },
     },
     {
+      title: 'Quality Control',
+      description: 'Manage quality inspections, testing protocols, defect tracking, and compliance documentation',
+      borderColor: 'border-l-4 border-l-red-500',
+      status: 'available' as const,
+      onClick: () => {
+        router.push(`/projects/${projectId}/quality-control`);
+      },
+    },
+    {
       title: 'Delivery',
       description: 'Coordinate packing and logistics for efficient delivery management',
       borderColor: 'border-l-4 border-l-green-500',

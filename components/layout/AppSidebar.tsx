@@ -10,7 +10,6 @@ import {
   Calculator,
   Table,
   Sigma,
-  FileSpreadsheet,
 } from 'lucide-react';
 import { NavLink } from '@/components/common/nav-link';
 import { useAuth } from '@/lib/providers/auth';
@@ -32,7 +31,6 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 
 const databaseItems = [
-  { title: 'BOMs', url: '/bom', icon: FileSpreadsheet },
   { title: 'Vendors', url: '/vendors', icon: Users },
   { title: 'Raw Materials', url: '/raw-materials', icon: Database },
   { title: 'MHR', url: '/mhr-database', icon: Calculator },
@@ -53,7 +51,7 @@ export function AppSidebar() {
     try {
       await signOut();
     } catch (error) {
-      console.error('Logout error:', error);
+      // Logout error occurred
     }
   };
 

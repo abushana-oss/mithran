@@ -1,4 +1,4 @@
-import { IsUUID, IsString, IsOptional, IsDateString, IsEnum, IsInt, IsBoolean, IsArray, IsNumber, Min, Max, ValidateNested } from 'class-validator';
+import { IsUUID, IsString, IsOptional, IsEnum, IsInt, IsBoolean, IsArray, IsNumber, Min, Max, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export enum ProcessStatus {
@@ -33,11 +33,10 @@ export class CreateProductionProcessDto {
   @IsString()
   description?: string;
 
-  @IsDateString()
-  planned_start_date: string;
-
-  @IsDateString()
-  planned_end_date: string;
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  estimated_hours?: number;
 
   @IsOptional()
   @IsString()
@@ -63,6 +62,7 @@ export class CreateProductionProcessDto {
   @IsOptional()
   @IsString()
   remarks?: string;
+
 }
 
 export class UpdateProductionProcessDto {
@@ -75,20 +75,14 @@ export class UpdateProductionProcessDto {
   description?: string;
 
   @IsOptional()
-  @IsDateString()
-  plannedStartDate?: string;
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  estimatedHours?: number;
 
   @IsOptional()
-  @IsDateString()
-  plannedEndDate?: string;
-
-  @IsOptional()
-  @IsDateString()
-  actualStartDate?: string;
-
-  @IsOptional()
-  @IsDateString()
-  actualEndDate?: string;
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  actualHours?: number;
 
   @IsOptional()
   @IsString()
@@ -130,6 +124,18 @@ export class UpdateProductionProcessDto {
   remarks?: string;
 }
 
+export class BomPartRequirementDto {
+  @IsUUID()
+  bom_item_id: string;
+
+  @IsNumber()
+  @Min(0.01)
+  required_quantity: number;
+
+  @IsString()
+  unit: string;
+}
+
 export class CreateProcessSubtaskDto {
   @IsUUID()
   productionProcessId: string;
@@ -146,12 +152,9 @@ export class CreateProcessSubtaskDto {
   taskSequence: number;
 
   @IsOptional()
-  @IsDateString()
-  plannedStartDate?: string;
-
-  @IsOptional()
-  @IsDateString()
-  plannedEndDate?: string;
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  estimatedHours?: number;
 
   @IsOptional()
   @IsString()
@@ -175,11 +178,17 @@ export class CreateProcessSubtaskDto {
 
   @IsOptional()
   @IsArray()
-  bomParts?: Array<{
-    bom_item_id: string;
-    required_quantity: number;
-    unit: string;
-  }>;
+  @ValidateNested({ each: true })
+  @Type(() => BomPartRequirementDto)
+  bomParts?: BomPartRequirementDto[];
+
+  @IsOptional()
+  @IsString()
+  plannedStartDate?: string;
+
+  @IsOptional()
+  @IsString()
+  plannedEndDate?: string;
 }
 
 export class UpdateProcessSubtaskDto {
@@ -197,17 +206,14 @@ export class UpdateProcessSubtaskDto {
   taskSequence?: number;
 
   @IsOptional()
-  @IsDateString()
-  plannedStartDate?: string;
-
-  @IsOptional()
-  @IsDateString()
-  plannedEndDate?: string;
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  estimatedHours?: number;
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
-  actualDurationHours?: number;
+  actualHours?: number;
 
   @IsOptional()
   @IsString()
@@ -232,14 +238,6 @@ export class UpdateProcessSubtaskDto {
   @IsOptional()
   @IsUUID()
   dependsOnSubtaskId?: string;
-
-  @IsOptional()
-  @IsDateString()
-  startedAt?: string;
-
-  @IsOptional()
-  @IsDateString()
-  completedAt?: string;
 
   @IsOptional()
   @IsString()

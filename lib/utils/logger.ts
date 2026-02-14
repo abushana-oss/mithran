@@ -141,7 +141,7 @@ class Logger {
         handler(entry);
       } catch (error) {
         // Prevent logging errors from breaking the application
-        console.error('Logger handler error:', error);
+        // Handler error silently ignored to prevent cascade failures
       }
     });
   }
@@ -181,10 +181,7 @@ class Logger {
   ): void {
     // This can be extended to send to external monitoring services
     // like Sentry, DataDog, New Relic, etc.
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[MONITORING]', eventName, properties);
-    }
-
+    
     // Example: Send to external monitoring
     // if (typeof window !== 'undefined' && window.analytics) {
     //   window.analytics.track(eventName, properties);

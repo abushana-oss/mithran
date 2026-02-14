@@ -370,7 +370,6 @@ export async function getEvaluationData(
     const response = await apiClient.get(`/supplier-nominations/evaluations/${evaluationId}/sections/${section}`);
     return response;
   } catch (error) {
-    console.error('getEvaluationData error:', error);
     throw error;
   }
 }
@@ -466,9 +465,9 @@ export function getRecommendationColor(recommendation: Recommendation): string {
 export function resetApiCircuitBreaker(): void {
   try {
     apiClient.resetCircuitBreaker();
-    console.log('Circuit breaker reset successfully');
+    // Circuit breaker reset successfully
   } catch (error) {
-    console.error('Failed to reset circuit breaker:', error);
+    // Failed to reset circuit breaker
   }
 }
 
@@ -478,10 +477,9 @@ export function resetApiCircuitBreaker(): void {
 export function getApiCircuitBreakerStatus() {
   try {
     const metrics = apiClient.getCircuitBreakerMetrics();
-    console.log('Circuit Breaker Status:', metrics);
     return metrics;
   } catch (error) {
-    console.error('Failed to get circuit breaker status:', error);
+    // Failed to get circuit breaker status
   }
 }
 
@@ -522,7 +520,6 @@ export async function getFactorWeights(nominationId: string): Promise<FactorWeig
     const response = await apiClient.get(`/supplier-nominations/${nominationId}/factor-weights`);
     return response;
   } catch (error) {
-    console.error('Failed to get factor weights:', error);
     throw error;
   }
 }
@@ -535,7 +532,6 @@ export async function updateFactorWeights(nominationId: string, weights: FactorW
     const response = await apiClient.put(`/supplier-nominations/${nominationId}/factor-weights`, weights);
     return response;
   } catch (error) {
-    console.error('Failed to update factor weights:', error);
     throw error;
   }
 }
@@ -569,7 +565,6 @@ export async function calculateSupplierRankings(nominationId: string): Promise<S
     const response = await apiClient.post(`/supplier-nominations/${nominationId}/calculate-rankings`);
     return response || [];
   } catch (error) {
-    console.error('Failed to calculate supplier rankings:', error);
     throw error;
   }
 }
@@ -582,7 +577,6 @@ export async function storeSupplierRankings(nominationId: string): Promise<boole
     const response = await apiClient.post(`/supplier-nominations/${nominationId}/store-rankings`);
     return response;
   } catch (error) {
-    console.error('Failed to store supplier rankings:', error);
     throw error;
   }
 }
@@ -595,7 +589,6 @@ export async function getStoredRankings(nominationId: string): Promise<StoredRan
     const response = await apiClient.get(`/supplier-nominations/${nominationId}/rankings`);
     return response || [];
   } catch (error) {
-    console.error('Failed to get stored rankings:', error);
     throw error;
   }
 }
@@ -626,7 +619,6 @@ export async function getEvaluationScores(evaluationId: string): Promise<Evaluat
       overview_score: 0
     };
   } catch (error) {
-    console.error('Failed to get evaluation scores:', error);
     throw error;
   }
 }
@@ -769,7 +761,6 @@ export async function getApprovedVendorsByBomPart(
     const response = await apiClient.get(url, { params });
     return response || [];
   } catch (error) {
-    console.error('Failed to get approved vendors by BOM part:', error);
     throw error;
   }
 }
@@ -788,7 +779,6 @@ export async function getPartWiseCostAnalysis(
     const response = await apiClient.get(`/supplier-nominations/${nominationId}/parts/${bomItemId}/cost-analysis`);
     return response || { costAnalysis: [], baseData: null };
   } catch (error) {
-    console.error('Failed to get part-wise cost analysis:', error);
     throw error;
   }
 }
@@ -803,7 +793,6 @@ export async function initializePartWiseCostAnalysis(
   try {
     await apiClient.post(`/supplier-nominations/${nominationId}/parts/${bomItemId}/cost-analysis/init`);
   } catch (error) {
-    console.error('Failed to initialize part-wise cost analysis:', error);
     throw error;
   }
 }
@@ -823,7 +812,6 @@ export async function bulkUpdatePartWiseCostAnalysis(
     const response = await apiClient.put(`/supplier-nominations/${nominationId}/parts/${bomItemId}/cost-analysis/bulk`, updateData);
     return response || { costAnalysis: [], baseData: null };
   } catch (error) {
-    console.error('Failed to bulk update part-wise cost analysis:', error);
     throw error;
   }
 }
@@ -838,7 +826,6 @@ export async function getPartWiseAnalysisSummary(
     const response = await apiClient.get(`/supplier-nominations/${nominationId}/part-wise-analysis-summary`);
     return response || [];
   } catch (error) {
-    console.error('Failed to get part-wise analysis summary:', error);
     throw error;
   }
 }

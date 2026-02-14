@@ -14,10 +14,6 @@ import { SupabaseAuthGuard } from '@/common/guards/supabase-auth.guard';
 import { CurrentUser } from '@/common/decorators/current-user.decorator';
 import { ProductionProcessService } from '../services/production-process.service';
 import {
-  CreateProductionProcessDto,
-  UpdateProductionProcessDto,
-} from '../dto/production-process.dto';
-import {
   CreateLotVendorAssignmentDto,
   UpdateLotVendorAssignmentDto,
 } from '../dto/vendor-assignment.dto';
@@ -32,15 +28,6 @@ import {
 export class ProductionProcessController {
   constructor(private readonly productionProcessService: ProductionProcessService) { }
 
-  @Post('/')
-  @ApiOperation({ summary: 'Create a new production process' })
-  @ApiResponse({ type: ProductionProcessResponseDto })
-  async createProductionProcess(
-    @Body() createDto: CreateProductionProcessDto,
-    @CurrentUser() user: any
-  ): Promise<ProductionProcessResponseDto> {
-    return this.productionProcessService.createProductionProcess(createDto, user.id);
-  }
 
   @Get('/:id')
   @ApiOperation({ summary: 'Get production process by ID' })
@@ -52,16 +39,6 @@ export class ProductionProcessController {
     return this.productionProcessService.getProductionProcessById(id, user.id);
   }
 
-  @Put('/:id')
-  @ApiOperation({ summary: 'Update production process' })
-  @ApiResponse({ type: ProductionProcessResponseDto })
-  async updateProductionProcess(
-    @Param('id') id: string,
-    @Body() updateDto: UpdateProductionProcessDto,
-    @CurrentUser() user: any
-  ): Promise<ProductionProcessResponseDto> {
-    return this.productionProcessService.updateProductionProcess(id, updateDto, user.id);
-  }
 
   @Delete('/:id')
   @ApiOperation({ summary: 'Delete production process' })
@@ -114,35 +91,4 @@ export class ProductionProcessController {
     return this.productionProcessService.updateVendorAssignment(assignmentId, updateDto, user.id);
   }
 
-  @Put('/:processId/schedule')
-  @ApiOperation({ summary: 'Update process schedule' })
-  @ApiResponse({ type: ProductionProcessResponseDto })
-  async updateProcessSchedule(
-    @Param('processId') processId: string,
-    @Body() scheduleDto: {
-      planned_start_date: string;
-      planned_end_date: string;
-      assigned_department?: string;
-      responsible_person?: string;
-    },
-    @CurrentUser() user: any
-  ): Promise<ProductionProcessResponseDto> {
-    return this.productionProcessService.updateProcessSchedule(processId, scheduleDto, user.id);
-  }
-
-  @Put('/:processId/status')
-  @ApiOperation({ summary: 'Update process status' })
-  @ApiResponse({ type: ProductionProcessResponseDto })
-  async updateProcessStatus(
-    @Param('processId') processId: string,
-    @Body() statusDto: {
-      status: string;
-      completion_percentage?: number;
-      actual_start_date?: string;
-      actual_end_date?: string;
-    },
-    @CurrentUser() user: any
-  ): Promise<ProductionProcessResponseDto> {
-    return this.productionProcessService.updateProcessStatus(processId, statusDto, user.id);
-  }
 }

@@ -40,7 +40,7 @@ export default function CalculatorsPage() {
       });
       router.push(`/calculators/builder/${newCalc.id}`);
     } catch (error) {
-      console.error('Failed to create calculator:', error);
+      // Failed to create calculator
     }
   };
 
@@ -50,7 +50,7 @@ export default function CalculatorsPage() {
       try {
         await deleteCalculatorMutation.mutateAsync(id);
       } catch (error) {
-        console.error('Failed to delete calculator:', error);
+        // Failed to delete calculator
       }
     }
   };
@@ -81,7 +81,7 @@ export default function CalculatorsPage() {
       });
       setEditingId(null);
     } catch (error) {
-      console.error('Failed to update calculator:', error);
+      // Failed to update calculator
     }
   };
 

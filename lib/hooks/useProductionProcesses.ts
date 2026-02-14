@@ -22,37 +22,6 @@ const isValidUUID = (uuid: string): boolean => {
     return uuidRegex.test(uuid);
 };
 
-export interface CreateProcessData {
-    productionLotId: string;
-    processName: string;
-    description?: string;
-    plannedStartDate: string;
-    plannedEndDate: string;
-    assignedDepartment?: string;
-    responsiblePerson?: string;
-    machineAllocation?: string[];
-    dependsOnProcessId?: string;
-    qualityCheckRequired?: boolean;
-    remarks?: string;
-}
-
-export interface UpdateProcessData {
-    processName?: string;
-    description?: string;
-    plannedStartDate?: string;
-    plannedEndDate?: string;
-    actualStartDate?: string;
-    actualEndDate?: string;
-    assignedDepartment?: string;
-    responsiblePerson?: string;
-    machineAllocation?: string[];
-    status?: string;
-    completionPercentage?: number;
-    dependsOnProcessId?: string;
-    qualityCheckRequired?: boolean;
-    qualityStatus?: string;
-    remarks?: string;
-}
 
 export interface CreateSubtaskData {
     productionProcessId: string;
@@ -90,52 +59,6 @@ export const useProductionProcesses = () => {
 
     // ==================== Production Processes ====================
 
-    const createProcess = useCallback(async (data: CreateProcessData) => {
-        // Validate UUID fields before making API call
-        if (!isValidUUID(data.productionLotId)) {
-            const errorMessage = 'Invalid production lot ID format. Must be a valid UUID.';
-            setError(errorMessage);
-            toast.error(errorMessage);
-            throw new Error(errorMessage);
-        }
-
-        if (data.dependsOnProcessId && !isValidUUID(data.dependsOnProcessId)) {
-            const errorMessage = 'Invalid depends-on process ID format. Must be a valid UUID.';
-            setError(errorMessage);
-            toast.error(errorMessage);
-            throw new Error(errorMessage);
-        }
-
-        setLoading(true);
-        setError(null);
-        try {
-            // Convert frontend camelCase to backend snake_case format
-            const backendData = {
-                production_lot_id: data.productionLotId,
-                process_name: data.processName,
-                description: data.description,
-                planned_start_date: data.plannedStartDate,
-                planned_end_date: data.plannedEndDate,
-                assigned_department: data.assignedDepartment,
-                responsible_person: data.responsiblePerson,
-                machine_allocation: data.machineAllocation,
-                depends_on_process_id: data.dependsOnProcessId,
-                quality_check_required: data.qualityCheckRequired ?? true, // Default to true
-                remarks: data.remarks
-            };
-
-            const response: any = await apiClient.post(`/production-planning/lots/${data.productionLotId}/processes`, backendData);
-            toast.success('Production process created successfully');
-            return response.data;
-        } catch (err: any) {
-            const errorMessage = err.response?.data?.message || 'Failed to create production process';
-            setError(errorMessage);
-            toast.error(errorMessage);
-            throw err;
-        } finally {
-            setLoading(false);
-        }
-    }, []);
 
     const getProcessesByLot = useCallback(async (lotId: string, silent: boolean = false) => {
         // Validate UUID before making API call
@@ -181,22 +104,6 @@ export const useProductionProcesses = () => {
         }
     }, []);
 
-    const updateProcess = useCallback(async (processId: string, data: UpdateProcessData) => {
-        setLoading(true);
-        setError(null);
-        try {
-            const response: any = await apiClient.patch(`/production-planning/processes/${processId}`, data);
-            toast.success('Process updated successfully');
-            return response.data;
-        } catch (err: any) {
-            const errorMessage = err.response?.data?.message || 'Failed to update process';
-            setError(errorMessage);
-            toast.error(errorMessage);
-            throw err;
-        } finally {
-            setLoading(false);
-        }
-    }, []);
 
     const deleteProcess = useCallback(async (processId: string) => {
         setLoading(true);
@@ -298,6 +205,45 @@ export const useProductionProcesses = () => {
         }
     }, []);
 
+    // ==================== Global Process Templates ====================
+
+    const getGlobalProcessTemplates = useCallback(async (silent: boolean = false) => {
+        setLoading(true);
+        setError(null);
+        try {
+            // Fetch global process templates that can be used across all lots
+            const response: any = await apiClient.get('/production-planning/process-templates', { silent: silent as any });
+            return response;
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.message || 'Failed to fetch global process templates';
+            setError(errorMessage);
+            if (!silent) {
+                toast.error(errorMessage);
+                throw err;
+            }
+            return null;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const createGlobalProcessTemplate = useCallback(async (templateData: any) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const response: any = await apiClient.post('/production-planning/process-templates', templateData);
+            toast.success('Global process template created successfully');
+            return response;
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.message || 'Failed to create global process template';
+            setError(errorMessage);
+            toast.error(errorMessage);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
     const getLotBomItems = useCallback(async (lotId: string, silent: boolean = false) => {
         // Validate UUID before making API call
         if (!isValidUUID(lotId)) {
@@ -326,19 +272,192 @@ export const useProductionProcesses = () => {
         }
     }, []);
 
+    // ==================== BOM Items Management ====================
+
+    const addBomItemToLot = useCallback(async (lotId: string, bomItemData: {
+        partNumber: string;
+        partName: string;
+        description?: string;
+        requiredQuantity: number;
+        unit: string;
+        materialId?: string;
+    }) => {
+        if (!isValidUUID(lotId)) {
+            const errorMessage = 'Invalid lot ID format. Must be a valid UUID.';
+            setError(errorMessage);
+            toast.error(errorMessage);
+            throw new Error(errorMessage);
+        }
+
+        setLoading(true);
+        setError(null);
+        try {
+            const response: any = await apiClient.post(`/production-planning/lots/${lotId}/bom-items`, bomItemData);
+            toast.success('BOM item added to lot successfully');
+            return response;
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.message || 'Failed to add BOM item to lot';
+            setError(errorMessage);
+            toast.error(errorMessage);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const updateLotBomItem = useCallback(async (lotId: string, bomItemId: string, updateData: {
+        partNumber?: string;
+        partName?: string;
+        description?: string;
+        requiredQuantity?: number;
+        unit?: string;
+    }) => {
+        if (!isValidUUID(lotId)) {
+            const errorMessage = 'Invalid lot ID format. Must be a valid UUID.';
+            setError(errorMessage);
+            toast.error(errorMessage);
+            throw new Error(errorMessage);
+        }
+
+        setLoading(true);
+        setError(null);
+        try {
+            const response: any = await apiClient.put(`/production-planning/lots/${lotId}/bom-items/${bomItemId}`, updateData);
+            toast.success('BOM item updated successfully');
+            return response;
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.message || 'Failed to update BOM item';
+            setError(errorMessage);
+            toast.error(errorMessage);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const removeBomItemFromLot = useCallback(async (lotId: string, bomItemId: string) => {
+        if (!isValidUUID(lotId)) {
+            const errorMessage = 'Invalid lot ID format. Must be a valid UUID.';
+            setError(errorMessage);
+            toast.error(errorMessage);
+            throw new Error(errorMessage);
+        }
+
+        setLoading(true);
+        setError(null);
+        try {
+            await apiClient.delete(`/production-planning/lots/${lotId}/bom-items/${bomItemId}`);
+            toast.success('BOM item removed from lot successfully');
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.message || 'Failed to remove BOM item from lot';
+            setError(errorMessage);
+            toast.error(errorMessage);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const copyBomFromProject = useCallback(async (lotId: string, projectId: string, bomId?: string) => {
+        if (!isValidUUID(lotId) || !isValidUUID(projectId)) {
+            const errorMessage = 'Invalid lot or project ID format. Must be valid UUIDs.';
+            setError(errorMessage);
+            toast.error(errorMessage);
+            throw new Error(errorMessage);
+        }
+
+        setLoading(true);
+        setError(null);
+        try {
+            const payload = { projectId, ...(bomId && { bomId }) };
+            const response: any = await apiClient.post(`/production-planning/lots/${lotId}/copy-bom`, payload);
+            toast.success('BOM copied to lot successfully');
+            return response;
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.message || 'Failed to copy BOM to lot';
+            setError(errorMessage);
+            toast.error(errorMessage);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const createProcess = useCallback(async (processData: any) => {
+        const { productionLotId, ...createDto } = processData;
+        
+        if (!isValidUUID(productionLotId)) {
+            const errorMessage = 'Invalid production lot ID format. Must be a valid UUID.';
+            setError(errorMessage);
+            toast.error(errorMessage);
+            throw new Error(errorMessage);
+        }
+
+        // Include production_lot_id in the DTO as required by backend
+        const requestDto = {
+            ...createDto,
+            production_lot_id: productionLotId
+        };
+
+        setLoading(true);
+        setError(null);
+        try {
+            const response: any = await apiClient.post(`/production-planning/lots/${productionLotId}/processes`, requestDto);
+            toast.success('Process created successfully');
+            return response;
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.message || 'Failed to create process';
+            setError(errorMessage);
+            toast.error(errorMessage);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const updateProcess = useCallback(async (processId: string, updateData: any) => {
+        if (!isValidUUID(processId)) {
+            const errorMessage = 'Invalid process ID format. Must be a valid UUID.';
+            setError(errorMessage);
+            toast.error(errorMessage);
+            throw new Error(errorMessage);
+        }
+
+        setLoading(true);
+        setError(null);
+        try {
+            const response: any = await apiClient.put(`/production-planning/processes/${processId}`, updateData);
+            toast.success('Process updated successfully');
+            return response;
+        } catch (err: any) {
+            const errorMessage = err.response?.data?.message || 'Failed to update process';
+            setError(errorMessage);
+            toast.error(errorMessage);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
     return {
         loading,
         error,
-        createProcess,
         getProcessesByLot,
         getProcessById,
-        updateProcess,
         deleteProcess,
+        createProcess,
+        updateProcess,
         createSubtask,
         getSubtasksByProcess,
         updateSubtask,
         deleteSubtask,
         getAvailableProcesses,
+        getGlobalProcessTemplates,
+        createGlobalProcessTemplate,
         getLotBomItems,
+        addBomItemToLot,
+        updateLotBomItem,
+        removeBomItemFromLot,
+        copyBomFromProject,
     };
 };

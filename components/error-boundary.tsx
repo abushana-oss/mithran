@@ -26,18 +26,8 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
-    
     // Call custom error handler if provided
     this.props.onError?.(error, errorInfo);
-
-    // In development, provide more detailed error information
-    if (process.env.NODE_ENV === 'development') {
-      console.group('🚨 Error Boundary Details');
-      console.error('Error:', error);
-      console.error('Component Stack:', errorInfo.componentStack);
-      console.groupEnd();
-    }
   }
 
   private handleRetry = () => {

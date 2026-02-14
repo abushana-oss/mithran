@@ -65,9 +65,7 @@ async function handleAuthenticationError(): Promise<void> {
     }
 
     // Refresh succeeded - the auth state listener will update the user
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[Auth] Session refreshed successfully');
-    }
+    // Session refreshed successfully
   } catch (error) {
     redirectToLogin('Your session has expired. Please log in again.');
   } finally {
