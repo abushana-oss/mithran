@@ -28,7 +28,7 @@ import { LoggerModule } from './common/logger/logger.module';
 import { SupabaseService } from './common/supabase/supabase.service';
 import { SupabaseAuthGuard } from './common/guards/supabase-auth.guard';
 import { validate } from './config/env.validation';
-import { AppController } from './app.controller';
+import { RootController } from './root.controller';
 
 @Module({
   imports: [
@@ -78,7 +78,7 @@ import { AppController } from './app.controller';
     VendorQuotesModule,
     ProductionPlanningModule,
   ],
-  controllers: [AppController],
+  controllers: [RootController],
   providers: [
     SupabaseService,
     // {
