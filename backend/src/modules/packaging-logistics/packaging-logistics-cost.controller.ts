@@ -40,7 +40,7 @@ import {
 
 @ApiTags('Packaging & Logistics Costs')
 @ApiBearerAuth()
-@Controller('packaging-logistics-costs')
+@Controller('api/packaging-logistics-costs')
 @UseGuards(SupabaseAuthGuard)
 export class PackagingLogisticsCostController {
   constructor(

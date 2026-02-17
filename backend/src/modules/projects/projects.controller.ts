@@ -18,7 +18,7 @@ import { AccessToken } from '../../common/decorators/access-token.decorator';
 
 @ApiTags('Projects')
 @ApiBearerAuth()
-@Controller({ path: 'projects', version: '1' })
+@Controller({ path: 'api/projects', version: '1' })
 export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 

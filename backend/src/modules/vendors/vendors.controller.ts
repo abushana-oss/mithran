@@ -30,7 +30,7 @@ import { AccessToken } from '../../common/decorators/access-token.decorator';
 
 @ApiTags('Vendors')
 @ApiBearerAuth()
-@Controller({ path: 'vendors', version: '1' })
+@Controller({ path: 'api/vendors', version: '1' })
 export class VendorsController {
   constructor(private readonly vendorsService: VendorsService) {}
 

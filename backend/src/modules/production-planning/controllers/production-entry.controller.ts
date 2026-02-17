@@ -25,7 +25,7 @@ import { SupabaseAuthGuard } from '@/common/guards/supabase-auth.guard';
 @ApiTags('production-entries')
 @ApiBearerAuth()
 @UseGuards(SupabaseAuthGuard)
-@Controller('production-planning/production-entries')
+@Controller('api/production-planning/production-entries')
 export class ProductionEntryController {
   constructor(private readonly productionEntryService: ProductionEntryService) {}
 

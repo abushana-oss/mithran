@@ -39,7 +39,7 @@ import {
 
 @ApiTags('Raw Material Costs')
 @ApiBearerAuth()
-@Controller('raw-material-costs')
+@Controller('api/raw-material-costs')
 @UseGuards(SupabaseAuthGuard)
 export class RawMaterialCostController {
   constructor(

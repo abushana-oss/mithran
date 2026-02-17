@@ -26,7 +26,7 @@ import axios from 'axios';
 
 @ApiTags('BOM Items')
 @ApiBearerAuth()
-@Controller({ path: 'bom-items', version: '1' })
+@Controller({ path: 'api/bom-items', version: '1' })
 export class BOMItemsController {
   private readonly logger = new Logger(BOMItemsController.name);
 

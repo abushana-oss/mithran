@@ -40,7 +40,7 @@ import {
 
 @ApiTags('Procured Parts Costs')
 @ApiBearerAuth()
-@Controller('procured-parts-costs')
+@Controller('api/procured-parts-costs')
 @UseGuards(SupabaseAuthGuard)
 export class ProcuredPartsCostController {
   constructor(

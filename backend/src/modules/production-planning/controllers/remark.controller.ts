@@ -39,7 +39,7 @@ import {
 
 @ApiTags('Remarks & Issues')
 @ApiBearerAuth()
-@Controller('remarks')
+@Controller('api/remarks')
 @UseGuards(SupabaseAuthGuard)
 export class RemarkController {
   constructor(private readonly remarkService: RemarkService) {}

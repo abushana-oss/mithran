@@ -37,7 +37,7 @@ import { AccessToken } from '../../common/decorators/access-token.decorator';
 @ApiTags('RFQ (Request for Quotation)')
 @ApiBearerAuth()
 @UseGuards(SupabaseAuthGuard)
-@Controller('rfq')
+@Controller('api/rfq')
 export class RfqController {
   constructor(
     private readonly rfqService: RfqService,

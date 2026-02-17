@@ -24,7 +24,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('Supplier Evaluation')
 @ApiBearerAuth()
-@Controller({ path: 'supplier-evaluations', version: '1' })
+@Controller({ path: 'api/supplier-evaluations', version: '1' })
 @UseGuards(SupabaseAuthGuard)
 export class SupplierEvaluationController {
   constructor(private readonly evaluationService: SupplierEvaluationService) {}

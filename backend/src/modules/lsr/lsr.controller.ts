@@ -19,7 +19,7 @@ import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('LSR')
 @ApiBearerAuth()
-@Controller({ path: 'lsr', version: '1' })
+@Controller({ path: 'api/lsr', version: '1' })
 export class LSRController {
   constructor(private readonly lsrService: LSRService) { }
 

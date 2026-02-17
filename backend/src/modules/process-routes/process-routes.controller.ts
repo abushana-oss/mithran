@@ -39,7 +39,7 @@ import { AccessToken } from '../../common/decorators/access-token.decorator';
 
 @ApiTags('Process Routes')
 @ApiBearerAuth()
-@Controller({ path: 'process-routes', version: '1' })
+@Controller({ path: 'api/process-routes', version: '1' })
 export class ProcessRoutesController {
   constructor(private readonly processRoutesService: ProcessRoutesService) {}
 

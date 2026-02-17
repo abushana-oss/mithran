@@ -21,7 +21,7 @@ import {
 } from '../dto/comment.dto';
 
 @ApiTags('Comments')
-@Controller('comments')
+@Controller('api/comments')
 @UseGuards(SupabaseAuthGuard)
 @ApiBearerAuth()
 export class CommentController {

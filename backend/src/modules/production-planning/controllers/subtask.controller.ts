@@ -15,7 +15,7 @@ import { SubtaskService } from '../services/subtask.service';
 import { CreateSubtaskDto, UpdateSubtaskDto, SubtaskResponseDto } from '../dto/subtask.dto';
 
 @ApiTags('Production Subtasks')
-@Controller('production-planning/processes/subtasks')
+@Controller('api/production-planning/processes/subtasks')
 @UseGuards(SupabaseAuthGuard)
 export class SubtaskController {
   constructor(private readonly subtaskService: SubtaskService) {}

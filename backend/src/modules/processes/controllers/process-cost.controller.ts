@@ -41,7 +41,7 @@ import { ProcessCostInput } from '../engines/process-cost-calculation.engine';
 @ApiTags('Process Costs')
 @ApiBearerAuth()
 @UseGuards(SupabaseAuthGuard)
-@Controller('process-costs')
+@Controller('api/process-costs')
 export class ProcessCostController {
   constructor(private readonly processCostService: ProcessCostService) {}
 

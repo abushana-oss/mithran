@@ -40,7 +40,7 @@ import {
 } from '../dto/child-part-cost.dto';
 
 @ApiTags('Child Part Costs')
-@Controller('child-part-costs')
+@Controller('api/child-part-costs')
 @UseGuards(SupabaseAuthGuard)
 @ApiBearerAuth()
 export class ChildPartCostController {

@@ -21,7 +21,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AccessToken } from '../../common/decorators/access-token.decorator';
 
 @ApiTags('supplier-evaluation-groups')
-@Controller('supplier-evaluation-groups')
+@Controller('api/supplier-evaluation-groups')
 export class SupplierEvaluationGroupsController {
   constructor(
     private readonly supplierEvaluationGroupsService: SupplierEvaluationGroupsService,

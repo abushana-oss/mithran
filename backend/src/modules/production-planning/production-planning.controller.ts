@@ -46,7 +46,7 @@ import {
   ProductionSummaryDto,
 } from './dto/daily-production.dto';
 
-@Controller('production-planning')
+@Controller('api/production-planning')
 @UseGuards(SupabaseAuthGuard, RateLimitGuard)
 export class ProductionPlanningController {
   private readonly logger = new Logger(ProductionPlanningController.name);

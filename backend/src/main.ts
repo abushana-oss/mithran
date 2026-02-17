@@ -17,15 +17,8 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const logger = app.get(Logger);
 
-  app.setGlobalPrefix('api', {
-    exclude: [
-      { path: '/', method: RequestMethod.ALL },
-      { path: '/ping', method: RequestMethod.ALL },
-      { path: '/favicon.ico', method: RequestMethod.GET },
-      { path: '/health', method: RequestMethod.ALL },
-      { path: '/health/(.*)', method: RequestMethod.ALL }
-    ]
-  });
+  // Removed global prefix to fix root endpoint issues
+  // Controllers now use explicit @Controller('api') where needed
 
   app.enableVersioning({
     type: VersioningType.URI,
@@ -163,13 +156,13 @@ async function bootstrap() {
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  SwaggerModule.setup('docs', app, document);
 
   const port = configService.get('PORT', 4000);
   await app.listen(port);
 
   logger.log(`API Gateway running on: http://localhost:${port}`, 'Bootstrap');
-  logger.log(`API Documentation: http://localhost:${port}/api/docs`, 'Bootstrap');
+  logger.log(`API Documentation: http://localhost:${port}/docs`, 'Bootstrap');
 }
 
 bootstrap();

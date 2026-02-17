@@ -28,7 +28,7 @@ import { AccessToken } from '../../../common/decorators/access-token.decorator';
 
 @ApiTags('Process Tracking')
 @ApiBearerAuth()
-@Controller({ path: 'production-planning/tracking', version: '1' })
+@Controller({ path: 'api/production-planning/tracking', version: '1' })
 export class ProcessTrackingController {
   constructor(private readonly processTrackingService: ProcessTrackingService) {}
 

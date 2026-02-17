@@ -18,7 +18,7 @@ import {
 @ApiTags('Calculators')
 @ApiBearerAuth()
 @UseGuards(ThrottlerGuard)
-@Controller({ path: 'calculators', version: '1' })
+@Controller({ path: 'api/calculators', version: '1' })
 export class CalculatorsController {
   constructor(
     @Inject(forwardRef(() => CalculatorsServiceV2))

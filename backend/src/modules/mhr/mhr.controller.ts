@@ -18,7 +18,7 @@ import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('MHR')
 @ApiBearerAuth()
-@Controller({ path: 'mhr', version: '1' })
+@Controller({ path: 'api/mhr', version: '1' })
 export class MHRController {
   constructor(private readonly mhrService: MHRService) {}
 

@@ -20,7 +20,7 @@ import { AccessToken } from '../../common/decorators/access-token.decorator';
 
 @ApiTags('BOMs')
 @ApiBearerAuth()
-@Controller({ path: 'bom', version: '1' })
+@Controller({ path: 'api/bom', version: '1' })
 export class BOMsController {
   constructor(
     private readonly bomsService: BOMsService,

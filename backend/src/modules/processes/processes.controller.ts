@@ -35,7 +35,7 @@ import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('Processes')
 @ApiBearerAuth()
-@Controller({ path: 'processes', version: '1' })
+@Controller({ path: 'api/processes', version: '1' })
 export class ProcessesController {
   constructor(private readonly processesService: ProcessesService) {}
 

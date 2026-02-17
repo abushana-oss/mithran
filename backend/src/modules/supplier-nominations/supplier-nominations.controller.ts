@@ -53,7 +53,7 @@ import {
 @ApiTags('supplier-nominations')
 @ApiBearerAuth()
 @UseGuards(SupabaseAuthGuard)
-@Controller('supplier-nominations')
+@Controller('api/supplier-nominations')
 export class SupplierNominationsController {
   constructor(
     private readonly supplierNominationsService: SupplierNominationsService

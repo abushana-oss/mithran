@@ -23,7 +23,7 @@ import {
 } from '../dto/production-lot.dto';
 
 @ApiTags('Production Processes')
-@Controller('production-planning/processes')
+@Controller('api/production-planning/processes')
 @UseGuards(SupabaseAuthGuard)
 export class ProductionProcessController {
   constructor(private readonly productionProcessService: ProductionProcessService) { }
