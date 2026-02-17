@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, VersioningType, BadRequestException } from '@nestjs/common';
+import { ValidationPipe, VersioningType, BadRequestException, RequestMethod } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
@@ -17,7 +17,12 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const logger = app.get(Logger);
 
-  app.setGlobalPrefix('api');
+  app.setGlobalPrefix('api', {
+    exclude: [
+      { path: '/', method: RequestMethod.GET },
+      { path: '/ping', method: RequestMethod.GET }
+    ]
+  });
 
   app.enableVersioning({
     type: VersioningType.URI,
