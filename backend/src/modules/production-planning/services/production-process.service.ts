@@ -86,22 +86,17 @@ export class ProductionProcessService {
 
     const supabase = this.supabaseService.getClient();
 
-    // TEMPORARY: Log debug info and skip user validation for testing
-    console.log('Getting processes for lot:', lotId, 'user:', userId);
-
-    // First verify the production lot exists (remove user check temporarily)
+    // Verify the production lot exists and user has access
     const { data: lotData, error: lotError } = await supabase
       .from('production_lots')
       .select('id, created_by')
       .eq('id', lotId)
+      .eq('created_by', userId)
       .single();
 
     if (lotError || !lotData) {
-      console.error('Lot not found:', lotError);
-      throw new NotFoundException('Production lot not found');
+      throw new NotFoundException('Production lot not found or access denied');
     }
-
-    console.log('Found lot:', lotData, 'for user:', userId);
 
     // Now get processes for this lot with simplified query
     const { data, error } = await supabase
@@ -142,37 +137,12 @@ export class ProductionProcessService {
       .eq('production_lot_id', lotId)
       .order('process_sequence');
 
-    console.log('Process query result:', { data, error, count: data?.length });
-
-    // Debug: Log BOM requirement details to identify missing BOM items
-    if (data && data.length > 0) {
-      data.forEach((process, pIndex) => {
-        console.log(`🔍 Process ${pIndex}: ${process.process_name} (${process.id})`);
-        if (process.subtasks) {
-          process.subtasks.forEach((subtask: any, sIndex: number) => {
-            console.log(`  🔍 Subtask ${sIndex}: ${subtask.task_name} (${subtask.id})`);
-            if (subtask.bom_requirements) {
-              subtask.bom_requirements.forEach((req: any, rIndex: number) => {
-                console.log(`    🔍 BOM Req ${rIndex}:`, {
-                  id: req.id,
-                  bom_item_id: req.bom_item_id,
-                  bom_item: req.bom_item ? 'EXISTS' : 'NULL',
-                  bom_item_details: req.bom_item
-                });
-              });
-            }
-          });
-        }
-      });
-    }
-
     if (error) {
-      console.error('Process query error:', error);
+      this.logger.error(`Failed to fetch processes for lot ${lotId}:`, error);
       throw new InternalServerErrorException(`Failed to fetch processes: ${error.message}`);
     }
 
     const mappedData = (data || []).map(process => this.mapToProductionProcessResponse(process));
-    console.log('Mapped processes:', mappedData);
     
     return mappedData;
   }

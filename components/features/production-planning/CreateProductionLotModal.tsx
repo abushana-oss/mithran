@@ -81,7 +81,7 @@ export function CreateProductionLotModal({ open, onOpenChange, projectId }: Crea
   
   const filteredBOMs = boms.filter(bom =>
     bom.name.toLowerCase().includes(bomSearch.toLowerCase()) ||
-    bom.projectName?.toLowerCase().includes(bomSearch.toLowerCase())
+    bom.description?.toLowerCase().includes(bomSearch.toLowerCase())
   );
 
   const generateLotNumber = () => {
@@ -249,7 +249,7 @@ export function CreateProductionLotModal({ open, onOpenChange, projectId }: Crea
                               ) : (
                                 filteredBOMs.map((bom) => (
                                   <option key={bom.id} value={bom.id}>
-                                    {bom.name} - {bom.projectName} • v{bom.version}
+                                    {bom.name} • v{bom.version}
                                   </option>
                                 ))
                               )}

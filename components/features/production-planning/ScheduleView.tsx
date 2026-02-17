@@ -5,17 +5,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { 
-  Calendar, 
   CheckCircle, 
-  AlertTriangle, 
   Clock,
   PlayCircle,
-  StopCircle,
   Edit,
-  TrendingUp,
   Package,
-  Download,
-  FileText
+  Download
 } from 'lucide-react';
 import {
   Dialog,
@@ -77,8 +72,9 @@ interface ScheduleViewProps {
 }
 
 export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
-  const [startDate, setStartDate] = useState<Date>(new Date('2026-02-05'));
-  const [endDate, setEndDate] = useState<Date>(new Date('2026-02-20'));
+  // Remove unused state variables
+  // const [startDate, setStartDate] = useState<Date>(new Date('2026-02-05'));
+  // const [endDate, setEndDate] = useState<Date>(new Date('2026-02-20'));
   const [viewMode, setViewMode] = useState<'weekly' | 'daily' | 'monthly'>('weekly');
   const [editingTask, setEditingTask] = useState<{type: 'process' | 'subtask', id: string, processId?: string, data?: any} | null>(null);
   const [editingBOM, setEditingBOM] = useState<{partNumber: string, subTaskId: string, data: any} | null>(null);
@@ -107,7 +103,7 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
           responseExists: !!response,
           responseLength: Array.isArray(response) ? response.length : 0,
           responseType: typeof response,
-          sampleProcess: response?.[0] ? {
+          sampleProcess: Array.isArray(response) && response[0] ? {
             id: response[0].id,
             processName: response[0].process_name || response[0].processName,
             subtasksCount: (response[0].subtasks || []).length,
@@ -120,7 +116,8 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
         });
 
 // Transform API data to match UI expectations
-        const transformedProcesses = (response || []).map((process: any) => {
+        const processesArray = Array.isArray(response) ? response : [];
+        const transformedProcesses = processesArray.map((process: any) => {
           // Calculate estimated duration from process data or use default
           const estimatedHours = process.estimated_hours || process.estimatedHours || process.estimatedDuration || 
                                (process.planned_start_date && process.planned_end_date ? 
@@ -264,7 +261,7 @@ return {
         subTasks: (process.subTasks || []).map(st => ({
           id: st.id,
           name: st.name,
-          taskName: st.taskName,
+          taskName: st.name,
           bomReqCount: st.bomRequirements?.length || 0
         }))
       });
@@ -279,7 +276,7 @@ return {
       if (process.subTasks && Array.isArray(process.subTasks)) {
         process.subTasks.forEach(subtask => {
         // Extract intended section from task name (use correct property from API)
-        const taskName = subtask.taskName || subtask.name || '';
+        const taskName = subtask.name || '';
         const sectionMatch = taskName.match(/^\[([^\]]+)\]/);
         const intendedSection = sectionMatch ? sectionMatch[1] : processSection;
         
@@ -294,7 +291,7 @@ return {
           })) || []
         });
         
-        if (subtasksBySection[intendedSection]) {
+        if (intendedSection && subtasksBySection[intendedSection]) {
           // Clean the task name by removing section prefix
           const cleanTaskName = taskName.replace(/^\[([^\]]+)\]\s*/, '');
           const processedSubtask = {
@@ -304,7 +301,9 @@ return {
           subtasksBySection[intendedSection].push(processedSubtask);
         } else {
           // Default to process section if intended section not found
-          subtasksBySection[processSection].push(subtask);
+          if (subtasksBySection[processSection]) {
+            subtasksBySection[processSection].push(subtask);
+          }
         }
         });
       }
@@ -314,20 +313,24 @@ return {
         ...process,
         subTasks: subtasksBySection[processSection] || []
       };
-      groups[processSection].push(processWithMainSubtasks);
+      if (groups[processSection]) {
+        groups[processSection].push(processWithMainSubtasks);
+      }
       
       // Add cross-section subtasks to their intended sections as separate entries
       sectionOrder.forEach(section => {
-        if (section !== processSection && subtasksBySection[section].length > 0) {
-          const crossSectionProcess = {
+        if (section !== processSection && subtasksBySection[section] && subtasksBySection[section].length > 0) {
+          const crossSectionProcess: ProcessStep = {
             ...process,
             id: `${process.id}-${section}`,
             name: `${section} Tasks`,
-            subTasks: subtasksBySection[section],
+            subTasks: subtasksBySection[section] || [],
             sectionName: section,
             isVirtual: true
-          };
-          groups[section].push(crossSectionProcess);
+          } as ProcessStep;
+          if (groups[section]) {
+            groups[section].push(crossSectionProcess);
+          }
         }
       });
     });
@@ -353,7 +356,7 @@ return {
     processes.forEach(process => {
       process.subTasks?.forEach(subtask => {
         // Extract intended section from task name prefix
-        const taskName = subtask.taskName || subtask.name || '';
+        const taskName = subtask.name || '';
         const sectionMatch = taskName.match(/^\[([^\]]+)\]/);
         const intendedSection = sectionMatch ? sectionMatch[1] : process.sectionName || 'Process';
         
@@ -361,7 +364,7 @@ return {
         const cleanTaskName = taskName.replace(/^\[([^\]]+)\]\s*/, '') || taskName;
         
         // Add subtask to the intended section
-        if (groups[intendedSection]) {
+        if (intendedSection && groups[intendedSection]) {
           groups[intendedSection].push({
             ...subtask,
             name: cleanTaskName,
@@ -403,44 +406,7 @@ return {
     return 0;
   };
 
-  const getStatusColor = (status: string) => {
-    const colors = {
-      PLANNED: 'bg-blue-100 text-blue-600',
-      IN_PROGRESS: 'bg-yellow-100 text-yellow-600',
-      COMPLETED: 'bg-green-100 text-green-600',
-      BLOCKED: 'bg-red-100 text-red-600',
-      PENDING: 'bg-gray-100 text-gray-600'
-    };
-    return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-600';
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'PLANNED':
-        return <Calendar className="h-4 w-4" />;
-      case 'IN_PROGRESS':
-        return <PlayCircle className="h-4 w-4" />;
-      case 'COMPLETED':
-        return <CheckCircle className="h-4 w-4" />;
-      case 'BLOCKED':
-        return <StopCircle className="h-4 w-4" />;
-      case 'PENDING':
-        return <Clock className="h-4 w-4" />;
-      default:
-        return <AlertTriangle className="h-4 w-4" />;
-    }
-  };
-
-  const getBOMStatusColor = (status: string) => {
-    const colors = {
-      AVAILABLE: 'bg-green-100 text-green-700',
-      PARTIAL: 'bg-yellow-100 text-yellow-700',
-      SHORTAGE: 'bg-red-100 text-red-700',
-      CONSUMED: 'bg-gray-100 text-gray-700',
-      PENDING: 'bg-gray-100 text-gray-600'
-    };
-    return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-600';
-  };
+  // Removed unused utility functions: getStatusColor, getStatusIcon, getBOMStatusColor
 
   // Handle BOM edit form initialization
   const handleEditBOM = (bomItem: any, subTaskId: string) => {
@@ -460,24 +426,7 @@ return {
     });
   };
 
-  // Handle Process edit form initialization
-  const handleEditProcess = (process: ProcessStep) => {
-    setEditingTask({
-      type: 'process',
-      id: process.id,
-      data: process
-    });
-    setTaskFormData({
-      name: process.name,
-      description: process.description || '',
-      estimatedDuration: process.estimatedDuration,
-      startDate: process.startDate ? new Date(process.startDate).toISOString().split('T')[0] : '',
-      endDate: process.endDate ? new Date(process.endDate).toISOString().split('T')[0] : '',
-      status: process.status,
-      responsiblePerson: process.responsiblePersonName || '',
-      notes: process.notes || ''
-    });
-  };
+  // Removed unused handleEditProcess function
 
   // Handle SubTask edit form initialization
   const handleEditSubTask = (subTask: SubTask, processId: string) => {
@@ -494,7 +443,7 @@ return {
       startTime: subTask.startTime ? new Date(subTask.startTime).toISOString().split('T')[0] : '',
       endTime: subTask.endTime ? new Date(subTask.endTime).toISOString().split('T')[0] : '',
       status: subTask.status,
-      assignedOperator: subTask.operatorName || subTask.responsiblePersonName || '',
+      assignedOperator: subTask.operatorName || '',
       notes: subTask.notes || ''
     });
   };
@@ -628,7 +577,8 @@ return {
       const response = await productionPlanningApi.getProcessesByLot(lotId);
       
       // Transform API data to match UI expectations (same as in useEffect)
-      const transformedProcesses = (response || []).map((process: any) => {
+      const responseArray = Array.isArray(response) ? response : [];
+      const transformedProcesses = responseArray.map((process: any) => {
         const estimatedHours = process.estimated_hours || process.estimatedHours || process.estimatedDuration || 
                              (process.planned_start_date && process.planned_end_date ? 
                                Math.round((new Date(process.planned_end_date).getTime() - new Date(process.planned_start_date).getTime()) / (1000 * 60 * 60)) : 
@@ -683,9 +633,9 @@ return {
                 status: 'REQUIRED'
               }))
             };
-          }).sort((a, b) => a.sequence - b.sequence)
+          }).sort((a: any, b: any) => a.sequence - b.sequence)
         };
-      }).sort((a, b) => a.sequence - b.sequence);
+      }).sort((a: any, b: any) => a.sequence - b.sequence);
       
       // Update the state with fresh data
       processesState.setData(transformedProcesses);
@@ -836,7 +786,7 @@ return {
                   <div style="width: 12px; height: 12px; background: #f59e0b; border-radius: 50%;"></div>
                   <div>
                     <div style="font-size: 12px; font-weight: 500;">${subTask.name}</div>
-                    <div style="font-size: 10px; color: #6b7280;">${subTask.responsiblePersonName || 'Unassigned'} • ${subTask.bomRequirements?.length || 0} BOM parts</div>
+                    <div style="font-size: 10px; color: #6b7280;">${subTask.operatorName || 'Unassigned'} • ${subTask.bomRequirements?.length || 0} BOM parts</div>
                   </div>
                   <span style="background: #f3f4f6; border: 1px solid #d1d5db; padding: 2px 6px; border-radius: 4px; font-size: 10px;">${subTask.status || 'PENDING'}</span>
                 </div>
@@ -847,7 +797,7 @@ return {
 
           // BOM Requirements
           if (showBOMView && subTask.bomRequirements) {
-            subTask.bomRequirements.forEach((bomItem, bomIndex) => {
+            subTask.bomRequirements.forEach((bomItem: any, bomIndex: number) => {
               let bomTimelineCells = '';
               for (let i = 0; i < columnCount; i++) {
                 const consumptionPercentage = bomItem.requiredQuantity > 0 ? 
@@ -855,7 +805,7 @@ return {
                 const isConsumed = i < Math.ceil((consumptionPercentage / 100) * columnCount) || i < 2;
                 const cellContent = isConsumed ? (i === 0 ? bomItem.partNumber : `${bomItem.consumedQuantity || 0}/${bomItem.requiredQuantity}`) : '';
                 
-                const statusClasses = {
+                const statusClasses: Record<string, string> = {
                   AVAILABLE: 'bom-available',
                   PARTIAL: 'bom-partial',
                   SHORTAGE: 'bom-shortage',
@@ -1109,14 +1059,7 @@ return {
   const completedTasks = displayProcesses.length === 0 ? 1 : displayProcesses.filter(p => p.status === 'COMPLETED').length + 
                          displayProcesses.flatMap(p => p.subTasks || []).filter(st => st.status === 'COMPLETED').length;
 
-  const processColors = {
-    'Raw Material Preparation': '#3B82F6', // Blue
-    'Process Conversion': '#10B981', // Green  
-    'Quality Assurance': '#F59E0B', // Orange
-    'Material Preparation': '#3B82F6', // Blue (legacy)
-    'Assembly': '#10B981', // Green (legacy)
-    'Testing & Quality Control': '#F59E0B' // Orange (legacy)
-  };
+  // Removed unused processColors
 
   return (
     <div className="space-y-6">
@@ -1420,7 +1363,7 @@ return {
                                 <div>
                                   <div className="font-medium text-xs">{subTask.name}</div>
                                   <div className="text-xs text-muted-foreground">
-                                    {subTask.responsiblePersonName} • {subTask.bomRequirements?.length || 0} BOM parts
+                                    {subTask.operatorName || 'Unassigned'} • {subTask.bomRequirements?.length || 0} BOM parts
                                   </div>
                                 </div>
                               </div>
@@ -1570,7 +1513,7 @@ return {
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <Badge className="text-xs" variant="outline">
-                                    {bomItem.unit}
+                                    pcs
                                   </Badge>
                                   <Button
                                     size="sm"
@@ -1627,8 +1570,8 @@ return {
                                   }
                                 } else {
                                   // Fallback to consumption percentage
-                                  const consumptionPercentage = bomItem.quantity > 0 ? 
-                                    Math.min(100, ((bomItem.consumedQuantity || 0) / bomItem.quantity) * 100) : 0;
+                                  const consumptionPercentage = bomItem.requiredQuantity > 0 ? 
+                                    Math.min(100, ((bomItem.consumedQuantity || 0) / bomItem.requiredQuantity) * 100) : 0;
                                   const columnCount = viewMode === 'weekly' ? 10 : viewMode === 'daily' ? 7 : 6;
                                   isInTimeRange = dayIndex < Math.ceil((consumptionPercentage / 100) * columnCount) || dayIndex < 2;
                                 }
@@ -1652,7 +1595,7 @@ return {
                                           <div className="text-white text-xs truncate">{bomItem.partNumber}</div>
                                         ) : (
                                           <span className="text-white text-xs font-medium">
-                                            {bomItem.consumedQuantity || 0}/{bomItem.requiredQuantity || bomItem.quantity || 0}
+                                            {bomItem.consumedQuantity || 0}/{bomItem.requiredQuantity || 0}
                                           </span>
                                         )}
                                       </div>

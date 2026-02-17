@@ -6,22 +6,31 @@ import { apiClient } from './client';
 
 export interface Remark {
   id: string;
-  lot_id: string;
-  bom_part_id?: string | null;
-  type: 'remark' | 'issue' | 'quality_check' | 'delay' | 'material_shortage';
+  lotId: string;
   title: string;
-  description: string;
-  priority: 'low' | 'medium' | 'high' | 'critical';
-  status: 'open' | 'in_progress' | 'resolved' | 'closed';
-  assigned_to?: string | null;
-  assigned_to_name?: string | null;
-  reported_by: string;
-  reported_by_name?: string;
-  due_date?: string | null;
-  resolved_at?: string | null;
-  resolution?: string | null;
-  created_at: string;
-  updated_at: string;
+  description?: string;
+  remarkType: 'DELAY' | 'QUALITY' | 'SUGGESTION' | 'SAFETY' | 'PROCESS' | 'MATERIAL' | 'OTHER';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+  appliesTo: 'LOT' | 'PROCESS' | 'SUBTASK' | 'BOM_PART';
+  processId?: string;
+  subtaskId?: string;
+  bomPartId?: string;
+  contextReference?: string;
+  createdBy: string;
+  assignedTo?: string;
+  reportedDate: string;
+  dueDate?: string;
+  resolvedDate?: string;
+  resolutionNotes?: string;
+  impactLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  estimatedDelayHours: number;
+  actualDelayHours: number;
+  tags: string[];
+  attachments: any[];
+  createdAt: string;
+  updatedAt: string;
+  commentsCount?: number;
 }
 
 export interface CreateRemarkRequest {

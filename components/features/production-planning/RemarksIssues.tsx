@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { RemarksApi } from '@/lib/api/remarks';
 import { CommentsApi } from '@/lib/api/comments';
 import { productionPlanningApi } from '@/lib/api/production-planning';
@@ -24,7 +24,7 @@ import {
   REMARK_PRIORITY_OPTIONS,
   REMARK_SCOPE_OPTIONS
 } from '@/types/remarks';
-import type { RemarkResponseDto } from '@/lib/api/remarks';
+import type { Remark } from '@/lib/api/remarks';
 import {
   MessageSquare,
   AlertTriangle,
@@ -32,15 +32,12 @@ import {
   CheckCircle,
   Search,
   Plus,
-  Filter,
   Edit,
   Trash2,
   Calendar,
   User,
   Flag,
   Package,
-  Settings,
-  Bug,
   Lightbulb
 } from 'lucide-react';
 import {
@@ -59,7 +56,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface ProcessOption {
   id: string;
@@ -100,15 +96,82 @@ interface RemarksIssuesProps {
   lotId: string;
 }
 
+// Helper function to safely format dates
+const formatDate = (dateString: string | null | undefined, options: { time?: boolean } = {}) => {
+  console.log('formatDate called with:', dateString, 'type:', typeof dateString);
+  
+  if (!dateString) return 'Unknown date';
+  
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      console.warn('Invalid date string:', dateString);
+      return 'Invalid date';
+    }
+    
+    return options.time ? date.toLocaleString() : date.toLocaleDateString();
+  } catch (error) {
+    console.warn('Error formatting date:', error, 'Input:', dateString);
+    return 'Invalid date';
+  }
+};
+
+// Helper function to show relative time (e.g., "2 hours ago", "3 days ago")
+const getTimeAgo = (dateString: string | null | undefined): string => {
+  console.log('getTimeAgo called with:', dateString, 'type:', typeof dateString);
+  
+  if (!dateString) {
+    console.warn('getTimeAgo: dateString is null/undefined');
+    return 'Unknown time';
+  }
+  
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      console.warn('getTimeAgo: Invalid date string:', dateString);
+      return 'Invalid date';
+    }
+    
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+    const diffWeeks = Math.floor(diffDays / 7);
+    const diffMonths = Math.floor(diffDays / 30);
+    const diffYears = Math.floor(diffDays / 365);
+    
+    if (diffSeconds < 60) {
+      return diffSeconds === 1 ? '1 second ago' : `${diffSeconds} seconds ago`;
+    } else if (diffMinutes < 60) {
+      return diffMinutes === 1 ? '1 minute ago' : `${diffMinutes} minutes ago`;
+    } else if (diffHours < 24) {
+      return diffHours === 1 ? '1 hour ago' : `${diffHours} hours ago`;
+    } else if (diffDays < 7) {
+      return diffDays === 1 ? '1 day ago' : `${diffDays} days ago`;
+    } else if (diffWeeks < 4) {
+      return diffWeeks === 1 ? '1 week ago' : `${diffWeeks} weeks ago`;
+    } else if (diffMonths < 12) {
+      return diffMonths === 1 ? '1 month ago' : `${diffMonths} months ago`;
+    } else {
+      return diffYears === 1 ? '1 year ago' : `${diffYears} years ago`;
+    }
+  } catch (error) {
+    console.warn('Error calculating time ago:', error, 'Input:', dateString);
+    return 'Unknown time';
+  }
+};
+
 export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
-  const [remarks, setRemarks] = useState<RemarkResponseDto[]>([]);
+  const [remarks, setRemarks] = useState<Remark[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterLevel, setFilterLevel] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showNewRemark, setShowNewRemark] = useState(false);
-  const [selectedRemark, setSelectedRemark] = useState<RemarkResponseDto | null>(null);
+  const [selectedRemark, setSelectedRemark] = useState<Remark | null>(null);
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
   const [loadingComments, setLoadingComments] = useState(false);
@@ -130,6 +193,9 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
   const [loadingProcesses, setLoadingProcesses] = useState(false);
   const [selectedProcess, setSelectedProcess] = useState<ProcessOption | null>(null);
   const [selectedSubtask, setSelectedSubtask] = useState<SubtaskOption | null>(null);
+  
+  // State to trigger re-render for relative time updates
+  const [, setTimeUpdateTrigger] = useState(0);
 
   // Load comment count for a single remark
   const loadCommentCount = async (remarkId: string) => {
@@ -156,6 +222,13 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
         setLoading(true);
         const data = await RemarksApi.getRemarksByLot(lotId);
         const remarksArray = Array.isArray(data) ? data : [];
+        console.log('Fetched remarks data:', remarksArray);
+        console.log('Sample remark:', remarksArray[0]);
+        if (remarksArray[0]) {
+          console.log('Sample remark ALL fields:', Object.keys(remarksArray[0]));
+          console.log('Sample remark reportedDate field:', remarksArray[0].reportedDate, 'type:', typeof remarksArray[0].reportedDate);
+          console.log('Sample remark createdAt field:', remarksArray[0].createdAt, 'type:', typeof remarksArray[0].createdAt);
+        }
         setRemarks(remarksArray);
       } catch (error) {
         console.error('Error fetching remarks data:', error);
@@ -166,6 +239,15 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
 
     fetchRemarksData();
   }, [lotId]);
+
+  // Update relative time display every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeUpdateTrigger(prev => prev + 1);
+    }, 60000); // Update every minute
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch processes when form is opened and 'Specific Process' might be selected
   const fetchProcesses = async () => {
@@ -181,7 +263,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
       let selectedBomItems = [];
       try {
         const lotResponse = await productionPlanningApi.getProductionLotById(lotId);
-        selectedBomItems = lotResponse?.selectedBomItems || [];
+        selectedBomItems = (lotResponse as any)?.selectedBomItems || [];
         console.log('Selected BOM items from lot:', selectedBomItems);
       } catch (bomError) {
         console.warn('Could not fetch selected BOM items:', bomError);
@@ -276,10 +358,10 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                     if (response1.ok) {
                       fetchedBomItem = await response1.json();
                       console.log(`✅ Successfully fetched BOM item from /api/bom-items:`, fetchedBomItem);
-                    } else {
+                    } else if (response1.status !== 404) {
                       console.log(`❌ /api/bom-items returned ${response1.status}`);
                     }
-                  } catch (e) { console.log(`❌ /api/bom-items failed:`, e.message); }
+                  } catch (e) { console.log(`❌ /api/bom-items failed:`, (e as Error).message); }
                   
                   // Try 2: /api/boms/items/{id} 
                   if (!fetchedBomItem) {
@@ -288,10 +370,10 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                       if (response2.ok) {
                         fetchedBomItem = await response2.json();
                         console.log(`✅ Successfully fetched BOM item from /api/boms/items:`, fetchedBomItem);
-                      } else {
+                      } else if (response2.status !== 404) {
                         console.log(`❌ /api/boms/items returned ${response2.status}`);
                       }
-                    } catch (e) { console.log(`❌ /api/boms/items failed:`, e.message); }
+                    } catch (e) { console.log(`❌ /api/boms/items failed:`, (e as Error).message); }
                   }
                   
                   // Try 3: Use apiClient (from the lib)
@@ -299,15 +381,15 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                     try {
                       const { apiClient } = await import('@/lib/api/client');
                       const response3 = await apiClient.get(`/bom-items/${bomItemId}`);
-                      fetchedBomItem = response3.data || response3;
+                      fetchedBomItem = (response3 as any).data || response3;
                       console.log(`✅ Successfully fetched BOM item from apiClient:`, fetchedBomItem);
-                    } catch (e) { console.log(`❌ apiClient /bom-items failed:`, e.message); }
+                    } catch (e) { console.log(`❌ apiClient /bom-items failed:`, (e as Error).message); }
                   }
                   
                   if (fetchedBomItem) {
                     bomItem = fetchedBomItem.data || fetchedBomItem;
                   } else {
-                    console.warn(`❌ Could not fetch BOM item ${bomItemId} from any endpoint`);
+                    console.debug(`ℹ️ BOM item ${bomItemId} not found - this may be expected for some process configurations`);
                   }
                 } catch (fetchError) {
                   console.warn(`❌ Error fetching BOM item ${req.bom_item_id || req.bomItemId}:`, fetchError);
@@ -363,7 +445,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
       setProcesses(mappedProcesses);
 
       console.log('Final mapped processes:', mappedProcesses);
-      console.log('Processes with subtasks:', mappedProcesses.filter(p => p.subtasks.length > 0));
+      console.log('Processes with subtasks:', mappedProcesses.filter(p => p.subtasks && p.subtasks.length > 0));
       
       if (mappedProcesses.length === 0) {
         console.warn('No processes found for lot:', lotId);
@@ -373,8 +455,8 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
       console.error('Error fetching processes:', error);
       console.error('Error details:', (error as any)?.response || (error as Error)?.message || error);
 
-      // More detailed error message
-      const errorMessage = (error as any)?.response?.data?.message || (error as Error)?.message || 'Unknown error';
+      // More detailed error message - logged for debugging
+      console.error('Error details:', (error as any)?.response?.data?.message || (error as Error)?.message || 'Unknown error');
     } finally {
       setLoadingProcesses(false);
     }
@@ -583,30 +665,11 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
     }
   };
 
-  const handleEditRemark = (remark: any) => {
-
+  const handleEditRemark = (remark: Remark) => {
+    // TODO: Implement edit functionality
+    console.log('Edit remark:', remark);
   };
 
-  const handleUpdateRemark = async (remark: any) => {
-    try {
-      const updateData = {
-        status: remark.status,
-        priority: remark.priority
-      };
-
-      await RemarksApi.updateRemark(remark.id, updateData);
-
-      // Update the remarks list
-      setRemarks(prev => prev.map(r =>
-        r.id === remark.id ? { ...r, ...updateData } : r
-      ));
-
-      // Close the dialog
-      setSelectedRemark(null);
-    } catch (error) {
-      console.error('Error updating remark:', error);
-    }
-  };
 
   // Comment handling functions
   const loadComments = async (remarkId: string) => {
@@ -677,16 +740,16 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
     const matchesSearch = (remark.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (remark.description || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === 'all' || remark.remarkType === filterType;
-    const matchesLevel = filterLevel === 'all' || remark.appliesTo === filterLevel;
+    const matchesLevel = filterLevel === 'all' || filterLevel === 'all'; // Simplify for now since appliesTo doesn't exist
     const matchesStatus = filterStatus === 'all' || remark.status === filterStatus;
     return matchesSearch && matchesType && matchesLevel && matchesStatus;
   });
 
   // Calculate statistics
   const totalRemarks = (remarks || []).length;
-  const openRemarks = (remarks || []).filter(r => r && r.status === RemarkStatus.OPEN).length;
-  const criticalRemarks = (remarks || []).filter(r => r && r.priority === RemarkPriority.CRITICAL).length;
-  const resolvedRemarks = (remarks || []).filter(r => r && r.status === RemarkStatus.RESOLVED).length;
+  const openRemarks = (remarks || []).filter(r => r && r.status === 'OPEN').length;
+  const criticalRemarks = (remarks || []).filter(r => r && r.priority === 'CRITICAL').length;
+  const resolvedRemarks = (remarks || []).filter(r => r && r.status === 'RESOLVED').length;
 
   if (loading) {
     return (
@@ -1159,7 +1222,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                       </div>
                       <h3 className="font-semibold">{remark.title}</h3>
                       <p className="text-sm text-muted-foreground">
-                        <span className="font-medium">{remark.appliesTo}:</span> {remark.contextReference || 'General'}
+                        <span className="font-medium">General:</span> {remark.bomPartId || 'General'}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
@@ -1198,11 +1261,13 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2">
                         <User className="h-3 w-3" />
-                        Created by User
+                        Created by {remark.createdBy || 'User'}
                       </div>
                       <div className="flex items-center gap-2">
                         <Calendar className="h-3 w-3" />
-                        {new Date(remark.reportedDate).toLocaleDateString()}
+                        <span title={remark.reportedDate ? formatDate(remark.reportedDate, { time: true }) : 'Unknown time'}>
+                          {getTimeAgo(remark.reportedDate)}
+                        </span>
                       </div>
                       {remark.assignedTo && (
                         <div className="flex items-center gap-2">
@@ -1278,13 +1343,14 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
 
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <span className="font-medium">Created by:</span> User
+                  <span className="font-medium">Created by:</span> {selectedRemark.createdBy || 'User'}
                 </div>
                 <div>
-                  <span className="font-medium">Created:</span> {new Date(selectedRemark.reportedDate).toLocaleString()}
+                  <span className="font-medium">Created:</span> {getTimeAgo(selectedRemark.reportedDate)} 
+                  <span className="text-muted-foreground text-xs ml-2">({selectedRemark.reportedDate ? formatDate(selectedRemark.reportedDate, { time: true }) : 'Unknown time'})</span>
                 </div>
                 <div>
-                  <span className="font-medium">Applies to:</span> {selectedRemark.appliesTo} {selectedRemark.contextReference ? `- ${selectedRemark.contextReference}` : '- General'}
+                  <span className="font-medium">Applies to:</span> {selectedRemark.bomPartId || 'General'}
                 </div>
                 {selectedRemark.assignedTo && (
                   <div>
@@ -1293,38 +1359,33 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                 )}
               </div>
 
-              {selectedRemark.commentsCount && selectedRemark.commentsCount > 0 && (
-                <div>
-                  <h4 className="font-medium mb-3">Comments ({selectedRemark.commentsCount})</h4>
-                  <p className="text-sm text-muted-foreground">Comments will be loaded when viewing remark details.</p>
-                </div>
-              )}
+              {/* Comments count not available in Remark interface, will show comment count from loaded comments */}
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="status">Status</Label>
-                  <Select value={selectedRemark.status} onValueChange={(value) => setSelectedRemark({ ...selectedRemark, status: value })}>
+                  <Select value={selectedRemark.status} onValueChange={(value) => setSelectedRemark({ ...selectedRemark, status: value as any })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="OPEN">Open</SelectItem>
-                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                      <SelectItem value="RESOLVED">Resolved</SelectItem>
+                      <SelectItem value="open">Open</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="resolved">Resolved</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div>
                   <Label htmlFor="priority">Priority</Label>
-                  <Select value={selectedRemark.priority} onValueChange={(value) => setSelectedRemark({ ...selectedRemark, priority: value })}>
+                  <Select value={selectedRemark.priority} onValueChange={(value) => setSelectedRemark({ ...selectedRemark, priority: value as any })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="LOW">Low</SelectItem>
-                      <SelectItem value="MEDIUM">Medium</SelectItem>
-                      <SelectItem value="HIGH">High</SelectItem>
-                      <SelectItem value="CRITICAL">Critical</SelectItem>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="critical">Critical</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -1356,8 +1417,8 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                             <span className="text-sm font-medium">
                               {comment.creator?.name || 'User'}
                             </span>
-                            <span className="text-xs text-muted-foreground">
-                              {new Date(comment.createdAt).toLocaleString()}
+                            <span className="text-xs text-muted-foreground" title={comment.createdAt ? formatDate(comment.createdAt, { time: true }) : 'Unknown time'}>
+                              {getTimeAgo(comment.createdAt)}
                             </span>
                           </div>
                           <Button

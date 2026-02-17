@@ -7,22 +7,35 @@ import { apiClient } from './client';
 export interface ProductionEntry {
   id: string;
   lot_id: string;
-  bom_part_id?: string;
-  process_id?: string;
-  date: string;
-  quantity: number;
-  unit: string;
-  status: 'planned' | 'in_progress' | 'completed' | 'on_hold';
-  operator_id?: string;
-  operator_name?: string;
-  shift?: string;
-  notes?: string;
+  production_process_id?: string;
+  production_process?: {
+    process_name: string;
+  };
+  entry_date: string;
+  shift?: 'MORNING' | 'AFTERNOON' | 'NIGHT';
+  planned_quantity?: number;
+  actual_quantity: number;
+  rejected_quantity?: number;
+  rework_quantity?: number;
+  downtime_hours?: number;
+  downtime_reason?: string;
+  issues_encountered?: string;
+  remarks?: string;
+  entered_by?: string;
   created_at: string;
   updated_at: string;
+  // Legacy or alternative fields for compatibility
+  date?: string;
+  quantity?: number;
+  unit?: string;
+  status?: string;
+  operator_id?: string;
+  operator_name?: string;
+  notes?: string;
 }
 
 export interface CreateProductionEntryRequest {
-  lot_id: string; // For URL path (will be extracted)
+  lot_id: string;
   productionLotId: string;
   productionProcessId?: string;
   entryDate: string;
@@ -41,13 +54,17 @@ export interface CreateProductionEntryRequest {
 }
 
 export interface UpdateProductionEntryRequest {
-  date?: string;
-  quantity?: number;
-  unit?: string;
-  status?: 'planned' | 'in_progress' | 'completed' | 'on_hold';
-  operator_id?: string;
-  shift?: string;
-  notes?: string;
+  processName?: string;
+  entryDate?: string;
+  shift?: 'MORNING' | 'AFTERNOON' | 'NIGHT';
+  targetQuantity?: number;
+  producedQuantity?: number;
+  rejectedQuantity?: number;
+  reworkQuantity?: number;
+  downtimeMinutes?: number;
+  downtimeReason?: string;
+  qualityIssues?: string;
+  operatorNotes?: string;
 }
 
 export const productionEntriesApi = {

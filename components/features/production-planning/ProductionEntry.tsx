@@ -66,10 +66,10 @@ interface WeeklyEntry {
 }
 
 interface ProductionEntryProps {
-  lotId: string;
+  lotId?: string;
 }
 
-export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
+export const ProductionEntry = ({ lotId = '' }: ProductionEntryProps) => {
   const [entries, setEntries] = useState<ProductionEntry[]>([]);
   const [weeklyEntries, setWeeklyEntries] = useState<WeeklyEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,9 +81,25 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
   const [entryType, setEntryType] = useState<'daily' | 'weekly'>('daily');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [formData, setFormData] = useState<Partial<CreateProductionEntryRequest>>({
+  interface ProductionEntryFormData {
+    lotId: string;
+    processId?: string;
+    processName: string;
+    entryDate: string;
+    shift: 'MORNING' | 'AFTERNOON' | 'NIGHT';
+    targetQuantity: number;
+    producedQuantity: number;
+    rejectedQuantity: number;
+    reworkQuantity: number;
+    downtimeMinutes: number;
+    downtimeReason: string;
+    qualityIssues: string;
+    operatorNotes: string;
+  }
+
+  const [formData, setFormData] = useState<ProductionEntryFormData>({
     lotId: lotId,
-    entryDate: new Date().toISOString().split('T')[0],
+    entryDate: new Date().toISOString().split('T')[0] || '',
     shift: 'MORNING',
     targetQuantity: 0,
     producedQuantity: 0,
@@ -106,31 +122,30 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
         // Fetch production entries from API
         const entriesData = await productionEntriesApi.getEntriesByLot(lotId);
 
-        // API response is wrapped in {data: [], error: null, timestamp: ...}
-        const entries = entriesData?.data || entriesData;
+        // API client returns data directly
+        const entries = Array.isArray(entriesData) ? entriesData : (entriesData as any)?.data || [];
 
         // Check if entries is an array before mapping
         if (Array.isArray(entries)) {
           console.log('Sample entry structure:', entries[0]);
           setEntries(entries.map(entry => ({
             id: entry.id,
-            date: entry.entry_date,
-            shift: entry.shift || 'MORNING',
+            date: entry.entry_date || entry.date || '',
+            shift: (entry.shift as 'MORNING' | 'AFTERNOON' | 'NIGHT') || 'MORNING',
             processId: entry.production_process_id || '',
             processName: entry.production_process?.process_name || 'General Production',
-            targetQuantity: entry.planned_quantity || 0,
-            producedQuantity: entry.actual_quantity || 0,
+            targetQuantity: entry.planned_quantity || entry.quantity || 0,
+            producedQuantity: entry.actual_quantity || entry.quantity || 0,
             rejectedQuantity: entry.rejected_quantity || 0,
             reworkQuantity: entry.rework_quantity || 0,
             downtimeMinutes: Math.floor((entry.downtime_hours || 0) * 60),
             downtimeReason: entry.downtime_reason || '',
             qualityIssues: entry.issues_encountered || '',
-            operatorNotes: entry.remarks || '',
+            operatorNotes: entry.remarks || entry.notes || '',
             enteredBy: entry.entered_by || '',
             enteredAt: entry.created_at
           })));
         } else {
-          
           setEntries([]);
         }
 
@@ -141,13 +156,12 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
         if (Array.isArray(weeklyData)) {
           setWeeklyEntries(weeklyData.map(week => ({
             week: week.week,
-            targetQuantity: week.targetQuantity,
-            producedQuantity: week.producedQuantity,
-            rejectedQuantity: week.rejectedQuantity,
+            targetQuantity: week.totalPlanned,
+            producedQuantity: week.totalActual,
+            rejectedQuantity: week.totalRejected,
             efficiency: week.efficiency
           })));
         } else {
-          
           setWeeklyEntries([]);
         }
 
@@ -164,24 +178,25 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
   }, [lotId]);
 
   const refreshData = async () => {
+    if (!lotId) return;
     try {
       const entriesData = await productionEntriesApi.getEntriesByLot(lotId);
-      const entries = entriesData?.data || entriesData;
+      const entries = Array.isArray(entriesData) ? entriesData : (entriesData as any)?.data || [];
       if (Array.isArray(entries)) {
         setEntries(entries.map(entry => ({
           id: entry.id,
-          date: entry.entry_date,
-          shift: entry.shift || 'MORNING',
+          date: entry.entry_date || entry.date || '',
+          shift: (entry.shift as 'MORNING' | 'AFTERNOON' | 'NIGHT') || 'MORNING',
           processId: entry.production_process_id || '',
           processName: entry.production_process?.process_name || 'General Production',
-          targetQuantity: entry.planned_quantity || 0,
-          producedQuantity: entry.actual_quantity || 0,
+          targetQuantity: entry.planned_quantity || entry.quantity || 0,
+          producedQuantity: entry.actual_quantity || entry.quantity || 0,
           rejectedQuantity: entry.rejected_quantity || 0,
           reworkQuantity: entry.rework_quantity || 0,
           downtimeMinutes: Math.floor((entry.downtime_hours || 0) * 60),
           downtimeReason: entry.downtime_reason || '',
           qualityIssues: entry.issues_encountered || '',
-          operatorNotes: entry.remarks || '',
+          operatorNotes: entry.remarks || entry.notes || '',
           enteredBy: entry.entered_by || '',
           enteredAt: entry.created_at
         })));
@@ -199,12 +214,12 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
     try {
       setSaving(true);
 
-      const entryData = {
+      const entryData: CreateProductionEntryRequest = {
         lot_id: lotId, // This will be extracted for URL path
         productionLotId: lotId,
         productionProcessId: undefined, // Optional
         entryDate: formData.entryDate, // Should be in YYYY-MM-DD format
-        entryType: 'daily' as const,
+        entryType: 'daily',
         plannedQuantity: Math.floor(Number(formData.targetQuantity) || 0),
         actualQuantity: Math.floor(Number(formData.producedQuantity) || 0),
         rejectedQuantity: Math.floor(Number(formData.rejectedQuantity) || 0),
@@ -219,8 +234,8 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
       };
 
       console.log('Sending production entry data:', entryData);
-      
-      await productionEntriesApi.createEntry(entryData);
+
+      await productionEntriesApi.createEntry(entryData as any);
 
       // Refresh data after successful save
       await refreshData();
@@ -228,7 +243,7 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
       // Reset form and close dialog
       setFormData({
         lotId: lotId,
-        entryDate: new Date().toISOString().split('T')[0],
+        entryDate: new Date().toISOString().split('T')[0] || '',
         shift: 'MORNING',
         targetQuantity: 0,
         producedQuantity: 0,
@@ -244,7 +259,7 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
 
     } catch (error) {
       console.error('Error saving production entry:', error);
-      } finally {
+    } finally {
       setSaving(false);
     }
   };
@@ -256,7 +271,7 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
       processId: entry.processId,
       processName: entry.processName,
       entryDate: entry.date,
-      shift: entry.shift as 'MORNING' | 'AFTERNOON' | 'NIGHT',
+      shift: entry.shift,
       targetQuantity: entry.targetQuantity,
       producedQuantity: entry.producedQuantity,
       rejectedQuantity: entry.rejectedQuantity,
@@ -277,10 +292,10 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
     try {
       setSaving(true);
 
-      await productionEntriesApi.updateProductionEntry(editingEntry.id, {
+      await productionEntriesApi.updateEntry(editingEntry.id, {
         processName: formData.processName,
         entryDate: formData.entryDate,
-        shift: formData.shift as 'MORNING' | 'AFTERNOON' | 'NIGHT',
+        shift: formData.shift,
         targetQuantity: formData.targetQuantity,
         producedQuantity: formData.producedQuantity,
         rejectedQuantity: formData.rejectedQuantity,
@@ -297,7 +312,7 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
       // Reset form and close dialog
       setFormData({
         lotId: lotId,
-        entryDate: new Date().toISOString().split('T')[0],
+        entryDate: new Date().toISOString().split('T')[0] || '',
         shift: 'MORNING',
         targetQuantity: 0,
         producedQuantity: 0,
@@ -314,7 +329,7 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
 
     } catch (error) {
       console.error('Error updating production entry:', error);
-      } finally {
+    } finally {
       setSaving(false);
     }
   };
@@ -327,14 +342,14 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
     try {
       setDeleting(entryId);
 
-      await productionEntriesApi.deleteProductionEntry(entryId);
+      await productionEntriesApi.deleteEntry(entryId);
 
       // Refresh data after successful delete
       await refreshData();
 
     } catch (error) {
       console.error('Error deleting production entry:', error);
-      } finally {
+    } finally {
       setDeleting(null);
     }
   };

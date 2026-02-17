@@ -3,12 +3,11 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Package, 
-  Factory, 
-  Clock, 
+import {
+  TrendingUp,
+  Package,
+  Factory,
+  Clock,
   AlertCircle,
   CheckCircle,
   BarChart3
@@ -117,8 +116,8 @@ export function ProductionDashboard({ dashboardData }: ProductionDashboardProps)
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold">{summary.plannedLots || 0}</span>
-                  <Progress 
-                    value={summary.totalLots ? (summary.plannedLots / summary.totalLots) * 100 : 0} 
+                  <Progress
+                    value={summary.totalLots ? (summary.plannedLots / summary.totalLots) * 100 : 0}
                     className="w-16"
                   />
                 </div>
@@ -131,8 +130,8 @@ export function ProductionDashboard({ dashboardData }: ProductionDashboardProps)
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold">{summary.activeLots || 0}</span>
-                  <Progress 
-                    value={summary.totalLots ? (summary.activeLots / summary.totalLots) * 100 : 0} 
+                  <Progress
+                    value={summary.totalLots ? (summary.activeLots / summary.totalLots) * 100 : 0}
                     className="w-16"
                   />
                 </div>
@@ -145,8 +144,8 @@ export function ProductionDashboard({ dashboardData }: ProductionDashboardProps)
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold">{summary.completedLots || 0}</span>
-                  <Progress 
-                    value={summary.totalLots ? (summary.completedLots / summary.totalLots) * 100 : 0} 
+                  <Progress
+                    value={summary.totalLots ? (summary.completedLots / summary.totalLots) * 100 : 0}
                     className="w-16"
                   />
                 </div>
@@ -178,7 +177,7 @@ export function ProductionDashboard({ dashboardData }: ProductionDashboardProps)
                 recentLots.map((lot: any) => {
                   const StatusIcon = statusConfig[lot.status as keyof typeof statusConfig]?.icon || Clock;
                   const statusColor = statusConfig[lot.status as keyof typeof statusConfig]?.color || 'bg-gray-100 text-gray-800';
-                  
+
                   return (
                     <div key={lot.id} className="flex items-center justify-between p-3 border rounded-lg">
                       <div className="flex items-center gap-3">
@@ -261,19 +260,19 @@ export function ProductionDashboard({ dashboardData }: ProductionDashboardProps)
               <div className="text-sm font-semibold">Create Lot</div>
               <div className="text-xs text-muted-foreground">New production lot</div>
             </div>
-            
+
             <div className="p-4 border rounded-lg hover:bg-muted/50 cursor-pointer text-center">
               <Clock className="h-6 w-6 mx-auto mb-2 text-primary" />
               <div className="text-sm font-semibold">Schedule</div>
               <div className="text-xs text-muted-foreground">Production timeline</div>
             </div>
-            
+
             <div className="p-4 border rounded-lg hover:bg-muted/50 cursor-pointer text-center">
               <BarChart3 className="h-6 w-6 mx-auto mb-2 text-primary" />
               <div className="text-sm font-semibold">Reports</div>
               <div className="text-xs text-muted-foreground">Performance reports</div>
             </div>
-            
+
             <div className="p-4 border rounded-lg hover:bg-muted/50 cursor-pointer text-center">
               <CheckCircle className="h-6 w-6 mx-auto mb-2 text-primary" />
               <div className="text-sm font-semibold">Quality</div>
