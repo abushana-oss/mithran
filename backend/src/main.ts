@@ -142,19 +142,29 @@ async function bootstrap() {
     new TransformInterceptor(),
   );
 
-  // Debug: Log all registered routes
-  const server = app.getHttpServer();
-  const router = server._events.request._router;
-  if (router && router.stack) {
-    logger.log('=== ALL REGISTERED ROUTES ===', 'Bootstrap');
-    router.stack.forEach((layer: any) => {
-      if (layer.route) {
-        const methods = Object.keys(layer.route.methods);
-        logger.log(`${methods.join(',').toUpperCase()} ${layer.route.path}`, 'Bootstrap');
+  // Debug: Check if routes are working after app startup
+  const httpAdapter = app.getHttpAdapter();
+  const server = httpAdapter.getInstance();
+  
+  // Test route registration immediately
+  setTimeout(async () => {
+    logger.log('🧪 Testing route registration...', 'Bootstrap');
+    
+    // Try to manually access the route handler
+    try {
+      const appController = app.get('AppController');
+      if (appController) {
+        logger.log('✅ AppController found in DI container', 'Bootstrap');
+        const result = appController.healthCheck();
+        logger.log(`✅ AppController.healthCheck() works: ${JSON.stringify(result)}`, 'Bootstrap');
+      } else {
+        logger.error('❌ AppController NOT found in DI container', 'Bootstrap');
       }
-    });
-    logger.log('=== END ROUTES ===', 'Bootstrap');
-  }
+    } catch (error) {
+      logger.error(`❌ Error accessing AppController: ${error.message}`, 'Bootstrap');
+    }
+  }, 1000);
+  
 
   const config = new DocumentBuilder()
     .setTitle('mithran API Gateway')
