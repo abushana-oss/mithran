@@ -81,10 +81,10 @@ import { AppController } from './app.controller';
   controllers: [AppController],
   providers: [
     SupabaseService,
-    {
-      provide: APP_GUARD,
-      useClass: SupabaseAuthGuard,
-    },
+    // {
+    //   provide: APP_GUARD,
+    //   useClass: SupabaseAuthGuard,
+    // },
   ],
 })
 export class AppModule {}
