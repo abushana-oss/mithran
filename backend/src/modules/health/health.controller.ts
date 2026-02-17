@@ -79,6 +79,31 @@ export class HealthController {
 @Controller()
 export class CommonRoutesController {
   /**
+   * Root endpoint - prevents 404 errors
+   */
+  @Get()
+  @ApiOperation({ summary: 'Root service information' })
+  @Public()
+  getRoot() {
+    return {
+      message: 'Mithran Manufacturing Platform API - Live',
+      status: 'running',
+      version: '1.0.0',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Ping endpoint
+   */
+  @Get('ping')
+  @ApiOperation({ summary: 'Simple ping endpoint' })
+  @Public()
+  ping() {
+    return { pong: true };
+  }
+
+  /**
    * Favicon handler - prevents 404 errors in logs
    * Returns 204 No Content (standard for missing favicons)
    */
