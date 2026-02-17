@@ -52,7 +52,7 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    origin: (requestOrigin, callback) => {
+    origin: (requestOrigin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
       const allowedOrigins = [
         configService.get('CORS_ORIGIN', 'http://localhost:3000'),
         'http://localhost:3000',
