@@ -1,4 +1,5 @@
 import { Controller, Get, Logger } from '@nestjs/common';
+import { Public } from './common/decorators/public.decorator';
 
 @Controller()
 export class AppController {
@@ -7,6 +8,8 @@ export class AppController {
   constructor() {
     this.logger.log('🚀 AppController initialized');
   }
+
+  @Public()
   @Get()
   healthCheck() {
     this.logger.log('✅ Root route / accessed');
@@ -23,6 +26,7 @@ export class AppController {
     };
   }
 
+  @Public()
   @Get('ping')
   ping() {
     return {
@@ -34,6 +38,7 @@ export class AppController {
     };
   }
 
+  @Public()
   @Get('test')
   test() {
     return { message: 'AppController is working!' };
