@@ -17,9 +17,15 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const logger = app.get(Logger);
 
-  // Removed global prefix to fix root endpoint issues
-  // Controllers now use explicit @Controller('api') where needed
-
+  // Set global API prefix for all routes except root controller
+  app.setGlobalPrefix('api', {
+    exclude: [
+      { path: '/', method: RequestMethod.GET },
+      { path: '/ping', method: RequestMethod.GET },
+      { path: '/test', method: RequestMethod.GET },
+    ],
+  });
+  
   app.enableVersioning({
     type: VersioningType.URI,
     defaultVersion: '1',
@@ -141,6 +147,20 @@ async function bootstrap() {
     new LoggingInterceptor(logger),
     new TransformInterceptor(),
   );
+
+  // Debug: Log all registered routes
+  const server = app.getHttpServer();
+  const router = server._events.request._router;
+  if (router && router.stack) {
+    logger.log('=== ALL REGISTERED ROUTES ===', 'Bootstrap');
+    router.stack.forEach((layer: any) => {
+      if (layer.route) {
+        const methods = Object.keys(layer.route.methods);
+        logger.log(`${methods.join(',').toUpperCase()} ${layer.route.path}`, 'Bootstrap');
+      }
+    });
+    logger.log('=== END ROUTES ===', 'Bootstrap');
+  }
 
   const config = new DocumentBuilder()
     .setTitle('mithran API Gateway')
