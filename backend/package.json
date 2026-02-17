@@ -6,11 +6,11 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "nest build",
+    "build": "npx nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "start": "nest start",
-    "start:dev": "nest start --watch",
-    "start:debug": "nest start --debug --watch",
+    "start": "npx nest start",
+    "start:dev": "npx nest start --watch",
+    "start:debug": "npx nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "echo 'Linting skipped - using parent config'",
     "lint:check": "echo 'Lint check skipped - using parent config'",
@@ -26,7 +26,7 @@
     "env:validate": "ts-node -r tsconfig-paths/register scripts/validate-env.ts"
   },
   "dependencies": {
-    "@nestjs/axios": "^3.0.1",
+    "@nestjs/axios": "^3.2.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.0.1",
@@ -36,7 +36,7 @@
     "@nestjs/swagger": "^11.2.6",
     "@nestjs/terminus": "^11.0.0",
     "@nestjs/throttler": "^5.1.1",
-    "@nestjs/typeorm": "^10.0.0",
+    "@nestjs/typeorm": "^10.0.2",
     "@supabase/supabase-js": "^2.89.0",
     "@types/handlebars": "^4.0.40",
     "@types/mathjs": "^9.4.1",
