@@ -29,6 +29,9 @@ import { SupabaseService } from './common/supabase/supabase.service';
 import { SupabaseAuthGuard } from './common/guards/supabase-auth.guard';
 import { validate } from './config/env.validation';
 import { AppController } from './app.controller';
+
+console.log('🔥 DEBUG: AppController imported:', AppController.name);
+
 @Module({
   imports: [
     ConfigModule.forRoot({

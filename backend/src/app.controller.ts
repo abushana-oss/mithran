@@ -1,9 +1,15 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Logger } from '@nestjs/common';
 
 @Controller()
 export class AppController {
+  private readonly logger = new Logger(AppController.name);
+
+  constructor() {
+    this.logger.log('🚀 AppController initialized');
+  }
   @Get()
   healthCheck() {
+    this.logger.log('✅ Root route / accessed');
     return {
       success: true,
       data: {

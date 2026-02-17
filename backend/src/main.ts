@@ -17,14 +17,8 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const logger = app.get(Logger);
 
-  // Set global API prefix for all routes except root controller
-  app.setGlobalPrefix('api', {
-    exclude: [
-      '/',
-      '/ping', 
-      '/test',
-    ],
-  });
+  // No global prefix - all controllers use explicit prefixes
+  // AppController uses no prefix for root routes
   
   app.enableVersioning({
     type: VersioningType.URI,
