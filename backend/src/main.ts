@@ -20,9 +20,9 @@ async function bootstrap() {
   // Set global API prefix for all routes except root controller
   app.setGlobalPrefix('api', {
     exclude: [
-      { path: '/', method: RequestMethod.GET },
-      { path: '/ping', method: RequestMethod.GET },
-      { path: '/test', method: RequestMethod.GET },
+      '/',
+      '/ping', 
+      '/test',
     ],
   });
   
