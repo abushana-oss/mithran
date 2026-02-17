@@ -7,7 +7,7 @@ export class AppController {
   @Get()
   getHello(): { message: string; status: string; timestamp: string } {
     return {
-      message: 'Mithran Manufacturing Platform API',
+      message: 'Mithran Manufacturing Platform API - Live',
       status: 'running',
       timestamp: new Date().toISOString(),
     };
