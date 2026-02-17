@@ -50,8 +50,7 @@ export function SimpleEvaluationView({ groupId, onBack }: SimpleEvaluationViewPr
   const [editingItem, setEditingItem] = useState<any>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
 
-
-  // Process planning state
+// Process planning state
   const [addingProcessItem, setAddingProcessItem] = useState<any>(null);
   const [processDialogOpen, setProcessDialogOpen] = useState(false);
 

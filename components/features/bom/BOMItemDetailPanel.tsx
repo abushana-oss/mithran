@@ -181,8 +181,7 @@ export function BOMItemDetailPanel({ item, onClose, onUpdate, preferredView = '3
         <CardContent>
           <div className="mt-6">
 
-
-            {/* Files Section - Respects Preferred View */}
+{/* Files Section - Respects Preferred View */}
             {(item.file2dPath || item.file3dPath) && (
               <div className="border-t pt-6">
                 {/* Show based on preferredView, or fallback logic */}
@@ -194,8 +193,7 @@ export function BOMItemDetailPanel({ item, onClose, onUpdate, preferredView = '3
                       </div>
                     )}
 
-
-                    {!loading && file3dUrl && (
+{!loading && file3dUrl && (
                       <ModelViewer
                         key={file3dUrl}
                         fileUrl={file3dUrl}

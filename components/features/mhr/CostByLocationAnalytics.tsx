@@ -67,7 +67,7 @@ const aggregateDataByLocation = (records: MHRRecord[]): LocationData[] => {
 
   records.forEach(record => {
     if (!record?.calculations) {
-      console.warn('Record missing calculations:', record);
+      
       return;
     }
 

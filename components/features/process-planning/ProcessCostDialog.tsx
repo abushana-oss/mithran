@@ -131,8 +131,7 @@ export function ProcessCostDialog({
     return processCalculatorMappings.mappings;
   }, [processCalculatorMappings]);
 
-
-  // Get unique locations from MHR and LSR data
+// Get unique locations from MHR and LSR data
   const locations = useMemo(() => {
     const locs = new Set<string>();
     mhrData?.records?.forEach(record => {
@@ -167,8 +166,7 @@ export function ProcessCostDialog({
     return filteredLSR.find((r: any) => String(r.id) === String(selectedLSRId));
   }, [filteredLSR, selectedLSRId]);
 
-
-  useEffect(() => {
+useEffect(() => {
     if (hierarchyError) {
       console.error('[ProcessCostDialog] Hierarchy Error:', hierarchyError);
     }
@@ -307,7 +305,6 @@ export function ProcessCostDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedMHRId || !selectedLSRId || cycleTime <= 0 || batchSize <= 0) {
-      alert('Please select machine, labour, and enter cycle time and batch size');
       return;
     }
 

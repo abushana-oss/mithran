@@ -78,19 +78,15 @@ export function LogisticsDialog({
     e.preventDefault();
 
     if (!costName) {
-      alert('Please enter cost name');
       return;
     }
     if (!logisticsType) {
-      alert('Please select logistics type');
       return;
     }
     if (!modeOfTransport) {
-      alert('Please select mode of transport');
       return;
     }
     if (!costBasis) {
-      alert('Please select cost basis');
       return;
     }
 

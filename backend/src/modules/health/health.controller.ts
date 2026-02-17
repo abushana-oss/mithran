@@ -9,10 +9,11 @@
  * Following industry best practices for health checks
  */
 
-import { Controller, Get, Res } from '@nestjs/common';
+import { Controller, Get, Post, Res } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { HealthCheckService, HealthCheck, HealthCheckResult } from '@nestjs/terminus';
 import { SupabaseHealthIndicator } from './indicators/supabase.health';
+import { SupabaseService } from '../../common/supabase/supabase.service';
 import { Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 
@@ -23,6 +24,7 @@ export class HealthController {
   constructor(
     private readonly health: HealthCheckService,
     private readonly supabaseIndicator: SupabaseHealthIndicator,
+    private readonly supabaseService: SupabaseService,
   ) { }
 
   @Get()
@@ -45,6 +47,28 @@ export class HealthController {
     return this.health.check([
       () => this.supabaseIndicator.checkDatabase('database'),
     ]);
+  }
+
+  @Post('/reload-schema')
+  @ApiOperation({ summary: 'Reload Supabase schema cache' })
+  @ApiResponse({ status: 200, description: 'Schema cache reloaded successfully' })
+  @ApiResponse({ status: 500, description: 'Failed to reload schema cache' })
+  async reloadSchema() {
+    const success = await this.supabaseService.reloadSchemaCache();
+    
+    if (success) {
+      return {
+        success: true,
+        message: 'Schema cache reload triggered successfully',
+        timestamp: new Date().toISOString()
+      };
+    } else {
+      return {
+        success: false,
+        message: 'Failed to reload schema cache',
+        timestamp: new Date().toISOString()
+      };
+    }
   }
 
 }

@@ -111,9 +111,7 @@ export default function LHRDatabasePage() {
     location: '',
   });
 
-
-
-  // Save draft to localStorage whenever form data changes
+// Save draft to localStorage whenever form data changes
   useEffect(() => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('lsr-form-draft', JSON.stringify(formData));

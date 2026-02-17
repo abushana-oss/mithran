@@ -4,7 +4,6 @@
  */
 
 import { apiClient } from './client';
-import { enhancedApiClient } from './enhanced-client';
 
 export interface ProcessScheduleUpdate {
   planned_start_date: string;
@@ -22,19 +21,14 @@ export const productionPlanningApi = {
     processId: string,
     scheduleData: ProcessScheduleUpdate
   ) => {
-    return enhancedApiClient.put(
+    return apiClient.put(
       `/production-planning/processes/${processId}/schedule-dates`,
-      scheduleData,
-      {
-        retries: 2,
-        invalidateCache: [`processes/${processId}`, `lot`], // Invalidate related cache
-      }
+      scheduleData
     );
   },
 
   /**
    * Update production lot dates - for main planned task dates
-   * Enhanced with optimistic updates and cache invalidation
    */
   updateProductionLotDates: async (
     lotId: string,
@@ -43,45 +37,30 @@ export const productionPlanningApi = {
       plannedEndDate?: string;
     }
   ) => {
-    return enhancedApiClient.put(
-      `/production-planning/lots/${lotId}`, 
+    return apiClient.put(
+      `/production-planning/lots/${lotId}`,
       dateData,
       {
-        retries: 3, // Critical operation, more retries
         timeout: 20000, // Longer timeout for date updates
-        invalidateCache: [`lots/${lotId}`, `production-planning/lots`], // Invalidate lot cache
       }
     );
   },
 
   /**
    * Get all processes for a production lot
-   * Enhanced with caching for better performance
    */
   getProcessesByLot: async (lotId: string, useCache: boolean = true) => {
-    return enhancedApiClient.get(
-      `/production-planning/processes/lot/${lotId}`,
-      {
-        cache: useCache,
-        cacheTTL: 3 * 60 * 1000, // 3 minutes cache for process data
-        retries: 3,
-      }
+    return apiClient.get(
+      `/production-planning/processes/lot/${lotId}`
     );
   },
 
-
   /**
    * Get production lot by ID - includes main lot dates
-   * Enhanced with aggressive caching since lot data changes less frequently
    */
   getProductionLotById: async (lotId: string, useCache: boolean = true) => {
-    return enhancedApiClient.get(
-      `/production-planning/lots/${lotId}`,
-      {
-        cache: useCache,
-        cacheTTL: 2 * 60 * 1000, // 2 minutes cache for lot data
-        retries: 3,
-      }
+    return apiClient.get(
+      `/production-planning/lots/${lotId}`
     );
   },
 
@@ -94,7 +73,7 @@ export const productionPlanningApi = {
       productionPlanningApi.getProductionLotById(lotId),
       productionPlanningApi.getProcessesByLot(lotId),
     ]).catch(error => {
-      console.warn('Prefetch failed:', error);
+
     });
   },
 
@@ -113,22 +92,22 @@ export const productionPlanningApi = {
     // Execute updates with limited concurrency to avoid overwhelming the server
     const BATCH_SIZE = 3;
     const results = [];
-    
+
     for (let i = 0; i < updates.length; i += BATCH_SIZE) {
       const batch = updates.slice(i, i + BATCH_SIZE);
       const batchPromises = batch.map(update =>
         productionPlanningApi.updateProductionLotDates(update.lotId, update.dateData)
       );
-      
+
       const batchResults = await Promise.allSettled(batchPromises);
       results.push(...batchResults);
-      
+
       // Small delay between batches to respect rate limits
       if (i + BATCH_SIZE < updates.length) {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
-    
+
     return results;
   },
 
@@ -136,27 +115,22 @@ export const productionPlanningApi = {
    * Clear all production planning related cache
    */
   clearCache: () => {
-    enhancedApiClient.invalidateCache();
+    // No-op: handled by React Query
   },
 
   /**
    * Get cache statistics for debugging
    */
   getCacheStats: () => {
-    return enhancedApiClient.getCacheStats();
+    return { size: 0, keys: [] };
   },
 
   /**
    * Get process templates for production planning
    */
   getProcessTemplates: async (useCache: boolean = true) => {
-    return enhancedApiClient.get(
-      `/production-planning/process-templates`,
-      {
-        cache: useCache,
-        cacheTTL: 10 * 60 * 1000, // 10 minutes cache for templates (rarely change)
-        retries: 2,
-      }
+    return apiClient.get(
+      `/production-planning/process-templates`
     );
   },
 
@@ -168,13 +142,9 @@ export const productionPlanningApi = {
     description?: string;
     category?: string;
   }) => {
-    return enhancedApiClient.post(
+    return apiClient.post(
       `/production-planning/process-templates`,
-      templateData,
-      {
-        retries: 2,
-        invalidateCache: ['process-templates'], // Invalidate template cache
-      }
+      templateData
     );
   },
 
@@ -182,13 +152,9 @@ export const productionPlanningApi = {
    * Update production lot status
    */
   updateLotStatus: async (lotId: string, status: string) => {
-    return enhancedApiClient.put(
+    return apiClient.put(
       `/production-planning/lots/${lotId}`,
-      { status },
-      {
-        retries: 2,
-        invalidateCache: [`lots/${lotId}`, 'production-planning/lots'], // Invalidate lot cache
-      }
+      { status }
     );
   },
 
@@ -196,13 +162,9 @@ export const productionPlanningApi = {
    * Auto-update lot status based on progress
    */
   updateLotStatusByProgress: async (lotId: string) => {
-    return enhancedApiClient.post(
+    return apiClient.post(
       `/production-planning/lots/${lotId}/update-status-by-progress`,
-      {},
-      {
-        retries: 2,
-        invalidateCache: [`lots/${lotId}`, 'production-planning/lots'], // Invalidate lot cache
-      }
+      {}
     );
   },
 
@@ -210,13 +172,9 @@ export const productionPlanningApi = {
    * Clean up production lot materials to only show selected BOM items
    */
   cleanupLotMaterials: async (lotId: string) => {
-    return enhancedApiClient.post(
+    return apiClient.post(
       `/production-planning/lots/${lotId}/cleanup-materials`,
-      {},
-      {
-        retries: 2,
-        invalidateCache: [`lots/${lotId}`, 'production-planning/lots'], // Invalidate lot cache
-      }
+      {}
     );
   },
 };
@@ -242,7 +200,7 @@ export const updateProcessesWithDates = async (
   }>
 ) => {
   const results = [];
-  
+
   for (const process of processes) {
     try {
       const result = await productionPlanningApi.updateProcessScheduleDates(
@@ -260,6 +218,6 @@ export const updateProcessesWithDates = async (
       throw error;
     }
   }
-  
+
   return results;
 };

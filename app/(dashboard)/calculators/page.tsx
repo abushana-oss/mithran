@@ -10,7 +10,6 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCalculators, useCreateCalculator, useDeleteCalculator, useUpdateCalculator } from '@/lib/api/hooks';
 
-
 export default function CalculatorsPage() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
@@ -126,8 +125,7 @@ export default function CalculatorsPage() {
         </div>
       </div>
 
-
-      {/* Calculator List - Grid Layout */}
+{/* Calculator List - Grid Layout */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {isLoading ? (
           Array.from({ length: 6 }).map((_, i) => (

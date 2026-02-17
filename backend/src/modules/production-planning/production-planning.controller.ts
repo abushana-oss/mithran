@@ -13,6 +13,7 @@ import {
   Logger,
   HttpException,
   HttpStatus,
+  UnauthorizedException,
   BadRequestException,
 } from '@nestjs/common';
 import { SupabaseAuthGuard } from '@/common/guards/supabase-auth.guard';
@@ -56,11 +57,13 @@ export class ProductionPlanningController {
   ) {}
 
   /**
-   * Helper method to safely extract user ID from user object
-   * Handles cases where user object might be undefined (dev/legacy auth)
+   * Helper method to extract user ID from authenticated user object
    */
   private getUserId(user: any): string {
-    return user?.id || 'legacy-user';
+    if (!user?.id) {
+      throw new UnauthorizedException('User ID not found in authenticated request');
+    }
+    return user.id;
   }
 
   // ============================================================================
@@ -520,4 +523,5 @@ export class ProductionPlanningController {
     await this.productionPlanningService.cleanupProductionLotMaterials(id, this.getUserId(user));
     return createResponse(undefined);
   }
+
 }

@@ -160,9 +160,8 @@ export async function batchUpdateAssessmentCriteria(
     // Return updated data by fetching it fresh
     return getAssessmentCriteria(nominationId, vendorId);
   } catch (error) {
-    console.warn('Batch assessment update failed, falling back to individual requests:', error);
-    
-    // Fallback to individual requests if batch fails
+
+// Fallback to individual requests if batch fails
     const updatePromises = updates.map(update =>
       updateAssessmentCriterion(nominationId, vendorId, update.criteriaId, update)
     );

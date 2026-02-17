@@ -12,8 +12,8 @@ import Link from 'next/link'
 import Image from 'next/image'
 
 export default function AuthPage() {
-  const [email, setEmail] = useState('emuski@mithran.com')
-  const [password, setPassword] = useState('Adminmithran67')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const { signIn, signInWithGoogle } = useAuth()

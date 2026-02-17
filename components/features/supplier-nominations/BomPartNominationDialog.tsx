@@ -249,9 +249,8 @@ export function BomPartNominationDialog({
       toast.error(errorMessage);
     }
   };
-  
-  
-  if (!open) return null;
+
+if (!open) return null;
   
   return (
     <>

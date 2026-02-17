@@ -236,6 +236,7 @@ export class CreateProcessRouteStepDto {
   @ApiPropertyOptional({
     example: { tonnage: 150, shotWeight: 45.5, cycleTime: 30 },
     type: 'object',
+    additionalProperties: true,
   })
   @IsOptional()
   @IsObject()
@@ -268,6 +269,7 @@ export class ExecuteCalculatorDto {
     example: { weight: 100, volume: 50, material: 'ABS' },
     type: 'object',
     description: 'Input parameters for the calculator',
+    additionalProperties: true,
   })
   @IsObject()
   inputs: Record<string, any>;
@@ -300,6 +302,7 @@ export class SaveSessionDto {
   @ApiPropertyOptional({
     example: { expandedRoutes: ['123e4567-e89b-12d3-a456-426614174000'], filters: {} },
     type: 'object',
+    additionalProperties: true,
   })
   @IsOptional()
   @IsObject()

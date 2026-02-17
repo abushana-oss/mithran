@@ -69,7 +69,7 @@ export default function ProcessPlanningPage() {
       partNumber: item.partNumber || 'N/A',
       description: item.description || item.name || 'No description',
       itemType: (item.itemType || 'child_part') as 'assembly' | 'sub_assembly' | 'child_part',
-      status: 'pending' as 'pending' | 'in_progress' | 'completed', // TODO: Add status tracking
+      status: 'pending' as 'pending' | 'in_progress' | 'completed', 
     }));
   }, [bomItemsData]);
 

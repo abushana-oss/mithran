@@ -11,7 +11,6 @@ import type {
 } from '../projects';
 import { ApiError } from '../client';
 import { toast } from 'sonner';
-import { useAuthAwareQuery } from '../auth-aware-query';
 
 export const projectKeys = {
   all: ['projects'] as const,
@@ -23,20 +22,20 @@ export const projectKeys = {
 };
 
 export function useProjects(query?: ProjectQuery, options?: { enabled?: boolean }) {
-  return useAuthAwareQuery(projectKeys.list(query), {
+  return useQuery({
+    queryKey: projectKeys.list(query),
     queryFn: () => projectsApi.getAll(query),
     staleTime: 1000 * 60 * 5, // 5 minutes
     enabled: options?.enabled,
-    requireAuth: true,
   });
 }
 
 export function useProject(id: string, options?: { enabled?: boolean; retry?: boolean }) {
-  return useAuthAwareQuery(projectKeys.detail(id), {
+  return useQuery({
+    queryKey: projectKeys.detail(id),
     queryFn: () => projectsApi.getById(id),
     enabled: options?.enabled !== false && !!id,
     staleTime: 1000 * 60 * 5,
-    requireAuth: true,
     // Don't retry on 404 errors - the project genuinely doesn't exist
     retry: (failureCount, error) => {
       if (options?.retry === false) return false;
@@ -56,11 +55,11 @@ export function useProject(id: string, options?: { enabled?: boolean; retry?: bo
 }
 
 export function useProjectCostAnalysis(id: string) {
-  return useAuthAwareQuery(projectKeys.costAnalysis(id), {
+  return useQuery({
+    queryKey: projectKeys.costAnalysis(id),
     queryFn: () => projectsApi.getCostAnalysis(id),
     enabled: !!id,
     staleTime: 1000 * 60 * 2,
-    requireAuth: true,
   });
 }
 

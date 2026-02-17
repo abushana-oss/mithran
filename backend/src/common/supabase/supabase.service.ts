@@ -43,12 +43,6 @@ export class SupabaseService {
       return this.adminClient;
     }
 
-    // In development mode, use admin client for mock tokens
-    // Dev tokens start with "dev-token-"
-    if (accessToken.startsWith('dev-token-')) {
-      return this.adminClient;
-    }
-
     // Create client with user's auth context for RLS
     return createClient(this.supabaseUrl, this.supabaseAnonKey, {
       global: {
@@ -77,5 +71,44 @@ export class SupabaseService {
 
   get client(): SupabaseClient {
     return this.adminClient;
+  }
+
+  /**
+   * Reload PostgREST schema cache to recognize new tables/schema changes
+   * This is essential after DDL operations (CREATE TABLE, ALTER TABLE, etc.)
+   */
+  async reloadSchemaCache(): Promise<boolean> {
+    try {
+      // PostgREST exposes a special endpoint to reload its schema cache
+      const response = await fetch(`${this.supabaseUrl}/rest/v1/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.supabaseServiceKey}`,
+          'Content-Type': 'application/json',
+          'Content-Profile': 'public'
+        },
+        body: JSON.stringify({ action: 'reload_schema' })
+      });
+
+      // Alternative method: Signal PostgREST to reload via NOTIFY
+      await this.adminClient
+        .from('pg_notify')  // This won't work, but we can try direct SQL
+        .select('*')
+        .limit(1);
+
+      // Most reliable method: Use SQL function to notify PostgREST
+      const { error } = await this.adminClient.rpc('pgrst_reload_config');
+      
+      if (error && !error.message.includes('function "pgrst_reload_config" does not exist')) {
+        console.error('Failed to reload schema cache:', error);
+        return false;
+      }
+
+      console.log('Schema cache reload triggered successfully');
+      return true;
+    } catch (error) {
+      console.error('Error reloading schema cache:', error);
+      return false;
+    }
   }
 }

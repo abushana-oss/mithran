@@ -20,7 +20,7 @@ import { RawMaterialResponseDto, RawMaterialListResponseDto } from './dto/raw-ma
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AccessToken } from '../../common/decorators/access-token.decorator';
 import { Public } from '../../common/decorators/public.decorator';
-const XLSX = require('xlsx');
+import * as ExcelJS from 'exceljs';
 
 @ApiTags('Raw Materials')
 @ApiBearerAuth()
@@ -116,25 +116,25 @@ export class RawMaterialsController {
     }
 
     try {
-      // Parse Excel file
-      const workbook = XLSX.read(file.buffer, { type: 'buffer', cellDates: true });
-      const sheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[sheetName];
+      // Parse Excel file using ExcelJS
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(file.buffer as any);
+      
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) {
+        throw new BadRequestException('Excel file has no worksheets');
+      }
 
       // Helper function to find the header row
       const findHeaderRow = (): number => {
         // Try reading first 5 rows to find where headers are
-        for (let skipRows = 0; skipRows < 5; skipRows++) {
-          const testData = XLSX.utils.sheet_to_json(worksheet, {
-            range: skipRows,
-            header: 1, // Use array format to see raw values
-            defval: '',
-          });
+        for (let rowIndex = 1; rowIndex <= Math.min(5, worksheet.rowCount); rowIndex++) {
+          const row = worksheet.getRow(rowIndex);
+          const values = row.values as any[];
+          
+          if (!values || values.length === 0) continue;
 
-          if (testData.length === 0) continue;
-
-          const firstRow = testData[0] as any[];
-          const validHeaders = firstRow.filter(cell =>
+          const validHeaders = values.filter(cell =>
             cell && typeof cell === 'string' &&
             (cell.toLowerCase().includes('material') ||
               cell.toLowerCase().includes('group') ||
@@ -144,42 +144,50 @@ export class RawMaterialsController {
               cell.toLowerCase().includes('temp'))
           );
 
-          this.logger.debug(`Row ${skipRows + 1}: Found ${validHeaders.length} material-related headers out of ${firstRow.length} columns`, 'RawMaterialsController');
-
           // If we found at least 2 material-related headers, this is likely the header row
           if (validHeaders.length >= 2) {
-            return skipRows;
+            return rowIndex;
           }
         }
 
-        return 0; // Default to first row if nothing found
+        return 1; // Default to first row if nothing found
       };
 
       const headerRowIndex = findHeaderRow();
-      this.logger.debug(`Using row ${headerRowIndex + 1} as header row`, 'RawMaterialsController');
+      const headerRow = worksheet.getRow(headerRowIndex);
+      const headers = headerRow.values as any[];
 
-      // Read data with detected header row
-      let jsonData = XLSX.utils.sheet_to_json(worksheet, {
-        range: headerRowIndex,
-        defval: '',
-      });
+      // Convert worksheet data to JSON format
+      const jsonData: any[] = [];
+      for (let rowIndex = headerRowIndex + 1; rowIndex <= worksheet.rowCount; rowIndex++) {
+        const row = worksheet.getRow(rowIndex);
+        const values = row.values as any[];
+        
+        if (!values || values.length === 0) continue;
+
+        const rowData: any = {};
+        headers.forEach((header, colIndex) => {
+          if (header && colIndex > 0) { // Skip index 0 as it's usually empty in ExcelJS
+            rowData[header] = values[colIndex] || '';
+          }
+        });
+
+        // Only add rows that have some data
+        if (Object.values(rowData).some(value => value && value.toString().trim())) {
+          jsonData.push(rowData);
+        }
+      }
 
       if (!jsonData || jsonData.length === 0) {
         throw new BadRequestException('Excel file is empty or has no data rows after headers');
       }
 
-      // Final validation: check if we still have too many empty headers
+      // Validate that we have proper headers
       const finalRowKeys = Object.keys(jsonData[0]);
-      const finalEmptyCount = finalRowKeys.filter(key => key.startsWith('__EMPTY')).length;
-
-      // Final validation completed - checking column headers
-
-      if (finalEmptyCount > finalRowKeys.length * 0.7) {
+      if (finalRowKeys.length === 0) {
         throw new BadRequestException(
-          `Invalid Excel format: Most columns (${finalEmptyCount}/${finalRowKeys.length}) have no header names. ` +
-          `Found: ${finalRowKeys.filter(k => !k.startsWith('__EMPTY')).join(', ') || 'none'}. ` +
-          `Please ensure your Excel file has a header row with column names like "MaterialGroup", "Material", etc. ` +
-          `The header row should be the first non-empty row in your Excel file.`
+          `Invalid Excel format: No column headers found. ` +
+          `Please ensure your Excel file has a header row with column names like "MaterialGroup", "Material", etc.`
         );
       }
 

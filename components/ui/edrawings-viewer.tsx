@@ -182,8 +182,15 @@ function STLModel({
     surfaceArea: number;
   }) => void;
 }) {
-  const geometry = useLoader(STLLoader, url);
+  const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
   const meshRef = useRef<THREE.Mesh>(null);
+
+  useEffect(() => {
+    const loader = new STLLoader();
+    loader.load(url, (loadedGeometry) => {
+      setGeometry(loadedGeometry);
+    });
+  }, [url]);
 
   useEffect(() => {
     if (geometry) {
@@ -268,6 +275,10 @@ function STLModel({
       // Note: geometry is handled by useLoader and will be disposed automatically
     };
   }, []);
+
+  if (!geometry) {
+    return null; // Loading state handled by Suspense wrapper
+  }
 
   return (
     <mesh ref={meshRef} geometry={geometry} castShadow receiveShadow>
@@ -687,13 +698,13 @@ export function EDrawingsViewer({ fileUrl, fileName, onMeasurements }: EDrawings
               const canvas = state.gl.domElement;
               
               const handleContextLost = (event: Event) => {
-                console.warn('WebGL context lost, preventing default');
+                
                 event.preventDefault();
                 setLoading(true);
               };
               
               const handleContextRestored = () => {
-                console.log('WebGL context restored');
+                
                 setLoading(false);
               };
               

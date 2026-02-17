@@ -14,8 +14,6 @@ interface ProjectBomCostSummaryProps {
 
 const formatCurrency = (value: number) => `₹${value.toFixed(2)}`;
 
-
-
 const BomCostRow: React.FC<{ bomId: string; bomName: string }> = ({ bomId, bomName }) => {
   const { data: report, isLoading, error } = useBomCostReport(bomId);
 

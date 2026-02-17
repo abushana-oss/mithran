@@ -11,7 +11,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { RemarksApi } from '@/lib/api/remarks';
 import { CommentsApi } from '@/lib/api/comments';
 import { productionPlanningApi } from '@/lib/api/production-planning';
-import { 
+import { toast } from 'sonner';
+import {
   RemarkType,
   RemarkPriority,
   RemarkStatus,
@@ -24,10 +25,10 @@ import {
   REMARK_SCOPE_OPTIONS
 } from '@/types/remarks';
 import type { RemarkResponseDto } from '@/lib/api/remarks';
-import { 
-  MessageSquare, 
-  AlertTriangle, 
-  Clock, 
+import {
+  MessageSquare,
+  AlertTriangle,
+  Clock,
   CheckCircle,
   Search,
   Plus,
@@ -59,7 +60,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
 
 interface ProcessOption {
   id: string;
@@ -134,7 +134,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
   // Load comment count for a single remark
   const loadCommentCount = async (remarkId: string) => {
     if (commentCounts[remarkId] !== undefined) return; // Already loaded
-    
+
     try {
       const commentsData = await CommentsApi.getCommentsByRemark(remarkId);
       setCommentCounts(prev => ({
@@ -170,56 +170,166 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
   // Fetch processes when form is opened and 'Specific Process' might be selected
   const fetchProcesses = async () => {
     if (processes.length > 0) return; // Already loaded
-    
+
     try {
       setLoadingProcesses(true);
-      console.log('Fetching processes for lot:', lotId);
-      
-      // Try the API call with no cache to get fresh data
+
+      // Get processes with subtasks and their BOM requirements
       const response = await productionPlanningApi.getProcessesByLot(lotId, false);
-      console.log('Raw API response structure:', {
-        data: response?.data ? 'present' : 'missing',
-        dataType: Array.isArray(response?.data) ? 'array' : typeof response?.data,
-        dataLength: response?.data?.length || 0
-      });
       
-      // Debug: Log the first process with subtasks and BOM data
-      if (response?.data?.[0]?.subtasks?.[0]?.bom_requirements) {
-        console.log('Sample BOM requirement data:', response.data[0].subtasks[0].bom_requirements[0]);
+      // Also get selected BOM items from the lot
+      let selectedBomItems = [];
+      try {
+        const lotResponse = await productionPlanningApi.getProductionLotById(lotId);
+        selectedBomItems = lotResponse?.selectedBomItems || [];
+        console.log('Selected BOM items from lot:', selectedBomItems);
+      } catch (bomError) {
+        console.warn('Could not fetch selected BOM items:', bomError);
+        selectedBomItems = [];
       }
       
-      const processData = response.data || response || [];
-      
+      console.log('Processes response:', response);
+
+      const processData = (response as any)?.data || response || [];
+
       if (!Array.isArray(processData)) {
         console.error('Expected array but got:', typeof processData, processData);
         throw new Error('Invalid response format - expected array');
       }
-      
-      const mappedProcesses: ProcessOption[] = processData.map((process: any) => {
+
+      const mappedProcesses: ProcessOption[] = await Promise.all(processData.map(async (process: any) => {
         // Handle different possible subtask field names
         const rawSubtasks = process.subtasks || process.sub_tasks || process.subTasks || [];
-        
-        const mappedSubtasks = rawSubtasks.map((subtask: any) => {
-          const bomRequirements = (subtask.bom_requirements || subtask.bomRequirements || []).map((req: any) => {
-            // Handle different possible field names and structures
-            const bomItem = req.bom_item || req.bomItem || req.bom_items || {};
-            
-            
-            return {
+
+        const mappedSubtasks = await Promise.all(rawSubtasks.map(async (subtask: any) => {
+          // Get all BOM requirements for this subtask
+          const allBomRequirements = subtask.bom_requirements || subtask.bomRequirements || [];
+          
+          console.log(`🔍 Processing BOM requirements for subtask "${subtask.name || subtask.taskName}":`, {
+            allBomReqsCount: allBomRequirements.length,
+            selectedBomItemsCount: selectedBomItems.length,
+            allBomReqs: allBomRequirements.map((req: any) => ({
               id: req.id,
               bom_item_id: req.bom_item_id || req.bomItemId,
-              required_quantity: req.required_quantity || req.requiredQuantity || 0,
-              unit: req.unit || 'pcs',
-              requirement_status: req.requirement_status || req.requirementStatus || 'PENDING',
-              bom_item: bomItem && Object.keys(bomItem).length > 0 ? {
-                id: bomItem.id,
-                part_number: bomItem.part_number || bomItem.partNumber || bomItem.part_code || 'UNKNOWN',
-                name: bomItem.name || bomItem.title || 'Unknown Part',
-                description: bomItem.description || bomItem.details || ''
-              } : null
-            };
+              bom_item: req.bom_item
+            })),
+            selectedBomItems: selectedBomItems.map((item: any) => ({
+              id: item.id,
+              name: item.name,
+              partNumber: item.partNumber
+            }))
           });
           
+          let bomRequirements = [];
+          
+          if (selectedBomItems.length > 0) {
+            console.log('🔍 Using selectedBomItems path');
+            // If we have selected BOM items, filter to only show those
+            bomRequirements = allBomRequirements
+              .filter((req: any) => {
+                const bomItemId = req.bom_item_id || req.bomItemId;
+                const hasMatch = selectedBomItems.some((selectedItem: any) => selectedItem.id === bomItemId);
+                console.log(`🔍 Checking BOM req ${req.id} with bomItemId ${bomItemId}: hasMatch = ${hasMatch}`);
+                return hasMatch;
+              })
+              .map((req: any) => {
+                // Find the selected BOM item data
+                const selectedBomItem = selectedBomItems.find((item: any) => item.id === (req.bom_item_id || req.bomItemId));
+                
+                return {
+                  id: req.id,
+                  bom_item_id: req.bom_item_id || req.bomItemId,
+                  required_quantity: req.required_quantity || req.requiredQuantity || 0,
+                  unit: req.unit || 'pcs',
+                  requirement_status: req.requirement_status || req.requirementStatus || 'PENDING',
+                  bom_item: selectedBomItem ? {
+                    id: selectedBomItem.id,
+                    part_number: selectedBomItem.partNumber || selectedBomItem.part_number || 'UNKNOWN',
+                    name: selectedBomItem.name || selectedBomItem.title || 'Unknown Part',
+                    description: selectedBomItem.description || selectedBomItem.details || ''
+                  } : null
+                };
+              });
+          } else {
+            console.log('🔍 Using fallback path (no selectedBomItems)');
+            // Fallback: Show all BOM requirements if no selected items
+            bomRequirements = await Promise.all(allBomRequirements.map(async (req: any) => {
+              let bomItem = req.bom_item || req.bomItem || req.bom_items || {};
+              console.log(`🔍 Processing fallback BOM req ${req.id}:`, {
+                bomItem,
+                hasData: !!bomItem && Object.keys(bomItem).length > 0,
+                bomItemId: req.bom_item_id || req.bomItemId
+              });
+              
+              // If no BOM item data but we have an ID, try to fetch it
+              if ((!bomItem || Object.keys(bomItem).length === 0) && (req.bom_item_id || req.bomItemId)) {
+                try {
+                  const bomItemId = req.bom_item_id || req.bomItemId;
+                  console.log(`🔍 Fetching BOM item details for ID: ${bomItemId}`);
+                  
+                  // Try multiple API endpoints to find BOM item data
+                  let fetchedBomItem = null;
+                  
+                  // Try 1: /api/bom-items/{id}
+                  try {
+                    const response1 = await fetch(`/api/bom-items/${bomItemId}`);
+                    if (response1.ok) {
+                      fetchedBomItem = await response1.json();
+                      console.log(`✅ Successfully fetched BOM item from /api/bom-items:`, fetchedBomItem);
+                    } else {
+                      console.log(`❌ /api/bom-items returned ${response1.status}`);
+                    }
+                  } catch (e) { console.log(`❌ /api/bom-items failed:`, e.message); }
+                  
+                  // Try 2: /api/boms/items/{id} 
+                  if (!fetchedBomItem) {
+                    try {
+                      const response2 = await fetch(`/api/boms/items/${bomItemId}`);
+                      if (response2.ok) {
+                        fetchedBomItem = await response2.json();
+                        console.log(`✅ Successfully fetched BOM item from /api/boms/items:`, fetchedBomItem);
+                      } else {
+                        console.log(`❌ /api/boms/items returned ${response2.status}`);
+                      }
+                    } catch (e) { console.log(`❌ /api/boms/items failed:`, e.message); }
+                  }
+                  
+                  // Try 3: Use apiClient (from the lib)
+                  if (!fetchedBomItem) {
+                    try {
+                      const { apiClient } = await import('@/lib/api/client');
+                      const response3 = await apiClient.get(`/bom-items/${bomItemId}`);
+                      fetchedBomItem = response3.data || response3;
+                      console.log(`✅ Successfully fetched BOM item from apiClient:`, fetchedBomItem);
+                    } catch (e) { console.log(`❌ apiClient /bom-items failed:`, e.message); }
+                  }
+                  
+                  if (fetchedBomItem) {
+                    bomItem = fetchedBomItem.data || fetchedBomItem;
+                  } else {
+                    console.warn(`❌ Could not fetch BOM item ${bomItemId} from any endpoint`);
+                  }
+                } catch (fetchError) {
+                  console.warn(`❌ Error fetching BOM item ${req.bom_item_id || req.bomItemId}:`, fetchError);
+                }
+              }
+              
+              return {
+                id: req.id,
+                bom_item_id: req.bom_item_id || req.bomItemId,
+                required_quantity: req.required_quantity || req.requiredQuantity || 0,
+                unit: req.unit || 'pcs',
+                requirement_status: req.requirement_status || req.requirementStatus || 'PENDING',
+                bom_item: bomItem && Object.keys(bomItem).length > 0 ? {
+                  id: bomItem.id,
+                  part_number: bomItem.part_number || bomItem.partNumber || bomItem.part_code || 'UNKNOWN',
+                  name: bomItem.name || bomItem.title || 'Unknown Part',
+                  description: bomItem.description || bomItem.details || ''
+                } : null
+              };
+            }));
+          }
+
           return {
             id: subtask.id,
             name: subtask.taskName || subtask.name || subtask.task_name || 'Unnamed Subtask',
@@ -232,12 +342,12 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
             plannedEndDate: subtask.planned_end_date || subtask.plannedEndDate,
             bomRequirements
           };
-        });
-        
+        }));
+
         // Create unique process name if original name is generic
         const rawName = process.processName || process.name || process.process_name || process.sectionName;
         const isGenericName = rawName === 'Process' || rawName === 'Inspection' || rawName === 'Raw Material' || rawName === 'Packing';
-        const uniqueName = isGenericName 
+        const uniqueName = isGenericName
           ? `${rawName} (${process.id?.slice(-8) || 'ID-Unknown'})`
           : rawName || `Process ${process.id?.slice(-4) || 'Unknown'}`;
 
@@ -248,21 +358,23 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
           status: process.status || 'UNKNOWN',
           subtasks: mappedSubtasks
         };
-      });
-      
+      }));
+
       setProcesses(mappedProcesses);
+
+      console.log('Final mapped processes:', mappedProcesses);
+      console.log('Processes with subtasks:', mappedProcesses.filter(p => p.subtasks.length > 0));
       
       if (mappedProcesses.length === 0) {
         console.warn('No processes found for lot:', lotId);
       }
-      
+
     } catch (error) {
       console.error('Error fetching processes:', error);
-      console.error('Error details:', error.response || error.message || error);
-      
+      console.error('Error details:', (error as any)?.response || (error as Error)?.message || error);
+
       // More detailed error message
-      const errorMessage = error.response?.data?.message || error.message || 'Unknown error';
-      alert(`Failed to load processes: ${errorMessage}. Please check the console for details.`);
+      const errorMessage = (error as any)?.response?.data?.message || (error as Error)?.message || 'Unknown error';
     } finally {
       setLoadingProcesses(false);
     }
@@ -271,7 +383,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
   // Handle applies to change
   const handleAppliesToChange = (value: string) => {
     setFormData(prev => ({
-      ...prev, 
+      ...prev,
       appliesTo: value,
       processId: '', // Reset process selection
       subtaskId: '', // Reset subtask selection
@@ -279,7 +391,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
     }));
     setSelectedProcess(null);
     setSelectedSubtask(null);
-    
+
     // Fetch processes if process-related scope is selected
     if (value === 'PROCESS' || value === 'SUBTASK' || value === 'BOM_PART') {
       fetchProcesses();
@@ -301,7 +413,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
   const handleSubtaskChange = (subtaskId: string) => {
     const actualSubtaskId = subtaskId === 'none' ? '' : subtaskId;
     const subtask = selectedProcess?.subtasks?.find(s => s.id === actualSubtaskId);
-    
+
     setSelectedSubtask(subtask || null);
     setFormData(prev => ({
       ...prev,
@@ -316,7 +428,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
     if (bomPartId === 'none') {
       return;
     }
-    
+
     setFormData(prev => ({
       ...prev,
       bomPartId: bomPartId
@@ -336,38 +448,32 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
 
   const handleCreateRemark = async () => {
     if (!formData.type || !formData.priority || !formData.appliesTo || !formData.title.trim()) {
-      alert('Please fill in all required fields (Type, Priority, Applies To, and Title)');
+      toast.error('Please fill in all required fields');
       return;
     }
-    
+
     // Additional validation for process/subtask scopes
     if (formData.appliesTo === 'PROCESS' && !formData.processId) {
-      alert('Please select a process when scope is "Specific Process"');
       return;
     }
-    
+
     if (formData.appliesTo === 'SUBTASK') {
       if (!formData.processId) {
-        alert('Please select a process when scope is "Specific Subtask"');
         return;
       }
       if (!formData.subtaskId || formData.subtaskId === 'none') {
-        alert('Please select a subtask when scope is "Specific Subtask"');
         return;
       }
     }
-    
+
     if (formData.appliesTo === 'BOM_PART') {
       if (!formData.processId) {
-        alert('Please select a process when scope is "Specific BOM Part"');
         return;
       }
       if (!formData.subtaskId || formData.subtaskId === 'none') {
-        alert('Please select a subtask when scope is "Specific BOM Part"');
         return;
       }
       if (!formData.bomPartId || formData.bomPartId === 'none' || formData.bomPartId === '') {
-        alert('Please select a BOM part when scope is "Specific BOM Part"');
         return;
       }
     }
@@ -381,12 +487,12 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
         priority: formData.priority as RemarkPriority,
         appliesTo: formData.appliesTo as RemarkScope,
       };
-      
+
       // Add process/subtask IDs based on scope
       if (formData.appliesTo === 'PROCESS' && formData.processId) {
         remarkData.processId = formData.processId;
       }
-      
+
       if (formData.appliesTo === 'SUBTASK') {
         if (formData.processId) {
           remarkData.processId = formData.processId;
@@ -395,7 +501,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
           remarkData.subtaskId = formData.subtaskId;
         }
       }
-      
+
       if (formData.appliesTo === 'BOM_PART') {
         if (formData.processId) {
           remarkData.processId = formData.processId;
@@ -412,11 +518,11 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
       if (formData.description && formData.description.trim()) {
         remarkData.description = formData.description.trim();
       }
-      
+
       if (formData.assignedTo && formData.assignedTo.trim()) {
         remarkData.assignedTo = formData.assignedTo.trim();
       }
-      
+
       // Set context reference based on selected process/subtask
       if (formData.appliesTo === 'PROCESS' && selectedProcess) {
         remarkData.contextReference = selectedProcess.name;
@@ -460,7 +566,6 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
       setShowNewRemark(false);
     } catch (error) {
       console.error('Error creating remark:', error);
-      alert('Failed to create remark. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -468,7 +573,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
 
   const handleDeleteRemark = async (remarkId: string) => {
     if (!confirm('Are you sure you want to delete this remark?')) return;
-    
+
     try {
       await RemarksApi.deleteRemark(remarkId);
       // Remove from state immediately for better UX
@@ -479,8 +584,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
   };
 
   const handleEditRemark = (remark: any) => {
-    // TODO: Implement edit functionality
-    console.log('Edit remark:', remark);
+
   };
 
   const handleUpdateRemark = async (remark: any) => {
@@ -489,19 +593,18 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
         status: remark.status,
         priority: remark.priority
       };
-      
+
       await RemarksApi.updateRemark(remark.id, updateData);
-      
+
       // Update the remarks list
-      setRemarks(prev => prev.map(r => 
+      setRemarks(prev => prev.map(r =>
         r.id === remark.id ? { ...r, ...updateData } : r
       ));
-      
+
       // Close the dialog
       setSelectedRemark(null);
     } catch (error) {
       console.error('Error updating remark:', error);
-      alert('Failed to update remark. Please try again.');
     }
   };
 
@@ -533,17 +636,16 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
 
     try {
       setSubmittingComment(true);
-      await CommentsApi.createComment({
+      await CommentsApi.createComment(selectedRemark.id, {
         commentText: newComment.trim(),
         remarkId: selectedRemark.id
       });
-      
+
       setNewComment('');
       // Reload comments
       await loadComments(selectedRemark.id);
     } catch (error) {
       console.error('Error posting comment:', error);
-      alert('Failed to post comment. Please try again.');
     } finally {
       setSubmittingComment(false);
     }
@@ -560,7 +662,6 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
       }
     } catch (error) {
       console.error('Error deleting comment:', error);
-      alert('Failed to delete comment. Please try again.');
     }
   };
 
@@ -574,7 +675,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
   const filteredRemarks = (remarks || []).filter(remark => {
     if (!remark) return false;
     const matchesSearch = (remark.title || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (remark.description || '').toLowerCase().includes(searchTerm.toLowerCase());
+      (remark.description || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === 'all' || remark.remarkType === filterType;
     const matchesLevel = filterLevel === 'all' || remark.appliesTo === filterLevel;
     const matchesStatus = filterStatus === 'all' || remark.status === filterStatus;
@@ -680,7 +781,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="type">Type</Label>
-                      <Select value={formData.type} onValueChange={(value) => setFormData(prev => ({...prev, type: value}))}>
+                      <Select value={formData.type} onValueChange={(value) => setFormData(prev => ({ ...prev, type: value }))}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select type" />
                         </SelectTrigger>
@@ -695,7 +796,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                     </div>
                     <div>
                       <Label htmlFor="priority">Priority</Label>
-                      <Select value={formData.priority} onValueChange={(value) => setFormData(prev => ({...prev, priority: value}))}>
+                      <Select value={formData.priority} onValueChange={(value) => setFormData(prev => ({ ...prev, priority: value }))}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select priority" />
                         </SelectTrigger>
@@ -727,15 +828,15 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                     </div>
                     <div>
                       <Label htmlFor="assignedTo">Assign To (Name)</Label>
-                      <Input 
-                        id="assignedTo" 
+                      <Input
+                        id="assignedTo"
                         placeholder="Enter person's name (optional)"
                         value={formData.assignedTo}
-                        onChange={(e) => setFormData(prev => ({...prev, assignedTo: e.target.value}))}
+                        onChange={(e) => setFormData(prev => ({ ...prev, assignedTo: e.target.value }))}
                       />
                     </div>
                   </div>
-                  
+
                   {/* Process Selection - Show when 'PROCESS', 'SUBTASK' or 'BOM_PART' is selected */}
                   {(formData.appliesTo === 'PROCESS' || formData.appliesTo === 'SUBTASK' || formData.appliesTo === 'BOM_PART') && (
                     <div className="grid grid-cols-1 gap-4">
@@ -743,8 +844,8 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                         <Label htmlFor="process">
                           Select Process {(formData.appliesTo === 'PROCESS' || formData.appliesTo === 'SUBTASK' || formData.appliesTo === 'BOM_PART') ? '(Required)' : ''}
                         </Label>
-                        <Select 
-                          value={formData.processId} 
+                        <Select
+                          value={formData.processId}
                           onValueChange={handleProcessChange}
                           disabled={loadingProcesses}
                         >
@@ -779,21 +880,21 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                           </p>
                         )}
                       </div>
-                      
+
                       {/* Subtask Selection - Show when process is selected and has subtasks */}
                       {selectedProcess && selectedProcess.subtasks && selectedProcess.subtasks.length > 0 && (
                         <div>
                           <Label htmlFor="subtask">
                             Select Subtask {(formData.appliesTo === 'SUBTASK' || formData.appliesTo === 'BOM_PART') ? '(Required)' : '(Optional)'}
                           </Label>
-                          <Select 
-                            value={formData.subtaskId} 
+                          <Select
+                            value={formData.subtaskId}
                             onValueChange={handleSubtaskChange}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder={
                                 (formData.appliesTo === 'SUBTASK' || formData.appliesTo === 'BOM_PART')
-                                  ? "Select a subtask" 
+                                  ? "Select a subtask"
                                   : "Select a subtask (optional)"
                               } />
                             </SelectTrigger>
@@ -806,22 +907,22 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                               {selectedProcess.subtasks
                                 .sort((a, b) => a.sequence - b.sequence)
                                 .map(subtask => (
-                                <SelectItem key={subtask.id} value={subtask.id}>
-                                  <div className="flex flex-col items-start">
-                                    <span className="font-medium">{subtask.name}</span>
-                                    {subtask.description && (
-                                      <span className="text-xs text-muted-foreground">{subtask.description}</span>
-                                    )}
-                                    <div className="flex gap-2 text-xs text-muted-foreground">
-                                      <span>Seq: {subtask.sequence}</span>
-                                      <span>Status: {subtask.status}</span>
+                                  <SelectItem key={subtask.id} value={subtask.id}>
+                                    <div className="flex flex-col items-start">
+                                      <span className="font-medium">{subtask.name}</span>
+                                      {subtask.description && (
+                                        <span className="text-xs text-muted-foreground">{subtask.description}</span>
+                                      )}
+                                      <div className="flex gap-2 text-xs text-muted-foreground">
+                                        <span>Seq: {subtask.sequence}</span>
+                                        <span>Status: {subtask.status}</span>
+                                      </div>
                                     </div>
-                                  </div>
-                                </SelectItem>
-                              ))}
+                                  </SelectItem>
+                                ))}
                             </SelectContent>
                           </Select>
-                          
+
                           {/* Note about subtask selection */}
                           <p className="text-xs text-muted-foreground mt-1">
                             {(formData.appliesTo === 'SUBTASK' || formData.appliesTo === 'BOM_PART')
@@ -831,119 +932,137 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                           </p>
                         </div>
                       )}
-                      
+
                       {/* Show message if no subtasks available but subtask/bompart scope is selected */}
-                      {(formData.appliesTo === 'SUBTASK' || formData.appliesTo === 'BOM_PART') && selectedProcess && 
-                       (!selectedProcess.subtasks || selectedProcess.subtasks.length === 0) && (
-                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                          <p className="text-sm text-yellow-800">
-                            <strong>No subtasks available</strong> for the selected process. 
-                            You may want to change the scope to 'Specific Process' instead.
-                          </p>
-                        </div>
-                      )}
-                      
-                      {/* BOM Part Selection - Show when 'BOM_PART' is selected and subtask has BOM parts */}
-                      {formData.appliesTo === 'BOM_PART' && selectedSubtask && 
-                       selectedSubtask.bomRequirements && selectedSubtask.bomRequirements.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Label htmlFor="bompart">Select BOM Part (Required)</Label>
-                            <Badge variant="outline" className="text-xs">
-                              {selectedSubtask.bomRequirements.length} parts available
-                            </Badge>
+                      {(formData.appliesTo === 'SUBTASK' || formData.appliesTo === 'BOM_PART') && selectedProcess &&
+                        (!selectedProcess.subtasks || selectedProcess.subtasks.length === 0) && (
+                          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <p className="text-sm text-yellow-800">
+                              <strong>No subtasks available</strong> for the selected process "{selectedProcess.name}".
+                              You may want to change the scope to 'Specific Process' instead, or create subtasks for this process first.
+                            </p>
                           </div>
-                          <Select 
-                            value={formData.bomPartId} 
-                            onValueChange={handleBomPartChange}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a BOM part" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {/* Empty option to ensure manual selection is required */}
-                              <SelectItem value="none" disabled>
-                                <span className="text-muted-foreground">Select a BOM part below...</span>
-                              </SelectItem>
-                              
-                              {selectedSubtask.bomRequirements.map(requirement => (
-                                <SelectItem key={requirement.id} value={requirement.id}>
-                                  <div className="flex flex-col items-start w-full">
-                                    <div className="flex items-center justify-between w-full mb-1">
-                                      <span className="font-medium">
-                                        {requirement.bom_item?.part_number && requirement.bom_item.part_number !== 'UNKNOWN'
-                                          ? requirement.bom_item.part_number 
-                                          : `Part #${requirement.id?.slice(-4) || 'XXXX'}`}
-                                      </span>
-                                      {requirement.requirement_status && (
-                                        <Badge 
-                                          variant={requirement.requirement_status === 'AVAILABLE' ? 'default' : 'secondary'} 
-                                          className="text-xs py-0 px-1"
-                                        >
-                                          {requirement.requirement_status}
-                                        </Badge>
+                        )}
+
+                      {/* BOM Part Selection - Show when 'BOM_PART' is selected and subtask has BOM parts */}
+                      {formData.appliesTo === 'BOM_PART' && selectedSubtask &&
+                        selectedSubtask.bomRequirements && selectedSubtask.bomRequirements.length > 0 && (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Label htmlFor="bompart">Select BOM Part (Required)</Label>
+                              <Badge variant="outline" className="text-xs">
+                                {selectedSubtask.bomRequirements.length} parts available
+                              </Badge>
+                            </div>
+                            <Select
+                              value={formData.bomPartId}
+                              onValueChange={handleBomPartChange}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select a BOM part" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {/* Empty option to ensure manual selection is required */}
+                                <SelectItem value="none" disabled>
+                                  <span className="text-muted-foreground">Select a BOM part below...</span>
+                                </SelectItem>
+
+                                {selectedSubtask.bomRequirements.map(requirement => {
+                                  // Debug logging to see the actual data structure
+                                  console.log('🔍 BOM Requirement Debug:', {
+                                    requirementId: requirement.id,
+                                    bomItem: requirement.bom_item,
+                                    partNumber: requirement.bom_item?.part_number,
+                                    partName: requirement.bom_item?.name,
+                                    description: requirement.bom_item?.description,
+                                    fullRequirement: requirement
+                                  });
+                                  
+                                  return (
+                                  <SelectItem key={requirement.id} value={requirement.id}>
+                                    <div className="flex flex-col items-start w-full">
+                                      <div className="flex items-center justify-between w-full mb-1">
+                                        <div className="flex flex-col">
+                                          <span className="font-medium">
+                                            {requirement.bom_item?.name && requirement.bom_item.name !== 'Unknown Part'
+                                              ? requirement.bom_item.name
+                                              : requirement.bom_item?.part_number && requirement.bom_item.part_number !== 'UNKNOWN'
+                                              ? requirement.bom_item.part_number
+                                              : `Part #${requirement.id?.slice(-4) || 'XXXX'}`}
+                                          </span>
+                                          {requirement.bom_item?.part_number && requirement.bom_item.part_number !== 'UNKNOWN' && 
+                                           requirement.bom_item?.name && requirement.bom_item.name !== 'Unknown Part' && (
+                                            <span className="text-xs text-muted-foreground">#{requirement.bom_item.part_number}</span>
+                                          )}
+                                        </div>
+                                        {requirement.requirement_status && (
+                                          <Badge
+                                            variant={requirement.requirement_status === 'AVAILABLE' ? 'default' : 'secondary'}
+                                            className="text-xs py-0 px-1"
+                                          >
+                                            {requirement.requirement_status}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      <div className="text-xs text-muted-foreground">
+                                        Required: {requirement.required_quantity > 0 ? requirement.required_quantity : '?'} {requirement.unit}
+                                      </div>
+                                      {requirement.bom_item?.description && requirement.bom_item.description !== 'No BOM item data available' && (
+                                        <div className="text-xs text-muted-foreground italic">
+                                          {requirement.bom_item.description}
+                                        </div>
                                       )}
                                     </div>
-                                    {requirement.bom_item?.name && requirement.bom_item.name !== 'Unknown Part' && (
-                                      <span className="text-xs text-muted-foreground">{requirement.bom_item.name}</span>
-                                    )}
-                                    <div className="text-xs text-muted-foreground">
-                                      Required: {requirement.required_quantity > 0 ? requirement.required_quantity : '?'} {requirement.unit}
-                                    </div>
-                                    {requirement.bom_item?.description && requirement.bom_item.description !== 'No BOM item data available' && (
-                                      <div className="text-xs text-muted-foreground italic">
-                                        {requirement.bom_item.description}
-                                      </div>
-                                    )}
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Select a specific BOM part for very granular remark targeting about material issues, availability, or quality.
-                          </p>
-                        </div>
-                      )}
-                      
+                                  </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Select a specific BOM part for very granular remark targeting about material issues, availability, or quality.
+                            </p>
+                          </div>
+                        )}
+
                       {/* Show message if no BOM parts available but BOM_PART scope is selected */}
-                      {formData.appliesTo === 'BOM_PART' && selectedSubtask && 
-                       (!selectedSubtask.bomRequirements || selectedSubtask.bomRequirements.length === 0) && (
-                        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                          <p className="text-sm text-yellow-800">
-                            <strong>No BOM parts required</strong> for the selected subtask. 
-                            You may want to change the scope to 'Specific Subtask' instead.
-                          </p>
-                        </div>
-                      )}
-                      
+                      {formData.appliesTo === 'BOM_PART' && selectedSubtask &&
+                        (!selectedSubtask.bomRequirements || selectedSubtask.bomRequirements.length === 0) && (
+                          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <p className="text-sm text-yellow-800">
+                              <strong>No BOM parts available</strong> for the selected subtask "{selectedSubtask.name}".
+                              This might be because no BOM items were selected for this lot, or this subtask doesn't require specific parts.
+                              You may want to change the scope to 'Specific Subtask' instead.
+                            </p>
+                          </div>
+                        )}
+
                     </div>
                   )}
-                  
+
                   <div>
                     <Label htmlFor="title">Title</Label>
-                    <Input 
-                      id="title" 
+                    <Input
+                      id="title"
                       placeholder="Brief description of the issue"
                       value={formData.title}
-                      onChange={(e) => setFormData(prev => ({...prev, title: e.target.value}))}
+                      onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
                     />
                   </div>
                   <div>
                     <Label htmlFor="description">Description</Label>
-                    <Textarea 
-                      id="description" 
+                    <Textarea
+                      id="description"
                       placeholder="Detailed description of the issue, impact, and any immediate actions taken"
                       rows={4}
                       value={formData.description}
-                      onChange={(e) => setFormData(prev => ({...prev, description: e.target.value}))}
+                      onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                     />
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button 
-                    type="button" 
+                  <Button
+                    type="button"
                     onClick={handleCreateRemark}
                     disabled={submitting}
                   >
@@ -1044,16 +1163,16 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="outline"
                         onClick={() => setSelectedRemark(remark)}
                         className="flex-shrink-0"
                       >
                         View Details
                       </Button>
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="ghost"
                         onClick={() => handleEditRemark(remark)}
                         className="flex-shrink-0"
@@ -1061,8 +1180,8 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                       >
                         <Edit className="h-4 w-4" />
                       </Button>
-                      <Button 
-                        size="sm" 
+                      <Button
+                        size="sm"
                         variant="ghost"
                         onClick={() => handleDeleteRemark(remark.id)}
                         className="text-red-600 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
@@ -1092,7 +1211,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                         </div>
                       )}
                     </div>
-                    <div 
+                    <div
                       className="flex items-center gap-2"
                       onMouseEnter={() => loadCommentCount(remark.id)}
                     >
@@ -1129,6 +1248,9 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                 {getTypeIcon(selectedRemark.remarkType)}
                 {selectedRemark.title}
               </DialogTitle>
+              <DialogDescription>
+                View and manage remark details, status, and comments
+              </DialogDescription>
               <div className="flex items-center gap-2">
                 <Badge className={getRemarkTypeColor(selectedRemark.remarkType as RemarkType)} variant="outline">
                   {selectedRemark.remarkType}
@@ -1146,7 +1268,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                 <h4 className="font-medium mb-2">Description</h4>
                 <p className="text-sm text-muted-foreground">{selectedRemark.description}</p>
               </div>
-              
+
               {selectedRemark.resolutionNotes && (
                 <div>
                   <h4 className="font-medium mb-2">Resolution</h4>
@@ -1181,7 +1303,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="status">Status</Label>
-                  <Select value={selectedRemark.status} onValueChange={(value) => setSelectedRemark({...selectedRemark, status: value})}>
+                  <Select value={selectedRemark.status} onValueChange={(value) => setSelectedRemark({ ...selectedRemark, status: value })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -1194,7 +1316,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                 </div>
                 <div>
                   <Label htmlFor="priority">Priority</Label>
-                  <Select value={selectedRemark.priority} onValueChange={(value) => setSelectedRemark({...selectedRemark, priority: value})}>
+                  <Select value={selectedRemark.priority} onValueChange={(value) => setSelectedRemark({ ...selectedRemark, priority: value })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -1214,7 +1336,7 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                   <span>Comments</span>
                   <Badge variant="secondary">{comments.length}</Badge>
                 </h4>
-                
+
                 {/* Comments List */}
                 {loadingComments ? (
                   <div className="flex justify-center py-4">
@@ -1238,8 +1360,8 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
                               {new Date(comment.createdAt).toLocaleString()}
                             </span>
                           </div>
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             variant="ghost"
                             onClick={() => handleDeleteComment(comment.id)}
                             className="h-6 w-6 p-0 text-muted-foreground hover:text-red-600"
@@ -1257,15 +1379,15 @@ export const RemarksIssues = ({ lotId }: RemarksIssuesProps) => {
 
                 {/* Add New Comment */}
                 <div>
-                  <Textarea 
-                    placeholder="Add a comment or update..." 
+                  <Textarea
+                    placeholder="Add a comment or update..."
                     rows={3}
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
                     className="mb-2"
                   />
-                  <Button 
-                    size="sm" 
+                  <Button
+                    size="sm"
                     onClick={handlePostComment}
                     disabled={!newComment.trim() || submittingComment}
                     className="ml-auto"

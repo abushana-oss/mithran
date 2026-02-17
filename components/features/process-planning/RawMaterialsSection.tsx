@@ -45,7 +45,6 @@ export function RawMaterialsSection({ bomItemId }: RawMaterialsSectionProps) {
 
   const handleDialogSubmit = async (data: any) => {
     if (!bomItemId) {
-      alert('Please select a BOM item first');
       return;
     }
 

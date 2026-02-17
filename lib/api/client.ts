@@ -15,8 +15,7 @@
 
 import { config as appConfig } from '../config';
 import { supabase } from '../supabase/client';
-import { authTokenManager } from '../auth/token-manager';
-import { AuthConfig } from '../config/auth.config';
+
 import { CircuitBreaker, CircuitBreakerError } from './circuit-breaker';
 import { requestMetrics } from './request-metrics';
 import { traceManager, getTraceHeaders, Span } from './distributed-tracing';
@@ -26,8 +25,8 @@ import { healthCheckManager, ServiceStatus } from './health-check';
 import { envValidator } from '../config/env-validator';
 import { logger } from '../utils/logger';
 import { appReadiness, AppReadinessState } from '../core/app-readiness';
-import { requestQueue } from './request-queue';
-import { authRequestInterceptor, AuthRequestInterceptor } from './auth-request-interceptor';
+
+// Removed broken import: auth-request-interceptor was deleted
 import { circuitBreakerManager } from './circuit-breaker-manager';
 
 type RequestOptions = {
@@ -149,7 +148,7 @@ class ApiClient {
     // No-op: Use authTokenManager.getCurrentToken() instead
   }
 
-  setAccessToken(token: string | null) {
+  setAccessToken(_token: string | null) {
     // Deprecated: Use authTokenManager.setToken() instead
   }
 
@@ -169,21 +168,35 @@ class ApiClient {
   }
 
   /**
-   * Get auth token from token manager (NO async calls, NO getSession())
+   * Get auth token from Supabase session (NO async calls, NO getSession())
    * @returns Current access token or null
    */
-  getAuthToken(): string | null {
-    // Skip auth token in development bypass mode
-    if (AuthConfig.shouldSkipAuth) {
-      return null; // No token needed when auth is bypassed
-    }
-
+  async getAuthToken(): Promise<string | null> {
     try {
-      const token = authTokenManager.getCurrentToken();
-      return token;
+      if (!supabase) return null;
+      
+      const { data: { session } } = await supabase.auth.getSession();
+      return session?.access_token || null;
     } catch (error) {
-      logger.error('Failed to get auth token', { error: error instanceof Error ? error.message : String(error) });
+      console.error('Failed to get auth token:', error);
       return null;
+    }
+  }
+
+  // Sync version for circuit breaker checks
+  private hasTokenSync(): boolean {
+    try {
+      if (typeof window === 'undefined') return false;
+      
+      // Check if we have any Supabase auth data in localStorage
+      const keys = Object.keys(localStorage);
+      const hasSupabaseAuth = keys.some(key => 
+        key.startsWith('sb-iuvtsvjpmovfymvnmqys') && key.includes('auth')
+      );
+      
+      return hasSupabaseAuth;
+    } catch {
+      return false;
     }
   }
 
@@ -205,7 +218,7 @@ class ApiClient {
 
     // Check app readiness state - only use circuit breaker when app is fully ready
     const readinessState = appReadiness.getState();
-    const hasToken = !!this.getAuthToken();
+    const hasToken = this.hasTokenSync();
 
     // During auth initialization, bypass circuit breaker to prevent false failures
     // This prevents the auth-restore race condition that causes CORS-like errors
@@ -229,7 +242,6 @@ class ApiClient {
   addResponseInterceptor(interceptor: ResponseInterceptor) {
     this.responseInterceptors.push(interceptor);
   }
-
 
   private async sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -375,38 +387,10 @@ class ApiClient {
   ): Promise<T | null> {
     const method = options.method || 'GET';
 
-    // Use auth request interceptor for all requests
-    return authRequestInterceptor.interceptRequest(
-      {
-        endpoint,
-        method,
-        isPublic: AuthRequestInterceptor.isPublicEndpoint(endpoint) || !!options.bypassCircuitBreaker,
-        requiresAuth: AuthRequestInterceptor.requiresAuthentication(endpoint) && !options.bypassCircuitBreaker
-      },
-      () => this.executeRequest(endpoint, options)
-    );
+    return this.executeRequest(endpoint, options);
   }
 
-  /**
-   * Determine if request should be queued based on app readiness
-   */
-  private shouldQueueRequest(endpoint: string, options: RequestOptions): boolean {
-    // Never queue public endpoints
-    if (endpoint.includes('/health') || options.bypassCircuitBreaker) {
-      return false;
-    }
 
-    // Queue requests when app is not ready and we don't have a valid token
-    const readinessState = appReadiness.getState();
-    const hasValidToken = !!this.getAuthToken();
-
-    return (
-      (readinessState === AppReadinessState.BOOTING ||
-        readinessState === AppReadinessState.AUTH_INITIALIZING ||
-        (readinessState === AppReadinessState.AUTH_READY && !hasValidToken)) &&
-      !options.silent // Don't queue silent requests to avoid hanging UI
-    );
-  }
 
   private async executeRequest<T>(
     endpoint: string,
@@ -503,22 +487,9 @@ class ApiClient {
       }
 
       // Get token from single source of truth
-      let token = this.getAuthToken();
+      let token = await this.getAuthToken();
 
-      // Add auth headers or dev bypass headers
-      if (AuthConfig.shouldSkipAuth) {
-        // Add development bypass headers
-        const mockUser = AuthConfig.getCurrentMockUser();
-        headers['x-mock-user'] = mockUser.role.toLowerCase();
-        headers['x-auth-bypass'] = 'true';
-        headers['x-dev-mode'] = 'true';
-
-        // Optional: Add mock user info for debugging
-        if (process.env.NODE_ENV === 'development') {
-          headers['x-mock-user-id'] = mockUser.id;
-          headers['x-mock-user-email'] = mockUser.email;
-        }
-      } else if (token) {
+      if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
@@ -861,7 +832,7 @@ class ApiClient {
 
           if (String(error.message || '').includes('Failed to fetch')) {
             // Improved error classification based on auth state and timing
-            const hasValidToken = !!this.getAuthToken();
+            const hasValidToken = this.hasTokenSync();
             const readinessState = appReadiness.getState();
             const isLocalhost = url.includes('localhost') || url.includes('127.0.0.1');
 
@@ -1048,7 +1019,7 @@ class ApiClient {
     const tracker = requestMetrics.startRequest(endpoint, method);
 
     // Get token from single source of truth
-    const token = this.getAuthToken();
+    const token = await this.getAuthToken();
 
     const headers: Record<string, string> = {};
     if (token) {

@@ -67,15 +67,12 @@ export function ProcuredPartDialog({
     e.preventDefault();
 
     if (!part.trim()) {
-      alert('Please enter part name');
       return;
     }
     if (unitCost <= 0) {
-      alert('Please enter a valid unit cost');
       return;
     }
     if (noOff <= 0) {
-      alert('Please enter a valid number off');
       return;
     }
 

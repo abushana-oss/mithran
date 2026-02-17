@@ -173,14 +173,13 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
         try {
           const assignmentsResponse: any = await apiClient.get(`/production-planning/lots/${lotId}/vendor-assignments`);
           assignments = assignmentsResponse.data || [];
-          console.log('Raw assignments response:', assignmentsResponse.data);
+          
         } catch (assignmentError) {
-          console.log('No existing assignments found for this lot, starting with empty assignments');
+          
           assignments = [];
         }
 
-
-        setVendorAssignments(assignments);
+setVendorAssignments(assignments);
 
         // setLoading(false);
       } catch (error) {
@@ -257,8 +256,7 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
         remarks: 'Assigned via production planning'
       };
 
-
-      await apiClient.post(`/production-planning/lots/${lotId}/vendor-assignments`, assignmentData);
+await apiClient.post(`/production-planning/lots/${lotId}/vendor-assignments`, assignmentData);
 
       toast.success('Vendor assigned successfully');
       setShowNewAssignment(false);
@@ -609,9 +607,8 @@ export const VendorAssignment = ({ lotId }: VendorAssignmentProps) => {
               <TableBody>
                 {filteredAssignments.map((assignment) => {
                   const bomItem = lotBOMItems.find(item => item.bom_item_id === assignment.bom_item_id);
-                  console.log('Assignment object:', assignment);
-                  console.log('Vendor object in assignment:', assignment.vendor);
-                  return (
+
+return (
                     <TableRow key={assignment.id}>
                       <TableCell>
                         <div className="space-y-1">

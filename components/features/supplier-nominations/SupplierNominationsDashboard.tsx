@@ -164,8 +164,7 @@ export function SupplierNominationsDashboard({
           </Button>
         </div>
 
-
-        {/* Currently Selected BOM Info */}
+{/* Currently Selected BOM Info */}
         {selectedBomId && (
           <Card className="bg-gray-800 border-gray-700 border-l-4 border-l-blue-500">
             <CardContent className="p-4">

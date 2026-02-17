@@ -32,10 +32,7 @@ export default function SupplierEvaluationPage() {
     currentView === 'evaluation' ? selectedEvaluationGroupId || undefined : undefined
   );
 
-
-
-
-  // View handlers
+// View handlers
   const handleSelectEvaluationGroup = useCallback((groupId: string) => {
     setSelectedEvaluationGroupId(groupId);
     setCurrentView('evaluation');
@@ -64,8 +61,7 @@ export default function SupplierEvaluationPage() {
     }
   }, []);
 
-
-  // Render based on current view
+// Render based on current view
   if (currentView === 'evaluation' && selectedEvaluationGroupId) {
     const selectedEvaluationGroup = evaluationGroups.find(group => group.id === selectedEvaluationGroupId);
 

@@ -31,8 +31,6 @@ export interface CreateLSRDto {
 
 export interface UpdateLSRDto extends Partial<CreateLSRDto> { }
 
-
-
 export const lsrApi = {
   getAll: async (search?: string): Promise<LSREntry[]> => {
     const params = search ? { search } : {};
@@ -73,9 +71,7 @@ export const lsrApi = {
     await apiClient.delete(`/lsr/${id}`);
   },
 
-
-
-  bulkCreate: async (data: CreateLSRDto[]): Promise<LSREntry[]> => {
+bulkCreate: async (data: CreateLSRDto[]): Promise<LSREntry[]> => {
     const response = await apiClient.post<LSREntry[]>('/lsr/bulk', data);
     return response || [];
   },

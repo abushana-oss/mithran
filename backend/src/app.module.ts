@@ -4,7 +4,6 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { HttpModule } from '@nestjs/axios';
 import { APP_GUARD } from '@nestjs/core';
 
-import { AuthModule } from './modules/auth/auth.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { VendorsModule } from './modules/vendors/vendors.module';
 import { BOMsModule } from './modules/boms/boms.module';
@@ -57,7 +56,6 @@ import { validate } from './config/env.validation';
     }),
 
     LoggerModule,
-    AuthModule,
     ProjectsModule,
     VendorsModule,
     BOMsModule,

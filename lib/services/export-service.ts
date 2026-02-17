@@ -4,7 +4,8 @@
  */
 
 import jsPDF from 'jspdf';
-import * as XLSX from 'xlsx';
+// Using native browser APIs for Excel export
+// Alternative to xlsx for security reasons
 
 export interface ExportData {
   bomName: string;
@@ -148,10 +149,16 @@ export class ExportService {
    * Export to Excel format
    */
   private async exportToExcel(data: ExportData): Promise<void> {
-    const workbook = XLSX.utils.book_new();
+    // Create CSV content as a secure alternative to Excel
+    const csvContent = this.generateCSVContent(data);
+    
+    // Create and download CSV file
+    const fileName = `Cost_Analysis_${data.bomName}_${new Date().toISOString().split('T')[0]}.csv`;
+    this.downloadCSV(csvContent, fileName);
+  }
 
-    // Summary Sheet
-    const summaryData = [
+  private generateCSVContent(data: ExportData): string {
+    const rows = [
       ['Cost Analysis Report'],
       [''],
       ['BOM Name', data.bomName],
@@ -172,21 +179,26 @@ export class ExportService {
       ['Process Costs', this.formatCurrency(data.summary.processCosts), this.formatPercentage((data.summary.processCosts / data.summary.totalCost) * 100)],
       ['Packaging & Logistics', this.formatCurrency(data.summary.packagingLogistics), this.formatPercentage((data.summary.packagingLogistics / data.summary.totalCost) * 100)],
       ['Procured Parts', this.formatCurrency(data.summary.procuredParts), this.formatPercentage((data.summary.procuredParts / data.summary.totalCost) * 100)],
-      ['Overhead Costs', this.formatCurrency(data.summary.overheadCosts), this.formatPercentage((data.summary.overheadCosts / data.summary.totalCost) * 100)],
+      ['Overhead Costs', this.formatCurrency(data.summary.overheadCosts), this.formatPercentage((data.summary.overheadCosts / data.summary.totalCost) * 100)]
     ];
 
-    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Cost Summary');
+    return rows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+  }
 
-    // Raw Data Sheet
-    if (data.costBreakdown && data.costBreakdown.length > 0) {
-      const rawDataSheet = XLSX.utils.json_to_sheet(data.costBreakdown);
-      XLSX.utils.book_append_sheet(workbook, rawDataSheet, 'Raw Data');
+  private downloadCSV(content: string, fileName: string): void {
+    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', fileName);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     }
-
-    // Save the Excel file
-    const fileName = `Cost_Analysis_${data.bomName}_${new Date().toISOString().split('T')[0]}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
   }
 
   /**
@@ -221,88 +233,126 @@ export class ExportService {
   }
 
   /**
-   * Show export format selection dialog
+   * Show export format selection dialog (secure implementation)
+   * Creates DOM elements programmatically to prevent XSS
    */
   public async showExportDialog(): Promise<ExportFormat | null> {
     return new Promise((resolve) => {
-      const dialog = document.createElement('div');
-      dialog.innerHTML = `
-        <div style="
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(0, 0, 0, 0.5);
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          z-index: 9999;
-        ">
-          <div style="
-            background: white;
-            padding: 24px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            min-width: 300px;
-            text-align: center;
-          ">
-            <h3 style="margin: 0 0 16px 0; color: #374151;">Export Format</h3>
-            <p style="margin: 0 0 24px 0; color: #6b7280; font-size: 14px;">
-              Choose your preferred export format:
-            </p>
-            <div style="display: flex; gap: 12px; justify-content: center;">
-              <button id="exportPDF" style="
-                background: #ef4444;
-                color: white;
-                border: none;
-                padding: 12px 24px;
-                border-radius: 6px;
-                cursor: pointer;
-                font-weight: 500;
-              ">📄 PDF</button>
-              <button id="exportExcel" style="
-                background: #10b981;
-                color: white;
-                border: none;
-                padding: 12px 24px;
-                border-radius: 6px;
-                cursor: pointer;
-                font-weight: 500;
-              ">📊 Excel</button>
-              <button id="cancelExport" style="
-                background: #6b7280;
-                color: white;
-                border: none;
-                padding: 12px 24px;
-                border-radius: 6px;
-                cursor: pointer;
-                font-weight: 500;
-              ">Cancel</button>
-            </div>
-          </div>
-        </div>
+      // Create overlay
+      const overlay = document.createElement('div');
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
       `;
 
-      document.body.appendChild(dialog);
+      // Create modal container
+      const modal = document.createElement('div');
+      modal.style.cssText = `
+        background: white;
+        padding: 24px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        min-width: 300px;
+        text-align: center;
+      `;
+
+      // Create title
+      const title = document.createElement('h3');
+      title.textContent = 'Export Format';
+      title.style.cssText = 'margin: 0 0 16px 0; color: #374151;';
+
+      // Create description
+      const description = document.createElement('p');
+      description.textContent = 'Choose your preferred export format:';
+      description.style.cssText = 'margin: 0 0 24px 0; color: #6b7280; font-size: 14px;';
+
+      // Create button container
+      const buttonContainer = document.createElement('div');
+      buttonContainer.style.cssText = 'display: flex; gap: 12px; justify-content: center;';
+
+      // Create buttons
+      const pdfButton = document.createElement('button');
+      pdfButton.textContent = '📄 PDF';
+      pdfButton.style.cssText = `
+        background: #ef4444;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 500;
+      `;
+
+      const excelButton = document.createElement('button');
+      excelButton.textContent = '📊 Excel';
+      excelButton.style.cssText = `
+        background: #10b981;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 500;
+      `;
+
+      const cancelButton = document.createElement('button');
+      cancelButton.textContent = 'Cancel';
+      cancelButton.style.cssText = `
+        background: #6b7280;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 500;
+      `;
+
+      // Assemble elements
+      buttonContainer.appendChild(pdfButton);
+      buttonContainer.appendChild(excelButton);
+      buttonContainer.appendChild(cancelButton);
+
+      modal.appendChild(title);
+      modal.appendChild(description);
+      modal.appendChild(buttonContainer);
+      overlay.appendChild(modal);
+
+      document.body.appendChild(overlay);
 
       const cleanup = () => {
-        document.body.removeChild(dialog);
+        document.body.removeChild(overlay);
       };
 
-      dialog.querySelector('#exportPDF')?.addEventListener('click', () => {
+      // Add event listeners
+      pdfButton.addEventListener('click', () => {
         cleanup();
         resolve('pdf');
       });
 
-      dialog.querySelector('#exportExcel')?.addEventListener('click', () => {
+      excelButton.addEventListener('click', () => {
         cleanup();
         resolve('excel');
       });
 
-      dialog.querySelector('#cancelExport')?.addEventListener('click', () => {
+      cancelButton.addEventListener('click', () => {
         cleanup();
         resolve(null);
+      });
+
+      // Close on overlay click
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          cleanup();
+          resolve(null);
+        }
       });
     });
   }

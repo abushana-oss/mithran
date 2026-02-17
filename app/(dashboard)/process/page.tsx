@@ -91,8 +91,7 @@ export default function ProcessPage() {
   const [filterProcessRoute, setFilterProcessRoute] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-
-  // State for lookup table modal
+// State for lookup table modal
   const [isLookupTableModalOpen, setIsLookupTableModalOpen] = useState(false);
   const [modalProcessId, setModalProcessId] = useState<string | null>(null);
   const [modalProcessName, setModalProcessName] = useState<string>('');
@@ -105,15 +104,13 @@ export default function ProcessPage() {
     }
   };
 
-
-  // Fetch processes from database
+// Fetch processes from database
   const { data: processesData, isLoading: processesLoading, error: processesError } = useProcesses();
 
   // Fetch reference tables for selected process (from old functionality)
   const { data: referenceTables, isLoading: loadingTables } = useReferenceTables(selectedProcessId || undefined);
 
-
-  // Fetch reference tables for modal process (only if modalProcessId is a valid UUID)
+// Fetch reference tables for modal process (only if modalProcessId is a valid UUID)
   const { data: modalReferenceTables, isLoading: loadingModalTables } = useReferenceTables(
     modalProcessId && modalProcessId !== 'test' ? modalProcessId : undefined
   );
@@ -127,8 +124,7 @@ export default function ProcessPage() {
   });
   const { data: hierarchy } = useProcessHierarchy();
 
-
-  // Bulk update mutation
+// Bulk update mutation
   const bulkUpdateMutation = useBulkUpdateTableRows();
 
   // Calculator mapping mutations
@@ -136,9 +132,7 @@ export default function ProcessPage() {
   const updateMappingMutation = useUpdateProcessCalculatorMapping();
   const deleteMappingMutation = useDeleteProcessCalculatorMapping();
 
-
-
-  const handleEditTable = (tableId: string) => {
+const handleEditTable = (tableId: string) => {
     setEditingTableId(tableId);
     // Initialize edited data with current table rows
     const table = referenceTables?.find(t => t.id === tableId);
@@ -450,7 +444,7 @@ export default function ProcessPage() {
   const renderProcessTables = () => {
     if (!selectedProcessId) return null;
 
-    const processes = processesData?.data?.processes || processesData?.processes || [];
+    const processes = processesData?.processes || [];
     const process = processes.find(p => p.id === selectedProcessId);
     if (!process) return null;
 
@@ -642,7 +636,7 @@ export default function ProcessPage() {
                         calculatorMappings?.mappings.map((mapping) => {
                           const handleProcessRouteClick = () => {
                             // Find the process by name (processRoute)
-                            const processes = processesData?.data?.processes || processesData?.processes || [];
+                            const processes = processesData?.processes || [];
                             const process = processes.find(
                               p => p.processName === mapping.processRoute
                             );
@@ -653,7 +647,7 @@ export default function ProcessPage() {
                               setIsLookupTableModalOpen(true);
                             } else {
                               // Process not found - show user-friendly message
-                              const processes = processesData?.data?.processes || processesData?.processes || [];
+                              const processes = processesData?.processes || [];
                               toast.error(`Process "${mapping.processRoute}" not found. Please update the calculator mapping to use one of: ${processes.map(p => p.processName).join(', ')}`);
                             }
                           };
@@ -734,14 +728,9 @@ export default function ProcessPage() {
               <p className="text-sm text-amber-600 mt-1">
                 For production lot-specific processes, navigate to Production Planning → select a lot.
               </p>
-              {processesData?.data?.processes && processesData.data.processes.length > 0 && (
-                <p className="text-sm text-green-600 mt-2">
-                  ✅ Found {processesData.data.processes.length} process templates
-                </p>
-              )}
               {processesData?.processes && processesData.processes.length > 0 && (
                 <p className="text-sm text-green-600 mt-2">
-                  ✅ Found {processesData.processes.length} process templates
+                  Found {processesData.processes.length} process templates
                 </p>
               )}
             </CardContent>

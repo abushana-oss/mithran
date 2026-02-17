@@ -48,19 +48,12 @@ import {
 } from '@/lib/api/hooks';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { useCreateSupplierEvaluationGroup } from '@/lib/api/hooks/useSupplierEvaluationGroups';
-import { uuidValidator } from '@/lib/utils/uuid-validator';
 import { toast } from 'sonner';
 
 const evaluationFormSchema = z.object({
   supplierGroupName: z.string().min(1, 'Please enter a supplier group name').max(100, 'Name must be less than 100 characters'),
-  bomId: z.string().min(1, 'Please select a BOM').refine((val) => {
-    const validation = uuidValidator.validate(val, 'BOM ID');
-    return validation.isValid;
-  }, 'BOM ID must be a valid UUID'),
-  bomItemIds: z.array(z.string()).min(1, 'Please select at least one part').refine((arr) => {
-    const validation = uuidValidator.validateArray(arr, 'BOM Item IDs');
-    return validation.errors.length === 0;
-  }, 'All BOM Item IDs must be valid UUIDs'),
+  bomId: z.string().uuid('Please select a valid BOM'),
+  bomItemIds: z.array(z.string().uuid()).min(1, 'Please select at least one part'),
   notes: z.string().optional(),
 });
 
@@ -99,7 +92,6 @@ export function NewEvaluationDialog({
   // Search states
   const [bomSearch, setBomSearch] = React.useState('');
 
-
   // Fetch data
   const { data: bomsData, isLoading: bomsLoading } = useBOMs({
     projectId: projectId
@@ -108,11 +100,6 @@ export function NewEvaluationDialog({
   const { data: bomItemsData, isLoading: bomItemsLoading } = useBOMItems(
     selectedBomId || undefined
   );
-
-
-
-
-
 
   // Mutations
   const createEvaluationGroupMutation = useCreateSupplierEvaluationGroup();
@@ -131,15 +118,10 @@ export function NewEvaluationDialog({
     );
   });
 
-
-
-
-
   const onSubmit = async (data: EvaluationFormData) => {
     try {
-      // Sanitize all UUIDs before sending to API
-      uuidValidator.assert(data.bomId, 'BOM ID');
-      const sanitizedBomItemIds = uuidValidator.assertArray(data.bomItemIds, 'BOM Item IDs');
+      // UUIDs are validated by Zod schema
+      const sanitizedBomItemIds = data.bomItemIds;
 
       // Prepare evaluation group data for database
       const evaluationGroupData = {
@@ -190,8 +172,6 @@ export function NewEvaluationDialog({
       }
     }
   };
-
-
 
   const handleBomChange = (bomId: string) => {
     form.setValue('bomId', bomId);
@@ -381,9 +361,6 @@ export function NewEvaluationDialog({
                     />
                   )}
                 </div>
-
-
-
 
                 {/* Notes */}
                 <FormField

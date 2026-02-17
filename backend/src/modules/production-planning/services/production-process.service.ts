@@ -144,6 +144,28 @@ export class ProductionProcessService {
 
     console.log('Process query result:', { data, error, count: data?.length });
 
+    // Debug: Log BOM requirement details to identify missing BOM items
+    if (data && data.length > 0) {
+      data.forEach((process, pIndex) => {
+        console.log(`🔍 Process ${pIndex}: ${process.process_name} (${process.id})`);
+        if (process.subtasks) {
+          process.subtasks.forEach((subtask: any, sIndex: number) => {
+            console.log(`  🔍 Subtask ${sIndex}: ${subtask.task_name} (${subtask.id})`);
+            if (subtask.bom_requirements) {
+              subtask.bom_requirements.forEach((req: any, rIndex: number) => {
+                console.log(`    🔍 BOM Req ${rIndex}:`, {
+                  id: req.id,
+                  bom_item_id: req.bom_item_id,
+                  bom_item: req.bom_item ? 'EXISTS' : 'NULL',
+                  bom_item_details: req.bom_item
+                });
+              });
+            }
+          });
+        }
+      });
+    }
+
     if (error) {
       console.error('Process query error:', error);
       throw new InternalServerErrorException(`Failed to fetch processes: ${error.message}`);

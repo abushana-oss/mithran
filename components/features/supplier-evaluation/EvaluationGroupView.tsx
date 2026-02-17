@@ -173,8 +173,7 @@ export function EvaluationGroupView({ projectId, bomParts, evaluationGroupName, 
     return filtered;
   }, [bomParts, partsSearchTerm, partProcesses]);
 
-
-  // Filter vendors based on selected parts and their processes
+// Filter vendors based on selected parts and their processes
   const matchedVendors = useMemo(() => {
     if (selectedParts.length === 0) {
       return [];
@@ -258,8 +257,7 @@ export function EvaluationGroupView({ projectId, bomParts, evaluationGroupName, 
     return filteredVendors;
   }, [selectedParts, partProcesses, vendors]);
 
-
-  const handlePartToggle = (partId: string, checked: boolean) => {
+const handlePartToggle = (partId: string, checked: boolean) => {
     setSelectedParts(prev =>
       checked ? [...prev, partId] : prev.filter(id => id !== partId)
     );
@@ -338,19 +336,16 @@ export function EvaluationGroupView({ projectId, bomParts, evaluationGroupName, 
       
       // Validation
       if (bomItemIds.length === 0) {
-        alert('Please select at least one BOM part');
         setIsSubmittingRfq(false);
         return;
       }
       
       if (vendorIds.length === 0) {
-        alert('Please select at least one vendor');
         setIsSubmittingRfq(false);
         return;
       }
 
-
-      // Create RFQ with comprehensive details
+// Create RFQ with comprehensive details
       const rfqData = {
         rfqName: `RFQ for ${bomItemIds.length} Part${bomItemIds.length !== 1 ? 's' : ''}`,
         projectId: projectId,
@@ -1192,8 +1187,7 @@ We look forward to your competitive proposal and establishing a successful partn
           </CardContent>
         </Card>
 
-
-        {/* Block 3: REVIEW & SEND RFQ - Only show when vendors are selected */}
+{/* Block 3: REVIEW & SEND RFQ - Only show when vendors are selected */}
         {selectedVendors.length > 0 && (
           <Card className="bg-gray-800 border-gray-700">
             <CardContent className="p-0">

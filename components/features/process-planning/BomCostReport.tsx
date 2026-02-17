@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { FileDown } from 'lucide-react';
 
-
 interface BomCostReportProps {
   bomId: string | null;
 }
@@ -18,7 +17,7 @@ export const BomCostReport: React.FC<BomCostReportProps> = ({ bomId }) => {
   const { data: report, isLoading, error } = useBomCostReport(bomId);
 
   const handleExportToDraft = () => {
-    // TODO: Implement export to draft functionality
+    
   };
 
   if (!bomId) return null;

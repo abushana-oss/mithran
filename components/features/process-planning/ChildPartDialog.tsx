@@ -154,23 +154,18 @@ export function ChildPartDialog({
     e.preventDefault();
 
     if (!estimateName.trim()) {
-      alert('Please enter estimate name');
       return;
     }
     if (!supplierLocation.trim()) {
-      alert('Please enter supplier location');
       return;
     }
     if (quantity <= 0) {
-      alert('Please enter a valid quantity');
       return;
     }
     if (makeBuy === 'buy' && unitCost <= 0) {
-      alert('Please enter unit cost for purchased part');
       return;
     }
     if (makeBuy === 'make' && rawMaterialCost <= 0 && processCost <= 0) {
-      alert('Please enter raw material cost or process cost for manufactured part');
       return;
     }
 

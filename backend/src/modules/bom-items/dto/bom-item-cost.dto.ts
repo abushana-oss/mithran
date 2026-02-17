@@ -66,7 +66,7 @@ export class BomItemCostDto {
   @IsNumber()
   sellingPrice: number;
 
-  @ApiProperty({ description: 'Detailed cost breakdown', type: 'object' })
+  @ApiProperty({ description: 'Detailed cost breakdown', type: 'object', additionalProperties: true })
   @IsObject()
   @IsOptional()
   costBreakdown?: Record<string, any>;

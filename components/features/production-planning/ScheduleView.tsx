@@ -26,7 +26,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { productionPlanningApi } from '@/lib/api/production-planning';
-import { useOptimisticUpdates } from '@/lib/hooks/useOptimisticUpdates';
 
 interface BOMPartRequirement {
   id: string;
@@ -88,8 +87,12 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
   const [showBOMView, setShowBOMView] = useState(true);
   const [loading, setLoading] = useState(true);
   
-  // Use optimistic updates for process data
-  const processesState = useOptimisticUpdates<ProcessStep[]>([]);
+  // Use state for process data
+  const [processesData, setProcessesData] = useState<ProcessStep[]>([]);
+  const processesState = {
+    data: processesData,
+    setData: setProcessesData
+  };
 
   // Fetch real processes data and organize them by sections
   useEffect(() => {
@@ -99,9 +102,24 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
       try {
         setLoading(true);
         const response = await productionPlanningApi.getProcessesByLot(lotId);
-        console.log('🔄 ScheduleView - Raw processes response:', response);
         
-        // Transform API data to match UI expectations
+        console.log(`🔍 ScheduleView - Raw API response for lot ${lotId}:`, {
+          responseExists: !!response,
+          responseLength: Array.isArray(response) ? response.length : 0,
+          responseType: typeof response,
+          sampleProcess: response?.[0] ? {
+            id: response[0].id,
+            processName: response[0].process_name || response[0].processName,
+            subtasksCount: (response[0].subtasks || []).length,
+            sampleSubtask: response[0].subtasks?.[0] ? {
+              id: response[0].subtasks[0].id,
+              taskName: response[0].subtasks[0].task_name || response[0].subtasks[0].taskName,
+              bomRequirementsCount: (response[0].subtasks[0].bom_requirements || response[0].subtasks[0].bomRequirements || []).length
+            } : null
+          } : null
+        });
+
+// Transform API data to match UI expectations
         const transformedProcesses = (response || []).map((process: any) => {
           // Calculate estimated duration from process data or use default
           const estimatedHours = process.estimated_hours || process.estimatedHours || process.estimatedDuration || 
@@ -127,10 +145,8 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
                      processName.includes('delivery') || processName.includes('ship')) {
             sectionName = 'Packing';
           }
-          
-          console.log(`📊 Process "${process.process_name || process.processName}" assigned to section: ${sectionName}`);
-          
-          return {
+
+return {
             id: process.id,
             name: process.process_name || process.processName || 'Unnamed Process',
             sectionName: sectionName,
@@ -180,17 +196,27 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
                 startTime: subtask.planned_start_date || subtask.startTime,
                 endTime: subtask.planned_end_date || subtask.endTime,
                 responsiblePersonName: subtask.assigned_operator || subtask.assignedOperator || subtask.responsiblePerson || 'Unassigned',
-                bomRequirements: (subtask.bom_requirements || subtask.bomRequirements || []).map((bomReq: any) => ({
-                  id: bomReq.id || bomReq.bom_item_id,
-                  partId: bomReq.bomItemId || bomReq.bom_item_id || bomReq.id,
-                  partNumber: bomReq.partNumber || bomReq.part_number || bomReq.bom_item?.part_number || 'N/A',
-                  partName: bomReq.partName || bomReq.part_name || bomReq.name || bomReq.bom_item?.name || bomReq.bom_item?.part_number || 'Unnamed Part',
-                  requiredQuantity: bomReq.requiredQuantity || bomReq.required_quantity || bomReq.quantity || 0,
-                  consumedQuantity: bomReq.consumedQuantity || bomReq.consumed_quantity || 0,
-                  availableQuantity: bomReq.availableQuantity || bomReq.available_quantity || 0,
-                  unit: bomReq.unit || 'units',
-                  status: bomReq.status?.toUpperCase() || (bomReq.available_quantity > 0 ? 'AVAILABLE' : 'SHORTAGE')
-                }))
+                bomRequirements: (() => {
+                  const rawBomReqs = subtask.bom_requirements || subtask.bomRequirements || [];
+                  console.log(`🔍 ScheduleView - Processing BOM for subtask "${subtask.task_name || subtask.taskName}":`, {
+                    subtaskId: subtask.id,
+                    rawBomReqsCount: rawBomReqs.length,
+                    rawBomReqs: rawBomReqs.slice(0, 3),
+                    hasRequirements: rawBomReqs.length > 0
+                  });
+                  
+                  return rawBomReqs.map((bomReq: any, index: number) => ({
+                    id: bomReq.id || bomReq.bom_item_id || `bom-${index}`,
+                    partId: bomReq.bomItemId || bomReq.bom_item_id || bomReq.id,
+                    partNumber: bomReq.partNumber || bomReq.part_number || bomReq.bom_item?.part_number || 'N/A',
+                    partName: bomReq.partName || bomReq.part_name || bomReq.name || bomReq.bom_item?.name || bomReq.bom_item?.part_number || 'Unnamed Part',
+                    requiredQuantity: bomReq.requiredQuantity || bomReq.required_quantity || bomReq.quantity || 0,
+                    consumedQuantity: bomReq.consumedQuantity || bomReq.consumed_quantity || 0,
+                    availableQuantity: bomReq.availableQuantity || bomReq.available_quantity || 0,
+                    unit: bomReq.unit || 'units',
+                    status: bomReq.status?.toUpperCase() || (bomReq.available_quantity > 0 ? 'AVAILABLE' : 'SHORTAGE')
+                  }));
+                })()
               };
             })
           };
@@ -223,9 +249,25 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
       groups[section] = [];
     });
     
+    // Guard against undefined processes
+    if (!processes || !Array.isArray(processes)) {
+      return groups;
+    }
+    
     // Group processes by their section, handling cross-section subtasks properly
     processes.forEach(process => {
       const processSection = process.sectionName || 'Process';
+      
+      console.log(`🔍 ScheduleView - Grouping process "${process.name}" (Section: ${processSection}):`, {
+        processId: process.id,
+        subTasksCount: process.subTasks?.length || 0,
+        subTasks: (process.subTasks || []).map(st => ({
+          id: st.id,
+          name: st.name,
+          taskName: st.taskName,
+          bomReqCount: st.bomRequirements?.length || 0
+        }))
+      });
       
       // Separate subtasks by intended section
       const subtasksBySection: Record<string, any[]> = {};
@@ -233,11 +275,24 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
         subtasksBySection[section] = [];
       });
       
-      process.subTasks.forEach(subtask => {
+      // Guard against undefined subTasks
+      if (process.subTasks && Array.isArray(process.subTasks)) {
+        process.subTasks.forEach(subtask => {
         // Extract intended section from task name (use correct property from API)
         const taskName = subtask.taskName || subtask.name || '';
         const sectionMatch = taskName.match(/^\[([^\]]+)\]/);
         const intendedSection = sectionMatch ? sectionMatch[1] : processSection;
+        
+        console.log(`🔍 ScheduleView - Processing subtask "${taskName}":`, {
+          subtaskId: subtask.id,
+          originalSection: processSection,
+          intendedSection: intendedSection,
+          bomRequirementsCount: subtask.bomRequirements?.length || 0,
+          bomRequirements: subtask.bomRequirements?.map(b => ({
+            partNumber: b.partNumber,
+            partName: b.partName
+          })) || []
+        });
         
         if (subtasksBySection[intendedSection]) {
           // Clean the task name by removing section prefix
@@ -251,7 +306,8 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
           // Default to process section if intended section not found
           subtasksBySection[processSection].push(subtask);
         }
-      });
+        });
+      }
       
       // Add process to its main section with only its own subtasks
       const processWithMainSubtasks = {
@@ -289,6 +345,11 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
     });
     
     // Collect all subtasks and assign them to sections based on their task name prefix
+    // Guard against undefined processes
+    if (!processes || !Array.isArray(processes)) {
+      return groups;
+    }
+    
     processes.forEach(process => {
       process.subTasks?.forEach(subtask => {
         // Extract intended section from task name prefix
@@ -314,7 +375,7 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
     return groups;
   })();
   
-  const displayProcesses = processes;
+  const displayProcesses = processes || [];
 
   // Helper function to calculate actual hours based on dates
   const calculateActualHours = (startDate: string | null, endDate: string | null, estimatedHours: number, status: string) => {
@@ -445,6 +506,7 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
     try {
       if (editingTask.type === 'process') {
         // Update process optimistically
+        if (!processes || !Array.isArray(processes)) return;
         const updatedProcesses = processes.map(process => {
           if (process.id === editingTask.id) {
             return {
@@ -468,6 +530,7 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
         
       } else if (editingTask.type === 'subtask') {
         // Update subtask optimistically
+        if (!processes || !Array.isArray(processes)) return;
         const updatedProcesses = processes.map(process => {
           if (process.id === editingTask.processId) {
             return {
@@ -515,6 +578,7 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
 
     try {
       // Update the BOM data optimistically
+      if (!processes || !Array.isArray(processes)) return;
       const updatedProcesses = processes.map(process => ({
         ...process,
         subTasks: process.subTasks.map(subTask => {
@@ -642,15 +706,16 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
       // Create a new window for the PDF content
       const printWindow = window.open('', '_blank', 'width=1200,height=800');
       if (!printWindow) {
-        alert('Please allow pop-ups to export the Gantt chart');
         return;
       }
 
       // Generate PDF-optimized HTML content with fresh data
       const pdfContent = generatePDFContent();
       
-      printWindow.document.write(pdfContent);
-      printWindow.document.close();
+      // Secure PDF content insertion
+      if (printWindow.document.body) {
+        printWindow.document.body.innerHTML = pdfContent;
+      }
       
       // Wait for content to load, then trigger save as PDF
       setTimeout(() => {
@@ -669,8 +734,7 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
       
     } catch (error) {
       console.error('Failed to export PDF:', error);
-      alert('Failed to export PDF. Please try again.');
-    }
+      }
   };
 
   // Generate PDF-optimized content
@@ -1143,8 +1207,7 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
         </Card>
       </div>
 
-
-      {/* Gantt Chart */}
+{/* Gantt Chart */}
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -1433,7 +1496,7 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
                                       className="absolute top-1 h-4 rounded flex items-center justify-center px-1"
                                       style={{
                                         backgroundColor: (() => {
-                                          console.log(`🎨 Subtask "${subTask.name}" status: "${subTask.status}"`);
+                                          
                                           switch(subTask.status) {
                                             case 'IN_PROGRESS': return 'rgb(251, 146, 60)'; // Orange
                                             case 'COMPLETED': return 'rgb(34, 197, 94)';    // Green
@@ -1771,8 +1834,7 @@ export const ScheduleView = ({ lotId }: ScheduleViewProps) => {
                 />
               </div>
 
-              
-              <div>
+<div>
                 <label className="text-sm font-medium">Duration (hours)</label>
                 <input 
                   type="number"

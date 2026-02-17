@@ -104,29 +104,33 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
         setLoading(true);
 
         // Fetch production entries from API
-        const entriesData = await productionEntriesApi.getProductionEntriesForLot(lotId);
+        const entriesData = await productionEntriesApi.getEntriesByLot(lotId);
 
-        // Check if entriesData is an array before mapping
-        if (Array.isArray(entriesData)) {
-          setEntries(entriesData.map(entry => ({
+        // API response is wrapped in {data: [], error: null, timestamp: ...}
+        const entries = entriesData?.data || entriesData;
+
+        // Check if entries is an array before mapping
+        if (Array.isArray(entries)) {
+          console.log('Sample entry structure:', entries[0]);
+          setEntries(entries.map(entry => ({
             id: entry.id,
-            date: entry.entryDate,
-            shift: entry.shift,
-            processId: entry.processId,
-            processName: entry.processName,
-            targetQuantity: entry.targetQuantity,
-            producedQuantity: entry.producedQuantity,
-            rejectedQuantity: entry.rejectedQuantity,
-            reworkQuantity: entry.reworkQuantity,
-            downtimeMinutes: entry.downtimeMinutes,
-            downtimeReason: entry.downtimeReason,
-            qualityIssues: entry.qualityIssues,
-            operatorNotes: entry.operatorNotes,
-            enteredBy: entry.enteredBy,
-            enteredAt: entry.createdAt
+            date: entry.entry_date,
+            shift: entry.shift || 'MORNING',
+            processId: entry.production_process_id || '',
+            processName: entry.production_process?.process_name || 'General Production',
+            targetQuantity: entry.planned_quantity || 0,
+            producedQuantity: entry.actual_quantity || 0,
+            rejectedQuantity: entry.rejected_quantity || 0,
+            reworkQuantity: entry.rework_quantity || 0,
+            downtimeMinutes: Math.floor((entry.downtime_hours || 0) * 60),
+            downtimeReason: entry.downtime_reason || '',
+            qualityIssues: entry.issues_encountered || '',
+            operatorNotes: entry.remarks || '',
+            enteredBy: entry.entered_by || '',
+            enteredAt: entry.created_at
           })));
         } else {
-          console.warn('Production entries data is not an array:', entriesData);
+          
           setEntries([]);
         }
 
@@ -143,7 +147,7 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
             efficiency: week.efficiency
           })));
         } else {
-          console.warn('Weekly summary data is not an array:', weeklyData);
+          
           setWeeklyEntries([]);
         }
 
@@ -161,24 +165,25 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
 
   const refreshData = async () => {
     try {
-      const entriesData = await productionEntriesApi.getProductionEntriesForLot(lotId);
-      if (Array.isArray(entriesData)) {
-        setEntries(entriesData.map(entry => ({
+      const entriesData = await productionEntriesApi.getEntriesByLot(lotId);
+      const entries = entriesData?.data || entriesData;
+      if (Array.isArray(entries)) {
+        setEntries(entries.map(entry => ({
           id: entry.id,
-          date: entry.entryDate,
-          shift: entry.shift,
-          processId: entry.processId,
-          processName: entry.processName,
-          targetQuantity: entry.targetQuantity,
-          producedQuantity: entry.producedQuantity,
-          rejectedQuantity: entry.rejectedQuantity,
-          reworkQuantity: entry.reworkQuantity,
-          downtimeMinutes: entry.downtimeMinutes,
-          downtimeReason: entry.downtimeReason,
-          qualityIssues: entry.qualityIssues,
-          operatorNotes: entry.operatorNotes,
-          enteredBy: entry.enteredBy,
-          enteredAt: entry.createdAt
+          date: entry.entry_date,
+          shift: entry.shift || 'MORNING',
+          processId: entry.production_process_id || '',
+          processName: entry.production_process?.process_name || 'General Production',
+          targetQuantity: entry.planned_quantity || 0,
+          producedQuantity: entry.actual_quantity || 0,
+          rejectedQuantity: entry.rejected_quantity || 0,
+          reworkQuantity: entry.rework_quantity || 0,
+          downtimeMinutes: Math.floor((entry.downtime_hours || 0) * 60),
+          downtimeReason: entry.downtime_reason || '',
+          qualityIssues: entry.issues_encountered || '',
+          operatorNotes: entry.remarks || '',
+          enteredBy: entry.entered_by || '',
+          enteredAt: entry.created_at
         })));
       }
     } catch (error) {
@@ -188,27 +193,34 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
 
   const handleSaveEntry = async () => {
     if (!formData.processName || !formData.entryDate || !formData.shift) {
-      alert('Please fill in all required fields');
       return;
     }
 
     try {
       setSaving(true);
 
-      await productionEntriesApi.createProductionEntry({
-        lotId: lotId,
-        processName: formData.processName,
-        entryDate: formData.entryDate,
-        shift: formData.shift as 'MORNING' | 'AFTERNOON' | 'NIGHT',
-        targetQuantity: formData.targetQuantity || 0,
-        producedQuantity: formData.producedQuantity || 0,
-        rejectedQuantity: formData.rejectedQuantity || 0,
-        reworkQuantity: formData.reworkQuantity || 0,
-        downtimeMinutes: formData.downtimeMinutes || 0,
+      const entryData = {
+        lot_id: lotId, // This will be extracted for URL path
+        productionLotId: lotId,
+        productionProcessId: undefined, // Optional
+        entryDate: formData.entryDate, // Should be in YYYY-MM-DD format
+        entryType: 'daily' as const,
+        plannedQuantity: Math.floor(Number(formData.targetQuantity) || 0),
+        actualQuantity: Math.floor(Number(formData.producedQuantity) || 0),
+        rejectedQuantity: Math.floor(Number(formData.rejectedQuantity) || 0),
+        reworkQuantity: Math.floor(Number(formData.reworkQuantity) || 0),
+        downtimeHours: Number(((formData.downtimeMinutes || 0) / 60).toFixed(2)), // Convert minutes to hours with 2 decimal places
         downtimeReason: formData.downtimeReason || '',
-        qualityIssues: formData.qualityIssues || '',
-        operatorNotes: formData.operatorNotes || ''
-      });
+        shift: formData.shift,
+        operatorsCount: 1,
+        supervisor: undefined,
+        remarks: formData.operatorNotes || '',
+        issuesEncountered: formData.qualityIssues || ''
+      };
+
+      console.log('Sending production entry data:', entryData);
+      
+      await productionEntriesApi.createEntry(entryData);
 
       // Refresh data after successful save
       await refreshData();
@@ -232,8 +244,7 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
 
     } catch (error) {
       console.error('Error saving production entry:', error);
-      alert('Failed to save production entry. Please try again.');
-    } finally {
+      } finally {
       setSaving(false);
     }
   };
@@ -260,7 +271,6 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
 
   const handleUpdateEntry = async () => {
     if (!editingEntry || !formData.processName || !formData.entryDate || !formData.shift) {
-      alert('Please fill in all required fields');
       return;
     }
 
@@ -304,8 +314,7 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
 
     } catch (error) {
       console.error('Error updating production entry:', error);
-      alert('Failed to update production entry. Please try again.');
-    } finally {
+      } finally {
       setSaving(false);
     }
   };
@@ -325,8 +334,7 @@ export const ProductionEntry = ({ lotId }: ProductionEntryProps) => {
 
     } catch (error) {
       console.error('Error deleting production entry:', error);
-      alert('Failed to delete production entry. Please try again.');
-    } finally {
+      } finally {
       setDeleting(null);
     }
   };

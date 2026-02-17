@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { RemarksApi } from '@/lib/api/remarks';
 import { RemarkStatus } from '@/types/remarks';
 import { productionPlanningApi } from '@/lib/api/production-planning';
+import { apiClient } from '@/lib/api/client';
 import { 
   useIntegratedDashboard, 
   useProductionMonitoring, 
@@ -251,14 +252,267 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
     };
   });
 
+  // Get lot data including selected BOM items
+  const { data: lotData, isLoading: lotLoading } = useQuery({
+    queryKey: ['lot', lotId],
+    queryFn: () => productionPlanningApi.getProductionLotById(lotId),
+    enabled: !!lotId,
+  });
+
+  // Get BOM items directly if lot has a BOM but no items
+  const bomId = lotData?.data?.bomId || lotData?.bomId;
+  const { data: bomData, isLoading: bomLoading } = useQuery({
+    queryKey: ['bom-items', bomId, lotId],
+    queryFn: async () => {
+      if (!bomId) {
+        console.log('❌ No BOM ID found, trying to get from lot data');
+        return null;
+      }
+      try {
+        // Try multiple endpoints to get BOM items
+        console.log(`🔍 Trying to fetch BOM items for BOM ID: ${bomId}`);
+        
+        let response;
+        // First try: the endpoint we see in the logs that's working
+        try {
+          response = await apiClient.get(`/bom-items?bomId=${bomId}`);
+          console.log('✅ Got BOM items from /bom-items?bomId=:', response);
+        } catch (err1) {
+          console.log('❌ Failed /bom-items?bomId=, trying production-planning endpoint');
+          try {
+            // Second try: the production planning specific endpoint  
+            response = await apiClient.get(`/production-planning/lots/${lotId}/bom-items`);
+            console.log('✅ Got BOM items from production-planning endpoint:', response);
+          } catch (err2) {
+            console.log('❌ Failed production-planning endpoint, trying direct BOM endpoint');
+            // Third try: direct BOM endpoint
+            response = await apiClient.get(`/boms/${bomId}/items`);
+            console.log('✅ Got BOM items from direct BOM endpoint:', response);
+          }
+        }
+        
+        // The response might be wrapped in data property
+        return response?.data || response;
+      } catch (error) {
+        console.error('❌ Could not fetch BOM items from any endpoint:', error);
+        return null;
+      }
+    },
+    enabled: !!bomId || !!lotId,
+    retry: 1,
+  });
+
+  // Debug: Log all data sources
+  console.log('🔍 DEBUG - lotData structure:', {
+    lotDataExists: !!lotData,
+    lotDataData: lotData?.data,
+    selectedBomItems: lotData?.data?.selectedBomItems,
+    directSelectedBomItems: lotData?.selectedBomItems,
+    bomItems: lotData?.data?.bom?.items,
+    lotDataKeys: lotData ? Object.keys(lotData) : null
+  });
+
+  // Use selected BOM items from lot as the primary source, fallback to BOM items if none selected
+  const selectedBomItems = lotData?.data?.selectedBomItems || lotData?.selectedBomItems || [];
   const bomItems = dashboardData?.data?.materials || [];
+  const allBomItems = lotData?.data?.bom?.items || lotData?.bom?.items || [];
+  // Handle the API response structure - bomData has items array
+  const directBomItems = Array.isArray(bomData) ? bomData : (bomData?.items || bomData?.data || []);
+
+  console.log('🔍 DEBUG - Data sources:', {
+    selectedBomItemsCount: selectedBomItems.length,
+    allBomItemsCount: allBomItems.length,
+    directBomItemsCount: Array.isArray(directBomItems) ? directBomItems.length : 0,
+    selectedBomItemsSample: selectedBomItems.slice(0, 2),
+    bomDataStructure: typeof bomData,
+    directBomItemsSample: Array.isArray(directBomItems) ? directBomItems.slice(0, 2) : 'Not an array',
+  });
+  
+  // If no selected items but BOM has items, use all BOM items as fallback
+  // Priority: selectedBomItems > allBomItems > directBomItems (only as last resort)
+  let itemsToProcess = [];
+  if (selectedBomItems.length > 0) {
+    itemsToProcess = selectedBomItems;
+    console.log('✅ Using selectedBomItems (preferred):', selectedBomItems);
+  } else if (allBomItems.length > 0) {
+    itemsToProcess = allBomItems;
+    console.log('✅ Using allBomItems from lot:', allBomItems);
+  } else if (Array.isArray(directBomItems) && directBomItems.length > 0) {
+    // Last resort: show all BOM items with a warning
+    console.warn('⚠️ No selected BOM items found. Showing all BOM items as fallback.');
+    console.warn('This means the lot creation process did not properly save selected BOM items.');
+    itemsToProcess = directBomItems;
+    console.log('Using directBomItems (fallback):', directBomItems);
+  } else {
+    console.warn('❌ No BOM items found from any source. Check BOM configuration.');
+    itemsToProcess = [];
+  }
+  
+  // Combine selected/BOM items with any existing material data and include subtask BOM requirements
+  let materialItems = [];
+  
+  if (itemsToProcess.length > 0) {
+    // Process lot-level BOM items
+    materialItems = itemsToProcess.map(bomItem => {
+      // Check if we have material tracking data for this BOM item
+      const existingMaterial = bomItems.find(m => 
+        (m.bom_item_id === bomItem.id) || 
+        (m.bom_items?.id === bomItem.id)
+      );
+      
+      // Handle both direct BOM items and selected BOM items with nested structure
+      const actualBomItem = bomItem.bom_item || bomItem;
+      
+      // For selected BOM items, use partNumber as the display name if name is not available
+      const displayName = actualBomItem.name || bomItem.name || 
+                         actualBomItem.partNumber || bomItem.partNumber ||
+                         actualBomItem.part_number || bomItem.part_number || 'Unknown Part';
+      
+      const partNumber = actualBomItem.partNumber || bomItem.partNumber ||
+                        actualBomItem.part_number || bomItem.part_number || 'N/A';
+      
+      return existingMaterial || {
+        id: actualBomItem.id || bomItem.id,
+        bom_item_id: actualBomItem.id || bomItem.id,
+        bom_items: {
+          id: actualBomItem.id || bomItem.id,
+          name: displayName,
+          part_number: partNumber,
+          description: actualBomItem.description || bomItem.description || 'No description'
+        },
+        required_quantity: actualBomItem.quantity || bomItem.quantity || 1,
+        approved_quantity: 0,
+        consumed_quantity: 0,
+        material_status: 'PLANNING',
+        criticality: actualBomItem.criticality || bomItem.criticality || 'MEDIUM',
+        estimated_cost: actualBomItem.unit_cost_inr || actualBomItem.unitCost || bomItem.unit_cost || bomItem.unitCost || 0,
+        alerts: [],
+        processImpact: []
+      };
+    });
+  } else {
+    // Fallback to existing material tracking data
+    materialItems = bomItems;
+  }
+  
+  // Also extract BOM requirements from process subtasks to show comprehensive tracking
+  const subtaskBomItems = (realProcesses || []).flatMap((process: any) => {
+    console.log(`🔍 Processing subtasks for process: ${process.process_name || process.processName}`, {
+      processId: process.id,
+      subtaskCount: (process.subtasks || []).length,
+      subtasks: (process.subtasks || []).map((st: any) => ({
+        id: st.id,
+        name: st.task_name || st.taskName,
+        bomRequirements: (st.bom_requirements || st.bomRequirements || []).length
+      }))
+    });
+    
+    return (process.subtasks || []).flatMap((subtask: any, subtaskIndex: number) => {
+      const bomRequirements = subtask.bom_requirements || subtask.bomRequirements || [];
+      
+      console.log(`🔍 Processing BOM for subtask ${subtaskIndex + 1}:`, {
+        subtaskId: subtask.id,
+        taskName: subtask.task_name || subtask.taskName,
+        bomCount: bomRequirements.length,
+        bomRequirements: bomRequirements.map((b: any) => ({
+          id: b.id,
+          partNumber: b.part_number || b.partNumber,
+          partName: b.part_name || b.partName || b.name
+        }))
+      });
+      
+      return bomRequirements.map((bomReq: any, bomIndex: number) => {
+        const taskName = subtask.task_name || subtask.taskName || 'Unknown Task';
+        const processName = process.process_name || process.processName || 'Unknown Process';
+        
+        // Determine which section this belongs to based on task name or process name
+        let sectionName = 'Process';
+        if (taskName.toLowerCase().includes('inspection') || taskName.includes('[Inspection]') || 
+            processName.toLowerCase().includes('inspection')) {
+          sectionName = 'Inspection';
+        } else if (taskName.toLowerCase().includes('raw') || taskName.includes('[Raw Material]') ||
+                   processName.toLowerCase().includes('raw')) {
+          sectionName = 'Raw Material';
+        } else if (taskName.toLowerCase().includes('pack') || taskName.includes('[Packing]') ||
+                   processName.toLowerCase().includes('pack')) {
+          sectionName = 'Packing';
+        }
+        
+        return {
+          id: bomReq.id || bomReq.bom_item_id || `subtask-${subtask.id}-${bomReq.part_number || bomReq.partNumber}-${bomIndex}`,
+          bom_item_id: bomReq.bom_item_id || bomReq.id,
+          bom_items: {
+            id: bomReq.bom_item_id || bomReq.id,
+            name: bomReq.part_name || bomReq.partName || bomReq.name || bomReq.bom_item?.name || bomReq.part_number || bomReq.partNumber || 'Subtask BOM Part',
+            part_number: bomReq.part_number || bomReq.partNumber || bomReq.bom_item?.part_number || 'N/A',
+            description: bomReq.description || bomReq.bom_item?.description || `Required for ${sectionName} - ${taskName}`
+          },
+          required_quantity: bomReq.required_quantity || bomReq.requiredQuantity || bomReq.quantity || 0,
+          approved_quantity: bomReq.available_quantity || bomReq.availableQuantity || 0,
+          consumed_quantity: bomReq.consumed_quantity || bomReq.consumedQuantity || 0,
+          material_status: bomReq.material_status || bomReq.status || (bomReq.available_quantity > 0 ? 'AVAILABLE' : 'PLANNING'),
+          criticality: bomReq.criticality || 'MEDIUM',
+          estimated_cost: bomReq.unit_cost || bomReq.unitCost || 0,
+          alerts: [],
+          processImpact: [`${sectionName} - ${taskName}`],
+          subtaskId: subtask.id,
+          processId: process.id,
+          sectionName: sectionName,
+          taskName: taskName,
+          isSubtaskBom: true // Flag to identify this comes from subtask
+        };
+      });
+    });
+  });
+  
+  console.log(`📊 Extracted ${subtaskBomItems.length} BOM items from subtasks:`, {
+    totalBomItems: subtaskBomItems.length,
+    inspectionItems: subtaskBomItems.filter(item => item.sectionName === 'Inspection').length,
+    rawMaterialItems: subtaskBomItems.filter(item => item.sectionName === 'Raw Material').length,
+    processItems: subtaskBomItems.filter(item => item.sectionName === 'Process').length,
+    packingItems: subtaskBomItems.filter(item => item.sectionName === 'Packing').length,
+    sampleItems: subtaskBomItems.slice(0, 3)
+  });
+  
+  // Merge lot-level BOM items with subtask BOM items, avoiding duplicates
+  const allUniqueMaterialItems = [...materialItems];
+  subtaskBomItems.forEach(subtaskBom => {
+    const existing = allUniqueMaterialItems.find(item => 
+      item.bom_items?.part_number === subtaskBom.bom_items?.part_number ||
+      item.id === subtaskBom.id
+    );
+    if (!existing) {
+      allUniqueMaterialItems.push(subtaskBom);
+    }
+  });
+  
+  // Use the combined list
+  materialItems = allUniqueMaterialItems;
   
   // Debug logging to understand data structure
   console.log('📊 IntegratedMonitoringBOM Debug Data:', {
-    dashboardData: dashboardData?.data,
+    lotData,
+    bomId,
+    bomData,
+    bomLoading,
+    selectedBomItems,
+    allBomItems,
+    directBomItems,
+    itemsToProcess,
+    dashboardMaterials: bomItems,
+    finalMaterialItems: materialItems,
     processProgress,
-    bomItems,
     remarksData
+  });
+
+  // Additional debug for BOM query status
+  console.log('🔍 BOM Query Status:', {
+    bomId,
+    queryEnabled: !!bomId,
+    isLoading: bomLoading,
+    hasData: !!bomData,
+    dataType: typeof bomData,
+    dataLength: Array.isArray(bomData) ? bomData.length : 'not array'
   });
   
   // Use real remarks data instead of mock alerts
@@ -276,7 +530,7 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
     relatedItems: remark.bom_part_id ? [`${remark.bom_part_id}`] : []
   })).filter((alert: any) => alert.status === RemarkStatus.OPEN); // Only show open remarks
   const metrics = dashboardData?.data?.metrics || {};
-  const loading = isLoading || remarksLoading || processesLoading;
+  const loading = isLoading || remarksLoading || processesLoading || lotLoading || bomLoading;
 
   const handleRefresh = async () => {
     refreshAll();
@@ -379,7 +633,7 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
     setExpandedRows(newExpanded);
   };
 
-  const filteredBOMItems = bomItems.filter(item => {
+  const filteredBOMItems = materialItems.filter(item => {
     // Use safe field access with fallbacks
     const partName = item.bom_items?.name || item.partName || '';
     const partNumber = item.bom_items?.part_number || item.partNumber || '';
@@ -398,20 +652,20 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
     ? Math.round(processProgress.reduce((sum, p) => sum + (p.progress || 0), 0) / processProgress.length)
     : 0;
     
-  const materialReadiness = bomItems.length > 0
-    ? Math.round(bomItems.reduce((sum, item) => {
+  const materialReadiness = materialItems.length > 0
+    ? Math.round(materialItems.reduce((sum, item) => {
         const required = item.required_quantity || 0;
         const approved = item.approved_quantity || 0;
         return sum + (required > 0 ? (approved / required) * 100 : 0);
-      }, 0) / bomItems.length)
+      }, 0) / materialItems.length)
     : 0;
     
   const criticalAlerts = integratedAlerts.filter(a => a.severity === 'CRITICAL').length;
   const highAlerts = integratedAlerts.filter(a => a.severity === 'HIGH').length;
   const blockedProcesses = processProgress.filter(p => p.status === 'BLOCKED').length;
   
-  const totalEstimatedCost = bomItems.reduce((sum, item) => sum + (item.estimated_cost || 0), 0);
-  const totalActualCost = bomItems.reduce((sum, item) => sum + (item.actual_cost || item.estimated_cost || 0), 0);
+  const totalEstimatedCost = materialItems.reduce((sum, item) => sum + (item.estimated_cost || 0), 0);
+  const totalActualCost = materialItems.reduce((sum, item) => sum + (item.actual_cost || item.estimated_cost || 0), 0);
 
   if (loading) {
     return (
@@ -479,8 +733,8 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
               {materialReadiness}%
             </div>
             <p className="text-xs text-muted-foreground">
-              {bomItems.length === 0 ? 'No materials initialized' : 
-               `Average across ${bomItems.length} materials`}
+              {materialItems.length === 0 ? 'No materials initialized' : 
+               `Average across ${materialItems.length} materials`}
             </p>
           </CardContent>
         </Card>
@@ -563,6 +817,21 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
               </div>
             </CardHeader>
             <CardContent>
+              {/* Show warning if displaying all BOM items instead of selected ones */}
+              {selectedBomItems.length === 0 && allBomItems.length === 0 && directBomItems.length > 0 && (
+                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                    <span className="text-sm font-medium text-yellow-900">
+                      Showing all BOM items
+                    </span>
+                  </div>
+                  <p className="text-xs text-yellow-800 mt-1">
+                    No specific BOM items were selected during lot creation. Showing all {directBomItems.length} items from the BOM as fallback.
+                  </p>
+                </div>
+              )}
+              
               <div className="flex flex-col sm:flex-row gap-4 mb-6">
                 <div className="flex-1">
                   <Label htmlFor="search">Search Materials</Label>
@@ -646,9 +915,16 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
                             <div className="space-y-1">
                               <div className="font-medium">{item.bom_items?.name || item.partName || 'Unknown'}</div>
                               <div className="text-sm text-muted-foreground">{item.bom_items?.part_number || item.partNumber || 'N/A'}</div>
-                              <Badge className={getSeverityColor(item.criticality || 'medium')} variant="outline" className="text-xs">
-                                {(item.criticality || 'medium').toUpperCase()}
-                              </Badge>
+                              <div className="flex gap-1 flex-wrap">
+                                <Badge className={getSeverityColor(item.criticality || 'medium')} variant="outline" className="text-xs">
+                                  {(item.criticality || 'medium').toUpperCase()}
+                                </Badge>
+                                {item.isSubtaskBom && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    Subtask BOM
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -674,18 +950,27 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
                           </TableCell>
                           <TableCell>
                             <div className="space-y-1">
-                              {(item.processImpact || []).map((processName, index) => {
-                                const process = processProgress.find(p => p.name === processName);
-                                return (
-                                  <Badge 
-                                    key={`${item.id || item.partNumber}-${processName}-${index}`}
-                                    variant="outline" 
-                                    className={`text-xs ${process ? getStatusColor(process.status) : 'bg-gray-100 text-gray-600'}`}
-                                  >
-                                    {processName}
-                                  </Badge>
-                                );
-                              })}
+                              {item.processImpact && item.processImpact.length > 0 ? (
+                                item.processImpact.map((processName, index) => {
+                                  const process = processProgress.find(p => p.name === processName || processName.includes(p.name));
+                                  return (
+                                    <Badge 
+                                      key={`${item.id || item.partNumber}-${processName}-${index}`}
+                                      variant="outline" 
+                                      className={`text-xs ${process ? getStatusColor(process.status) : 'bg-blue-100 text-blue-600'}`}
+                                      title={processName}
+                                    >
+                                      {processName.length > 20 ? `${processName.substring(0, 20)}...` : processName}
+                                    </Badge>
+                                  );
+                                })
+                              ) : item.isSubtaskBom ? (
+                                <Badge variant="outline" className="text-xs bg-blue-100 text-blue-600">
+                                  Subtask Requirement
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">No process assignment</span>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell>
@@ -782,6 +1067,21 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
                     ))}
                   </TableBody>
                 </Table>
+
+                {/* Show message when no materials are available */}
+                {filteredBOMItems.length === 0 && materialItems.length === 0 && (
+                  <div className="text-center py-8">
+                    <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <div className="text-lg font-medium mb-2">No Materials Found</div>
+                    <div className="text-muted-foreground space-y-1">
+                      <p>This production lot doesn't have any BOM items configured yet.</p>
+                      <p>Click "Initialize Materials" to set up material tracking for this lot.</p>
+                      {bomId && (
+                        <p className="text-xs mt-2">BOM ID: {bomId}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -796,6 +1096,21 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
               </CardDescription>
             </CardHeader>
             <CardContent>
+              {/* Show message when no materials are available */}
+              {materialItems.length === 0 && (
+                <div className="text-center py-8">
+                  <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <div className="text-lg font-medium mb-2">No Materials Found</div>
+                  <div className="text-muted-foreground space-y-1">
+                    <p>This production lot doesn't have any BOM items configured yet.</p>
+                    <p>Click "Initialize Materials" to set up material tracking for this lot.</p>
+                    {bomId && (
+                      <p className="text-xs mt-2">BOM ID: {bomId}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-4">
                 {integratedAlerts.map((alert) => (
                   <div key={alert.id} className="border border-l-4 border-l-orange-500 rounded-lg p-4">
@@ -970,12 +1285,12 @@ export const IntegratedMonitoringBOM = ({ lotId }: IntegratedMonitoringBOMProps)
               </ul>
             </div>
 
-            {bomItems.length > 0 && (
+            {materialItems.length > 0 && (
               <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 text-yellow-600" />
                   <span className="text-sm font-medium text-yellow-900">
-                    {bomItems.length} materials already loaded
+                    {materialItems.length} materials already loaded
                   </span>
                 </div>
                 <p className="text-xs text-yellow-800 mt-1">

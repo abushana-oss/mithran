@@ -328,7 +328,7 @@ export class ChildPartCostResponseDto {
   moqExtendedCost: number;
 
   // Detailed Breakdown
-  @ApiProperty({ description: 'Complete calculation breakdown', type: 'object' })
+  @ApiProperty({ description: 'Complete calculation breakdown', type: 'object', additionalProperties: true })
   calculationBreakdown: Record<string, any>;
 
   // Metadata

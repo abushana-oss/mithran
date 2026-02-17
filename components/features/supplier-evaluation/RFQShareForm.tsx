@@ -157,9 +157,7 @@ export function RFQShareForm({ projectId, bomId, onRFQSent, className }: RFQShar
     toast.success("Email content copied to clipboard");
   };
 
-
-
-  if (bomLoading || vendorsLoading) {
+if (bomLoading || vendorsLoading) {
     return (
       <Card className="p-6">
         <div className="flex items-center justify-center h-32">

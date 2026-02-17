@@ -65,11 +65,10 @@ export async function getVendorRatingMatrix(
 
   try {
     const response = await apiClient.get(`/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix`);
-    
+
     // Extract data - API client returns direct array
     const data = Array.isArray(response) ? response : [];
-    
-    
+
     // API already returns camelCase format, use directly
     const transformed = data.map((item: any) => {
       return {
@@ -88,13 +87,13 @@ export async function getVendorRatingMatrix(
         updatedAt: item.updatedAt
       };
     });
-    
+
     return transformed;
   } catch (error) {
     // Enhanced error handling for network failures
     const status = error?.response?.status;
     const statusText = error?.response?.statusText;
-    
+
     apiLogger.logApiError('GET', `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix`, error, {
       status,
       statusText,
@@ -102,12 +101,12 @@ export async function getVendorRatingMatrix(
       vendorId,
       errorType: error?.constructor?.name || 'Unknown'
     });
-    
+
     // Return empty array for 404s (no data exists yet)
     if (status === 404) {
       return [];
     }
-    
+
     throw error;
   }
 }
@@ -125,10 +124,10 @@ export async function initializeVendorRatingMatrix(
 
   try {
     const response = await apiClient.post(`/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/init`);
-    
+
     // Extract data - API client returns direct array
     const dataArray = Array.isArray(response) ? response : [];
-    
+
     // API now returns the created data directly
     if (Array.isArray(dataArray) && dataArray.length > 0) {
       // Transform database format to component format
@@ -147,22 +146,22 @@ export async function initializeVendorRatingMatrix(
         createdAt: item.createdAt,
         updatedAt: item.updatedAt
       }));
-      
+
       return transformed;
     }
-    
+
     // Fallback: fetch the newly created data if response is empty
     const fallbackData = await getVendorRatingMatrix(nominationId, vendorId);
     return fallbackData;
   } catch (error) {
     const status = error?.response?.status;
-    
+
     apiLogger.logApiError('POST', `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/init`, error, {
       status,
       nominationId,
       vendorId
     });
-    
+
     throw error;
   }
 }
@@ -178,7 +177,7 @@ export async function updateVendorRatingItem(
 ): Promise<void> {
   try {
     await apiClient.put(
-      `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/${ratingId}`, 
+      `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/${ratingId}`,
       updateData
     );
   } catch (error) {
@@ -201,64 +200,64 @@ class VendorRatingDataTransformer {
    */
   static transformToDto(updates: UpdateVendorRatingData[]): BatchVendorRatingUpdateDto {
     const transformedUpdates: BatchVendorRatingUpdateItemDto[] = [];
-    
+
     for (const update of updates) {
       // Skip invalid records
       if (!update.id) {
-        console.warn('Skipping update without ID:', update);
+
         continue;
       }
 
       // Start with minimal valid structure
       const transformed: any = { id: update.id };
       let hasChanges = false;
-      
+
       // Only include fields that are actually defined and valid
       // Send in both camelCase and snake_case formats to ensure backend compatibility
-      if (update.sectionWiseCapabilityPercent !== undefined && 
-          update.sectionWiseCapabilityPercent !== null &&
-          !isNaN(Number(update.sectionWiseCapabilityPercent))) {
+      if (update.sectionWiseCapabilityPercent !== undefined &&
+        update.sectionWiseCapabilityPercent !== null &&
+        !isNaN(Number(update.sectionWiseCapabilityPercent))) {
         const value = Number(update.sectionWiseCapabilityPercent);
         transformed.sectionWiseCapabilityPercent = value;
         transformed.section_wise_capability_percent = value;  // Backend compatibility
         hasChanges = true;
       }
-      
-      if (update.riskMitigationPercent !== undefined && 
-          update.riskMitigationPercent !== null &&
-          !isNaN(Number(update.riskMitigationPercent))) {
+
+      if (update.riskMitigationPercent !== undefined &&
+        update.riskMitigationPercent !== null &&
+        !isNaN(Number(update.riskMitigationPercent))) {
         const value = Number(update.riskMitigationPercent);
         transformed.riskMitigationPercent = value;
         transformed.risk_mitigation_percent = value;  // Backend compatibility
         hasChanges = true;
       }
-      
-      if (update.minorNC !== undefined && 
-          update.minorNC !== null &&
-          Number.isInteger(Number(update.minorNC))) {
+
+      if (update.minorNC !== undefined &&
+        update.minorNC !== null &&
+        Number.isInteger(Number(update.minorNC))) {
         const value = Number(update.minorNC);
         transformed.minorNC = value;
         transformed.minor_nc = value;  // Backend compatibility
         hasChanges = true;
       }
-      
-      if (update.majorNC !== undefined && 
-          update.majorNC !== null &&
-          Number.isInteger(Number(update.majorNC))) {
+
+      if (update.majorNC !== undefined &&
+        update.majorNC !== null &&
+        Number.isInteger(Number(update.majorNC))) {
         const value = Number(update.majorNC);
         transformed.majorNC = value;
         transformed.major_nc = value;  // Backend compatibility
         hasChanges = true;
       }
-      
-      if (update.assessmentAspects !== undefined && 
-          update.assessmentAspects !== null &&
-          typeof update.assessmentAspects === 'string' &&
-          update.assessmentAspects.trim().length > 0) {
+
+      if (update.assessmentAspects !== undefined &&
+        update.assessmentAspects !== null &&
+        typeof update.assessmentAspects === 'string' &&
+        update.assessmentAspects.trim().length > 0) {
         transformed.assessmentAspects = update.assessmentAspects.trim();
         hasChanges = true;
       }
-      
+
       // Only include records that have actual changes
       if (hasChanges) {
         transformedUpdates.push(transformed as BatchVendorRatingUpdateItemDto);
@@ -276,16 +275,16 @@ class VendorRatingDataTransformer {
     if (!dto.updates || !Array.isArray(dto.updates)) {
       throw new Error('Invalid DTO structure: updates must be an array');
     }
-    
+
     if (dto.updates.length === 0) {
       throw new Error('No updates provided');
     }
-    
+
     dto.updates.forEach((update, index) => {
       if (!update.id) {
         throw new Error(`Update at index ${index} missing required id field`);
       }
-      
+
       // Validate numeric fields with enterprise-grade constraints
       const numericFields = [
         { name: 'sectionWiseCapabilityPercent', min: 0, max: 100 },
@@ -293,7 +292,7 @@ class VendorRatingDataTransformer {
         { name: 'minorNC', min: 0, max: 999 },
         { name: 'majorNC', min: 0, max: 999 }
       ];
-      
+
       numericFields.forEach(({ name, min, max }) => {
         const value = update[name];
         if (value !== undefined) {
@@ -313,8 +312,8 @@ export async function batchUpdateVendorRatingMatrix(
   updates: UpdateVendorRatingData[]
 ): Promise<VendorRatingMatrix[]> {
   // Declare payload outside try block to make it accessible in catch block
-  let payload: BatchVendorRatingUpdateDto;
-  
+  let payload: BatchVendorRatingUpdateDto | undefined;
+
   try {
     // ENTERPRISE: Pre-flight validation
     if (!nominationId || !vendorId) {
@@ -340,41 +339,40 @@ export async function batchUpdateVendorRatingMatrix(
         console.error('Failed to fetch existing data before update:', fetchError);
         throw new Error(`Cannot update rating matrix: ${fetchError.message}`);
       }
-      console.log('No existing rating matrix found (404) - will initialize');
+
       existingData = [];
     }
 
     // Auto-initialize if no data exists
     if (!existingData || existingData.length === 0) {
       try {
-        console.log('Rating matrix not found, auto-initializing...');
+
         existingData = await initializeVendorRatingMatrix(nominationId, vendorId);
-        
+
         // If initialization still returns no data, proceed anyway (data might exist but not be returned)
         if (!existingData || existingData.length === 0) {
-          console.warn('No data returned from initialization, but proceeding with update attempt');
+
           // Try to fetch again after a short delay
           await new Promise(resolve => setTimeout(resolve, 500));
           try {
             existingData = await getVendorRatingMatrix(nominationId, vendorId);
           } catch (refetchError) {
-            console.warn('Refetch after init failed, proceeding with empty data');
+
             existingData = [];
           }
         }
-        
-        console.log(`Rating matrix ready with ${existingData.length} records`);
+
       } catch (initError) {
         console.error('Failed to auto-initialize rating matrix:', initError);
         // Don't fail completely - try the update anyway
-        console.warn('Proceeding with update despite initialization failure');
+
         existingData = [];
       }
     }
 
     // ENTERPRISE: Type-safe transformation and validation
     payload = VendorRatingDataTransformer.transformToDto(updates);
-    
+
     // Debug: Log what's being sent to the API
     console.log('Batch update payload being sent:', {
       originalUpdates: updates,
@@ -382,26 +380,26 @@ export async function batchUpdateVendorRatingMatrix(
       updateCount: payload.updates.length,
       sampleUpdate: payload.updates[0]
     });
-    
+
     // If no valid updates after transformation, don't proceed
     if (!payload.updates || payload.updates.length === 0) {
-      console.warn('No valid updates found after transformation');
+
       return await getVendorRatingMatrix(nominationId, vendorId);
     }
-    
+
     VendorRatingDataTransformer.validateDto(payload);
-    
+
     const response = await apiClient.put(
-      `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/batch`, 
+      `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/batch`,
       payload
     );
-    
-    apiLogger.logApiResponse('PUT', `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/batch`, 
+
+    apiLogger.logApiResponse('PUT', `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/batch`,
       response, { updateCount: payload.updates.length });
 
     // The batch update endpoint returns data directly as an array
     const responseData = Array.isArray(response) ? response : [];
-    
+
     if (responseData.length > 0) {
       const transformedData = responseData.map((item: any) => ({
         id: item.id,
@@ -418,25 +416,25 @@ export async function batchUpdateVendorRatingMatrix(
         createdAt: item.createdAt,
         updatedAt: item.updatedAt
       }));
-      
+
       apiLogger.info('Batch update completed successfully', {
         updateCount: payload.updates.length,
         returnedRecords: transformedData.length
       });
-      
+
       return transformedData;
     }
-    
+
     // Fallback: fetch fresh data if no response data
     return getVendorRatingMatrix(nominationId, vendorId);
-    
+
   } catch (error) {
     // Enhanced error logging to capture the actual problem
     const status = error.response?.status;
     const statusText = error.response?.statusText;
     const message = error.response?.data?.message || error.message || "Unknown error";
     const responseData = error.response?.data;
-    
+
     console.error('Batch update failed:', {
       status,
       statusText,
@@ -448,7 +446,7 @@ export async function batchUpdateVendorRatingMatrix(
       updateCount: updates.length,
       payloadUpdates: payload?.updates?.length || 0
     });
-    
+
     apiLogger.logApiError('PUT', `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/batch`, error, {
       status,
       statusText,
@@ -458,7 +456,7 @@ export async function batchUpdateVendorRatingMatrix(
       nominationId,
       vendorId
     });
-    
+
     throw error;
   }
 }
@@ -482,7 +480,7 @@ export async function getVendorRatingOverallScores(
 
   try {
     const response = await apiClient.get(`/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/overall-scores`);
-    
+
     // API client returns data directly, not wrapped in .data
     const data = response;
     if (data) {
@@ -494,7 +492,7 @@ export async function getVendorRatingOverallScores(
         totalRecords: data.totalRecords || 0
       };
     }
-    
+
     return {
       sectionWiseCapability: 0,
       riskMitigation: 0,
@@ -504,13 +502,13 @@ export async function getVendorRatingOverallScores(
     };
   } catch (error) {
     const status = error?.response?.status;
-    
+
     apiLogger.logApiError('GET', `/supplier-nominations/${nominationId}/vendors/${vendorId}/rating-matrix/overall-scores`, error, {
       status,
       nominationId,
       vendorId
     });
-    
+
     // Always return valid default scores instead of throwing
     return {
       sectionWiseCapability: 0,

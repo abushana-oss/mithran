@@ -10,7 +10,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../client';
 import { toast } from 'sonner';
-import { normalizePaginatedResponse } from '@/lib/utils/apiValidation';
+
 
 // ============================================================================
 // TYPES
@@ -129,12 +129,8 @@ export function usePackagingLogisticsCosts(params?: {
         };
       }
 
-      // Validate and normalize response using type guard
-      return normalizePaginatedResponse<PackagingLogisticsCostRecord>(
-        response,
-        params?.page || 1,
-        params?.limit || 100
-      );
+      // Return response directly assuming correct API shape
+      return response;
     },
     enabled: !!params?.bomItemId,
     staleTime: 30000, // Consider data fresh for 30 seconds

@@ -129,7 +129,6 @@ export const CostAnalysisEngine: React.FC<CostAnalysisEngineProps> = ({
 
   const handleExport = async () => {
     if (!aggregated || !costData) {
-      alert('No cost data available to export');
       return;
     }
 
@@ -146,8 +145,7 @@ export const CostAnalysisEngine: React.FC<CostAnalysisEngineProps> = ({
       }
     } catch (error) {
       console.error('Export failed:', error);
-      alert('Export failed. Please try again.');
-    }
+      }
   };
 
   const formatCurrency = (value: number) => `₹${value.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;

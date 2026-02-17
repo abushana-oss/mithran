@@ -7,7 +7,7 @@
  * Standard: Use UUID-based idempotency keys with client-side tracking
  */
 
-import { cryptoUtils } from '@/lib/utils/crypto-polyfill';
+// Native crypto used in Edge runtime
 
 export interface IdempotencyOptions {
   enabled?: boolean; // Enable idempotency for this request
@@ -33,7 +33,7 @@ export interface IdempotencyRecord {
  */
 async function hashBody(body: any): Promise<string> {
   const text = JSON.stringify(body);
-  
+
   // Try Web Crypto API first (Browser/Modern Node.js)
   if (typeof crypto !== 'undefined' && crypto.subtle) {
     try {
@@ -46,7 +46,7 @@ async function hashBody(body: any): Promise<string> {
       // Web Crypto API failed, using fallback
     }
   }
-  
+
   // Fallback: Node.js crypto module
   try {
     const crypto = require('crypto');
@@ -80,7 +80,10 @@ export class IdempotencyManager {
    * Generate a new idempotency key using production-grade crypto polyfill
    */
   generateKey(): string {
-    return cryptoUtils.generateUUID();
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
   }
 
   /**
@@ -323,7 +326,7 @@ export const IdempotencyBestPractices = {
    */
   userAction(_userId: string, _action: string, _params?: any): string {
     // In practice, you might use a shorter window (e.g., same minute)
-    return cryptoUtils.generateUUID(); // Still random but tracked
+    return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
   },
 
   /**
@@ -333,7 +336,7 @@ export const IdempotencyBestPractices = {
   scheduledJob(_jobName: string, _executionTime: Date): string {
     // Use deterministic key based on job name and time
     // Hash it to create a valid UUID-like key
-    return cryptoUtils.generateUUID(); // Simplified
+    return typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
   },
 
   /**

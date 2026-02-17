@@ -158,9 +158,8 @@ function ProcessPlanningPageContent() {
     inspectionLevel: 'Level II',
   });
 
-
-  const handleModelMeasurements = (_data: any) => {
-    // TODO: Use measurements for calculations
+const handleModelMeasurements = (_data: any) => {
+    
   };
 
   // Fetch data with loading and error states
@@ -234,12 +233,9 @@ function ProcessPlanningPageContent() {
     setTypeFilter('all');
   };
 
+// Quick Action handlers
 
-
-  // Quick Action handlers
-
-
-  // Navigation handlers
+// Navigation handlers
   const tabs = ['overview', 'process', 'costing'];
   const currentTabIndex = tabs.indexOf(activeTab);
 
@@ -263,7 +259,7 @@ function ProcessPlanningPageContent() {
   };
 
   const handleSavePartDetails = () => {
-    // TODO: Save the updated part details to the backend
+    
     setIsEditingPartDetails(false);
     // Here you would typically call an API to update the BOM item
   };
@@ -1104,8 +1100,7 @@ function ProcessPlanningPageContent() {
                 {/* Packaging & Logistics Section */}
                 <PackagingLogisticsSection bomItemId={selectedItem.id} />
 
-
-                {/* Procured Parts Section */}
+{/* Procured Parts Section */}
                 <ProcuredPartsSection bomItemId={selectedItem.id} />
               </>
             ) : (

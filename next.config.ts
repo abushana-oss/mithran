@@ -8,7 +8,6 @@ const nextConfig: NextConfig = {
   output: 'standalone',
 
   // Allow cross-origin requests from local network (for testing on other devices)
-  allowedDevOrigins: ['172.20.10.8', '10.2.0.2'],
 
   // Image optimization configuration
   images: {
@@ -26,48 +25,47 @@ const nextConfig: NextConfig = {
     root: process.cwd(),
   },
 
+  // TypeScript configuration for production
+  typescript: {
+    ignoreBuildErrors: process.env.NODE_ENV === 'production',
+  },
+
   // Experimental features for better performance
   experimental: {
     // Enable optimizePackageImports for better bundle size
-    optimizePackageImports:
-      process.env.NODE_ENV === 'production'
-        ? [
-          'lucide-react',
-          '@radix-ui/react-accordion',
-          '@radix-ui/react-alert-dialog',
-          '@radix-ui/react-avatar',
-          '@radix-ui/react-checkbox',
-          '@radix-ui/react-collapsible',
-          '@radix-ui/react-context-menu',
-          '@radix-ui/react-dialog',
-          '@radix-ui/react-dropdown-menu',
-          '@radix-ui/react-hover-card',
-          '@radix-ui/react-label',
-          '@radix-ui/react-menubar',
-          '@radix-ui/react-navigation-menu',
-          '@radix-ui/react-popover',
-          '@radix-ui/react-progress',
-          '@radix-ui/react-radio-group',
-          '@radix-ui/react-scroll-area',
-          '@radix-ui/react-select',
-          '@radix-ui/react-separator',
-          '@radix-ui/react-slider',
-          '@radix-ui/react-slot',
-          '@radix-ui/react-switch',
-          '@radix-ui/react-tabs',
-          '@radix-ui/react-toast',
-          '@radix-ui/react-toggle',
-          '@radix-ui/react-toggle-group',
-          '@radix-ui/react-tooltip',
-        ]
-        : [],
-  },
-
-  // TypeScript configuration
-  typescript: {
-    // Enterprise production approach: Allow build to proceed with type warnings
-    // Strict checking remains in development via tsconfig.json
-    ignoreBuildErrors: process.env.NODE_ENV === 'production',
+    optimizePackageImports: [
+      'lucide-react',
+      '@radix-ui/react-accordion',
+      '@radix-ui/react-alert-dialog',
+      '@radix-ui/react-avatar',
+      '@radix-ui/react-checkbox',
+      '@radix-ui/react-collapsible',
+      '@radix-ui/react-context-menu',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-hover-card',
+      '@radix-ui/react-label',
+      '@radix-ui/react-menubar',
+      '@radix-ui/react-navigation-menu',
+      '@radix-ui/react-popover',
+      '@radix-ui/react-progress',
+      '@radix-ui/react-radio-group',
+      '@radix-ui/react-scroll-area',
+      '@radix-ui/react-select',
+      '@radix-ui/react-separator',
+      '@radix-ui/react-slider',
+      '@radix-ui/react-slot',
+      '@radix-ui/react-switch',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-toast',
+      '@radix-ui/react-toggle',
+      '@radix-ui/react-toggle-group',
+      '@radix-ui/react-tooltip',
+      '@tanstack/react-query',
+      'framer-motion',
+      'recharts',
+      'date-fns'
+    ]
   },
 
   // Webpack configuration
@@ -97,30 +95,12 @@ const nextConfig: NextConfig = {
       {
         source: '/(.*)',
         headers: [
-          // CSP is handled by middleware.ts for nonce support
-          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          { key: 'X-Frame-Options', value: 'DENY' },
-          { key: 'X-Content-Type-Options', value: 'nosniff' },
           {
-            key: 'Permissions-Policy',
-            value: [
-              'camera=()',
-              'microphone=()',
-              'geolocation=()',
-              'fullscreen=(self)',
-              'payment=()',
-            ].join(', '),
-          },
-          ...(process.env.NODE_ENV === 'production'
-            ? [
-              {
-                key: 'Strict-Transport-Security',
-                value: 'max-age=63072000; includeSubDomains; preload',
-              },
-            ]
-            : []),
-        ],
-      },
+            key: 'Content-Security-Policy',
+            value: "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com; object-src 'none'; base-uri 'self';"
+          }
+        ]
+      }
     ];
   },
 }

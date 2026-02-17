@@ -101,7 +101,7 @@ export class CreateProcuredPartsCostDto {
   @IsString()
   currency?: string;
 
-  @ApiPropertyOptional({ description: 'Cost breakdown details', type: 'object' })
+  @ApiPropertyOptional({ description: 'Cost breakdown details', type: 'object', additionalProperties: true })
   @IsOptional()
   @IsObject()
   costBreakdown?: Record<string, any>;
@@ -204,7 +204,7 @@ export class UpdateProcuredPartsCostDto {
   @IsString()
   currency?: string;
 
-  @ApiPropertyOptional({ description: 'Cost breakdown', type: 'object' })
+  @ApiPropertyOptional({ description: 'Cost breakdown', type: 'object', additionalProperties: true })
   @IsOptional()
   @IsObject()
   costBreakdown?: Record<string, any>;

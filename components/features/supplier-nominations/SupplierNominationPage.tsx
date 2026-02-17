@@ -616,10 +616,8 @@ function SupplierCard({
                     const costScore = getCostScore(evaluation, costAnalysisData, vendorIndex);
                     const vendorScore = getVendorRatingScore(evaluation, vendorRatingScores[evaluation.vendorId]);
                     const capabilityScore = getCapabilityScore(evaluation, capabilityData, vendorIndex);
-                    
-                    
-                    
-                    // Map criteria to appropriate real-time API scores with fallbacks
+
+// Map criteria to appropriate real-time API scores with fallbacks
                     if (criteriaName.includes('material') || criteriaName.includes('cost') || criteriaName.includes('financial')) {
                       // Cost-related criteria - use cost analysis API data
                       if (costScore > 0) {
@@ -797,7 +795,7 @@ export function SupplierNominationPage({
   }, [vendors]);
 
   // For now, show BOM parts from current nomination only
-  // TODO: Implement group-level BOM parts aggregation when full nomination details are available
+  
   const groupBomParts = useMemo(() => {
     if (!nomination?.bomParts) return [];
     
@@ -881,8 +879,7 @@ export function SupplierNominationPage({
     }
   };
 
-
-  const handleExportResults = () => {
+const handleExportResults = () => {
     // Export functionality - can be enhanced
     toast.info('Export functionality will be available soon');
   };

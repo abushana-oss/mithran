@@ -47,7 +47,6 @@ export const useLSRById = (id: string | number) => {
   });
 };
 
-
 export const useCreateLSR = () => {
   const queryClient = useQueryClient();
 

@@ -67,7 +67,7 @@ export class CreatePackagingLogisticsCostDto {
   @IsEnum(CostBasis)
   costBasis: CostBasis;
 
-  @ApiPropertyOptional({ description: 'Flexible parameters (JSONB)', type: 'object' })
+  @ApiPropertyOptional({ description: 'Flexible parameters (JSONB)', type: 'object', additionalProperties: true })
   @IsOptional()
   @IsObject()
   parameters?: Record<string, any>;
@@ -82,7 +82,7 @@ export class CreatePackagingLogisticsCostDto {
   @Min(0.0001)
   quantity: number;
 
-  @ApiPropertyOptional({ description: 'Cost breakdown details', type: 'object' })
+  @ApiPropertyOptional({ description: 'Cost breakdown details', type: 'object', additionalProperties: true })
   @IsOptional()
   @IsObject()
   costBreakdown?: Record<string, any>;
@@ -133,7 +133,7 @@ export class UpdatePackagingLogisticsCostDto {
   @IsEnum(CostBasis)
   costBasis?: CostBasis;
 
-  @ApiPropertyOptional({ description: 'Parameters', type: 'object' })
+  @ApiPropertyOptional({ description: 'Parameters', type: 'object', additionalProperties: true })
   @IsOptional()
   @IsObject()
   parameters?: Record<string, any>;
@@ -150,7 +150,7 @@ export class UpdatePackagingLogisticsCostDto {
   @Min(0.0001)
   quantity?: number;
 
-  @ApiPropertyOptional({ description: 'Cost breakdown', type: 'object' })
+  @ApiPropertyOptional({ description: 'Cost breakdown', type: 'object', additionalProperties: true })
   @IsOptional()
   @IsObject()
   costBreakdown?: Record<string, any>;

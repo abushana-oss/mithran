@@ -76,9 +76,8 @@ export async function batchUpdateCapabilityScores(
       updates
     });
   } catch (error) {
-    console.warn('Batch update failed, falling back to individual requests:', error);
-    
-    // Fallback to individual requests if batch fails
+
+// Fallback to individual requests if batch fails
     // This ensures compatibility during API rollout
     const updatePromises = updates.map(update =>
       updateCapabilityScore(nominationId, update.criteriaId, update.vendorId, update.score)

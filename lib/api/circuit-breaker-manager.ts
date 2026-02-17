@@ -1,13 +1,12 @@
 /**
- * Circuit Breaker Manager - Auth Integration
+ * Circuit Breaker Manager - Simplified
  * 
- * Manages circuit breaker state in coordination with auth system
- * Prevents circuit breaker from staying open due to auth issues
+ * Manages circuit breaker state for API calls
+ * Simplified version without complex auth coordination
  */
 
 'use client'
 
-import { authCoordinator, AuthCoordinatorState } from './auth-coordinator';
 import { logger } from '@/lib/utils/logger';
 
 class CircuitBreakerManager {
@@ -15,9 +14,7 @@ class CircuitBreakerManager {
   private apiClientResetFn: (() => void) | null = null;
 
   private constructor() {
-    if (typeof window !== 'undefined') {
-      this.initialize();
-    }
+    // Simplified initialization - no auth coordination needed
   }
 
   static getInstance(): CircuitBreakerManager {
@@ -25,15 +22,6 @@ class CircuitBreakerManager {
       CircuitBreakerManager.instance = new CircuitBreakerManager();
     }
     return CircuitBreakerManager.instance;
-  }
-
-  private initialize(): void {
-    // Listen for auth state changes
-    authCoordinator.addListener((state) => {
-      if (state === AuthCoordinatorState.AUTHENTICATED) {
-        this.resetCircuitBreaker('auth_validated');
-      }
-    });
   }
 
   /**

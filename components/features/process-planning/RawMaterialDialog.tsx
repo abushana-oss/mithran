@@ -231,15 +231,12 @@ export function RawMaterialDialog({
     } else {
       // For new material, require selectedMaterial
       if (!materialGroup) {
-        alert('Please select a material group');
         return;
       }
       if (!selectedMaterialId || !selectedMaterial) {
-        alert('Please select a material');
         return;
       }
       if (grossUsage <= 0) {
-        alert('Please enter gross usage');
         return;
       }
 

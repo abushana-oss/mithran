@@ -366,7 +366,6 @@ function transformComponentDataToPartWise(
   };
 }
 
-
 interface CostCompetencyAnalysisProps {
   nominationId: string;
   projectId?: string; // Project ID for fetching BOMs and BOM items
@@ -506,8 +505,7 @@ export function CostCompetencyAnalysis({ nominationId, projectId, vendors = [], 
     }
   }, [availableBomParts, selectedBomItemId]);
 
-
-  const [costData, setCostData] = useState<CostCompetencyData[]>([]);
+const [costData, setCostData] = useState<CostCompetencyData[]>([]);
   const [isLoadingCostData, setIsLoadingCostData] = useState(false);
   const [isEditingCost, setIsEditingCost] = useState(false);
   const [editingCostValues, setEditingCostValues] = useState<Record<string, any>>({});

@@ -155,13 +155,13 @@ class Logger {
 
     switch (entry.level) {
       case LogLevel.DEBUG:
-        console.debug(prefix, entry.message, entry.data || '');
+        
         break;
       case LogLevel.INFO:
-        console.info(prefix, entry.message, entry.data || '');
+        
         break;
       case LogLevel.WARN:
-        console.warn(prefix, entry.message, entry.data || '');
+        
         break;
       case LogLevel.ERROR:
         console.error(prefix, entry.message, entry.data || '');

@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+# Disallow sensitive areas
+Disallow: /api/
+Disallow: /_next/
+Disallow: /admin/
+
+# Host (update with your production domain)
+Host: https://your-production-domain.com
+
+# Sitemaps
+Sitemap: https://your-production-domain.com/sitemap.xml

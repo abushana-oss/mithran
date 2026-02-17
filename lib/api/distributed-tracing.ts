@@ -7,7 +7,7 @@
  * Standard: https://www.w3.org/TR/trace-context/
  */
 
-import { cryptoUtils } from '@/lib/utils/crypto-polyfill';
+// Native crypto used in Edge runtime
 
 /**
  * W3C Trace Context format:
@@ -47,7 +47,11 @@ export interface Span {
  * Uses production-grade crypto polyfill for cross-platform compatibility
  */
 export function generateTraceId(): string {
-  return cryptoUtils.generateTraceId();
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID().replace(/-/g, '');
+  }
+  // Fallback for environments without crypto.randomUUID
+  return Math.random().toString(16).substring(2) + Math.random().toString(16).substring(2) + Math.random().toString(16).substring(2) + Math.random().toString(16).substring(2);
 }
 
 /**
@@ -55,7 +59,10 @@ export function generateTraceId(): string {
  * Uses production-grade crypto polyfill for cross-platform compatibility
  */
 export function generateSpanId(): string {
-  return cryptoUtils.generateSpanId();
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID().replace(/-/g, '').substring(0, 16);
+  }
+  return Math.random().toString(16).substring(2) + Math.random().toString(16).substring(2);
 }
 
 /**
@@ -63,7 +70,13 @@ export function generateSpanId(): string {
  * Uses production-grade crypto polyfill with RFC 4122 compliance
  */
 export function generateRequestId(): string {
-  return cryptoUtils.generateUUID();
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
 /**

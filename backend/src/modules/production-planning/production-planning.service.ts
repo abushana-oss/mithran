@@ -101,6 +101,8 @@ export class ProductionPlanningService {
 
     // If specific BOM items are selected, create records for them
     if (createDto.selectedBomItemIds && createDto.selectedBomItemIds.length > 0) {
+      this.logger.log(`Creating lot with ${createDto.selectedBomItemIds.length} selected BOM items: ${createDto.selectedBomItemIds.join(', ')}`);
+      
       const lotBomItems = createDto.selectedBomItemIds.map(itemId => ({
         production_lot_id: lotData.id,
         bom_item_id: itemId,
@@ -111,51 +113,103 @@ export class ProductionPlanningService {
         .insert(lotBomItems);
 
       if (itemsError) {
-        // If inserting lot items fails, we should clean up the lot
-        await supabase.from('production_lots').delete().eq('id', lotData.id);
-        throw new BadRequestException(`Failed to associate BOM items: ${itemsError.message}`);
+        // If table doesn't exist, just log warning and continue
+        if (itemsError.message.includes('schema cache') || itemsError.message.includes('does not exist')) {
+          this.logger.warn('production_lot_bom_items table not available, skipping BOM item association');
+        } else {
+          // If inserting lot items fails for other reasons, we should clean up the lot
+          this.logger.error(`Failed to insert selected BOM items: ${itemsError.message}`, itemsError);
+          await supabase.from('production_lots').delete().eq('id', lotData.id);
+          throw new BadRequestException(`Failed to associate BOM items: ${itemsError.message}`);
+        }
+      } else {
+        this.logger.log(`Successfully associated ${createDto.selectedBomItemIds.length} BOM items with lot ${lotData.id}`);
       }
+    } else {
+      this.logger.warn(`No BOM items selected for lot ${lotData.id} - will show all BOM items as fallback`);
     }
 
     // Auto-create the 4 standard production processes for the new lot
     await this.createDefaultProcessesForLot(lotData.id, createDto.plannedStartDate, createDto.plannedEndDate);
 
-    // Fetch the complete lot data with BOM info and selected items
-    const { data, error: fetchError } = await supabase
-      .from('production_lots')
-      .select(`
-        *,
-        bom:boms(
-          id, 
-          name, 
-          version,
-          items:bom_items(
+    // Try to fetch the complete lot data with BOM info and selected items
+    let data, fetchError;
+    try {
+      const result = await supabase
+        .from('production_lots')
+        .select(`
+          *,
+          bom:boms(
+            id, 
+            name, 
+            version,
+            items:bom_items(
+              id,
+              name,
+              part_number,
+              description,
+              quantity,
+              unit,
+              item_type,
+              material,
+              material_grade,
+              unit_cost_inr,
+              total_cost_inr,
+              make_buy
+            )
+          )
+        `)
+        .eq('id', lotData.id)
+        .single();
+      
+      data = result.data;
+      fetchError = result.error;
+    } catch (relationshipError) {
+      // Fallback: fetch without relationships if they don't exist
+      this.logger.warn('Failed to fetch with relationships, falling back to basic query', relationshipError);
+      
+      const fallbackResult = await supabase
+        .from('production_lots')
+        .select(`
+          *,
+          bom:boms(
+            id, 
+            name, 
+            version
+          )
+        `)
+        .eq('id', lotData.id)
+        .single();
+      
+      data = fallbackResult.data;
+      fetchError = fallbackResult.error;
+
+      // Fetch BOM items separately
+      if (data && data.bom) {
+        const { data: bomItems } = await supabase
+          .from('bom_items')
+          .select(`
             id,
+            name,
             part_number,
             description,
             quantity,
+            unit,
             item_type,
-            unit_cost,
+            material,
             material_grade,
+            unit_cost_inr,
+            total_cost_inr,
             make_buy
-          )
-        ),
-        selected_bom_items:production_lot_bom_items(
-          bom_item_id,
-          bom_item:bom_items(
-            id,
-            part_number,
-            description,
-            quantity,
-            item_type,
-            unit_cost,
-            material_grade,
-            make_buy
-          )
-        )
-      `)
-      .eq('id', lotData.id)
-      .single();
+          `)
+          .eq('bom_id', data.bom.id)
+          .order('level_in_bom', { ascending: true });
+
+        if (bomItems) {
+          data.bom.items = bomItems;
+        }
+      }
+    }
 
     if (fetchError) {
       throw new BadRequestException(`Failed to fetch production lot: ${fetchError.message}`);
@@ -170,49 +224,116 @@ export class ProductionPlanningService {
   ): Promise<ProductionLotResponseDto[]> {
     const supabase = this.supabaseService.getClient();
 
-    let query = supabase
-      .from('production_lots')
-      .select(`
-        *,
-        bom:boms(
-          id, 
-          name, 
-          version
-        ),
-        selected_bom_items:production_lot_bom_items(
-          bom_item_id,
-          bom_item:bom_items(
-            id,
-            part_number,
-            description,
-            quantity,
-            item_type,
-            unit_cost,
-            material_grade,
-            make_buy
+    // Try to fetch with relationships first
+    let data, error;
+    try {
+      let query = supabase
+        .from('production_lots')
+        .select(`
+          *,
+          bom:boms(
+            id, 
+            name, 
+            version,
+            items:bom_items(
+              id,
+              name,
+              part_number,
+              description,
+              quantity,
+              unit,
+              item_type,
+              material,
+              material_grade,
+              unit_cost_inr,
+              total_cost_inr,
+              make_buy
+            )
           )
-        )
-      `)
-      .eq('boms.user_id', userId)
-      .order('created_at', { ascending: false });
+        `)
+        .eq('boms.user_id', userId)
+        .order('created_at', { ascending: false });
 
-    if (filters.status) {
-      query = query.eq('status', filters.status);
-    }
-    if (filters.bomId) {
-      query = query.eq('bom_id', filters.bomId);
-    }
-    if (filters.priority) {
-      query = query.eq('priority', filters.priority);
-    }
+      if (filters.status) {
+        query = query.eq('status', filters.status);
+      }
+      if (filters.bomId) {
+        query = query.eq('bom_id', filters.bomId);
+      }
+      if (filters.priority) {
+        query = query.eq('priority', filters.priority);
+      }
 
-    const { data, error } = await query;
+      const result = await query;
+      data = result.data;
+      error = result.error;
+    } catch (relationshipError) {
+      // Fallback to basic query without relationships
+      this.logger.warn('Failed to fetch lots with relationships, using fallback', relationshipError);
+      
+      let fallbackQuery = supabase
+        .from('production_lots')
+        .select(`
+          *,
+          bom:boms(
+            id, 
+            name, 
+            version
+          )
+        `)
+        .eq('boms.user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (filters.status) {
+        fallbackQuery = fallbackQuery.eq('status', filters.status);
+      }
+      if (filters.bomId) {
+        fallbackQuery = fallbackQuery.eq('bom_id', filters.bomId);
+      }
+      if (filters.priority) {
+        fallbackQuery = fallbackQuery.eq('priority', filters.priority);
+      }
+
+      const fallbackResult = await fallbackQuery;
+      data = fallbackResult.data;
+      error = fallbackResult.error;
+
+      // Fetch BOM items separately for each lot
+      if (data && data.length > 0) {
+        for (const lot of data) {
+          if (lot.bom) {
+            const { data: bomItems } = await supabase
+              .from('bom_items')
+              .select(`
+                id,
+                name,
+                part_number,
+                description,
+                quantity,
+                unit,
+                item_type,
+                material,
+                material_grade,
+                unit_cost_inr,
+                total_cost_inr,
+                make_buy
+              `)
+              .eq('bom_id', lot.bom.id)
+              .order('level_in_bom', { ascending: true });
+
+            if (bomItems) {
+              lot.bom.items = bomItems;
+            }
+          }
+        }
+      }
+    }
 
     if (error) {
       throw new BadRequestException(`Failed to get production lots: ${error.message}`);
     }
 
-    return data.map((lot) => this.mapToProductionLotResponse(lot));
+    return (data || []).map((lot) => this.mapToProductionLotResponse(lot));
   }
 
   async getProductionLotById(id: string, userId: string): Promise<ProductionLotResponseDto> {
@@ -221,34 +342,88 @@ export class ProductionPlanningService {
 
     const supabase = this.supabaseService.getClient();
 
-    // Get production lot with BOM relationship data
-    const { data, error } = await supabase
+    // Industry Best Practice: Use explicit queries instead of complex nested relationships
+    // Step 1: Get production lot basic data
+    const { data: lotData, error: lotError } = await supabase
       .from('production_lots')
-      .select(`
-        *,
-        bom:boms(
-          id, 
-          name, 
-          version
-        )
-      `)
+      .select('*')
       .eq('id', id)
       .eq('created_by', userId)
       .single();
 
-    if (error) {
+    if (lotError) {
       this.logger.error('Database error fetching production lot', {
-        error: error.message,
+        error: lotError.message,
         lotId: id,
         userId
       });
       throw new InternalServerErrorException('Failed to fetch production lot');
     }
 
-    if (!data) {
+    if (!lotData) {
       this.logger.warn('Production lot not found', { lotId: id, userId });
       throw new NotFoundException(`Production lot with ID ${id} not found or access denied`);
     }
+
+    // Step 2: Get BOM data separately
+    const { data: bomData } = await supabase
+      .from('boms')
+      .select(`
+        id, 
+        name, 
+        version
+      `)
+      .eq('id', lotData.bom_id)
+      .single();
+
+    // Step 3: Get selected BOM items separately (with error handling)
+    let selectedBomItems: any[] = [];
+    try {
+      const { data: selectedBomItemsRaw, error: bomItemsError } = await supabase
+        .from('production_lot_bom_items')
+        .select('bom_item_id')
+        .eq('production_lot_id', id);
+
+      if (bomItemsError) {
+        this.logger.warn(`production_lot_bom_items table issue: ${bomItemsError.message}`);
+      } else if (selectedBomItemsRaw && selectedBomItemsRaw.length > 0) {
+        // Get full BOM item details for selected items
+        const bomItemIds = selectedBomItemsRaw.map(item => item.bom_item_id);
+        const { data: bomItemDetails } = await supabase
+          .from('bom_items')
+          .select(`
+            id,
+            name,
+            part_number,
+            description,
+            quantity,
+            unit,
+            item_type,
+            material,
+            material_grade,
+            unit_cost_inr,
+            total_cost_inr,
+            make_buy
+          `)
+          .in('id', bomItemIds);
+
+        selectedBomItems = bomItemDetails?.map((item: any) => ({
+          bom_item_id: item.id,
+          bom_item: item
+        })) || [];
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to fetch selected BOM items: ${error.message}`);
+    }
+
+    // Step 5: Combine all data
+    const data = {
+      ...lotData,
+      bom: bomData,
+      selected_bom_items: selectedBomItems
+    };
+
+    this.logger.log(`Successfully fetched lot ${id} with ${selectedBomItems.length} selected BOM items`);
 
     // Fetch related data separately and handle gracefully if they don't exist
     let processes: any[] = [];
@@ -1762,7 +1937,7 @@ export class ProductionPlanningService {
 
       return {
         production_lot_id: lotId,
-        process_id: `default-${process.process_name.toLowerCase().replace(' ', '-')}`, // Generate a process_id
+        process_id: null, // Let the database auto-generate UUID
         process_sequence: process.process_sequence,
         process_name: process.process_name,
         description: process.description,

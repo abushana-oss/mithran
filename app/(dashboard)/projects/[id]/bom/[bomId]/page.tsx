@@ -368,8 +368,7 @@ export default function
 
         toast.success(`Parsed ${itemsToImport.length} items. Import functionality coming soon!`);
 
-        // TODO: Implement actual import API call here
-        // await createBOMItem(bomId, itemsToImport);
+// await createBOMItem(bomId, itemsToImport);
         // refetchBOMItems();
 
       } catch (error) {
@@ -384,7 +383,7 @@ export default function
   const handleSaveChanges = async () => {
     try {
       toast.success('Changes saved successfully');
-      // TODO: Implement actual save logic if you have pending changes
+      
       // For now, this might just be a confirmation that auto-save is working
     } catch (error) {
       toast.error('Failed to save changes');

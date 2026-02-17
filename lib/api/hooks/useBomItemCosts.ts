@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useAuth } from '@/lib/providers/backend-auth-provider';
+import { useAuth } from '@/lib/providers/auth';
 import { apiClient } from '@/lib/api/client';
 
 export interface BomItemCost {

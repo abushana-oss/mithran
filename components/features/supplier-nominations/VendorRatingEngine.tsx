@@ -70,7 +70,7 @@ export function VendorRatingEngine({ vendorId, vendorName, nominationId, onScore
             await initializeVendorRatingMatrix(nominationId, vendorId);
             data = await getVendorRatingMatrix(nominationId, vendorId);
           } catch (initError) {
-            console.log('Failed to initialize rating matrix:', initError);
+            
             // Continue with empty data - user will see "no data available"
           }
         }
@@ -214,8 +214,7 @@ export function VendorRatingEngine({ vendorId, vendorName, nominationId, onScore
     return isEditing ? calculateCurrentOverallScores() : overallScores;
   };
 
-
-  const handleSave = async () => {
+const handleSave = async () => {
     // Ensure both IDs are present before attempting to save
     if (!nominationId || !vendorId) {
       toast.error("Cannot save: Missing nomination or vendor information");
@@ -243,11 +242,10 @@ export function VendorRatingEngine({ vendorId, vendorName, nominationId, onScore
 
       // Save to backend with proper error handling
       try {
-        console.log('Saving updates:', updates);
-        const saveResult = await batchUpdateVendorRatingMatrix(nominationId, vendorId, updates);
-        console.log('Save result:', saveResult);
         
-        // Add a small delay to allow database triggers to complete
+        const saveResult = await batchUpdateVendorRatingMatrix(nominationId, vendorId, updates);
+
+// Add a small delay to allow database triggers to complete
         await new Promise(resolve => setTimeout(resolve, 500));
         
         // Refresh data from backend with retry logic
@@ -261,23 +259,20 @@ export function VendorRatingEngine({ vendorId, vendorName, nominationId, onScore
               getVendorRatingMatrix(nominationId, vendorId),
               getVendorRatingOverallScores(nominationId, vendorId)
             ]);
-            
-            console.log(`Attempt ${attempts + 1} - Fresh data:`, freshData);
-            console.log(`Attempt ${attempts + 1} - Updated scores:`, updatedScores);
-            
-            // Verify that scores have been calculated
+
+// Verify that scores have been calculated
             if (updatedScores && (updatedScores.sectionWiseCapability > 0 || updatedScores.riskMitigation > 0 || attempts === maxAttempts - 1)) {
-              console.log('Scores calculated successfully or max attempts reached');
+              
               break;
             } else {
-              console.log('Scores still 0, retrying...');
+              
             }
             
             // Wait a bit longer and try again
             await new Promise(resolve => setTimeout(resolve, 1000));
             attempts++;
           } catch (error) {
-            console.warn(`Attempt ${attempts + 1} failed:`, error);
+            
             if (attempts === maxAttempts - 1) throw error;
             attempts++;
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -313,9 +308,8 @@ export function VendorRatingEngine({ vendorId, vendorName, nominationId, onScore
             totalMajorNC,
             totalRecords: recordCount
           };
-          
-          console.log('Manual calculation:', finalScores);
-        }
+
+}
         
         setOverallScores(finalScores || {
           sectionWiseCapability: 0,

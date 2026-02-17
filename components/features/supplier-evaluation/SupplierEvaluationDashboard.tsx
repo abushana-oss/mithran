@@ -209,18 +209,17 @@ function EvaluationCard({ group, onClick, onEdit }: EvaluationCardProps) {
       try {
         // Attempt to validate deletion first
         validation = await validateSupplierEvaluationGroupDeletion(group.id);
-        console.log('Validation response:', validation);
 
-        // Check if validation response is valid
+// Check if validation response is valid
         if (!validation || typeof validation.canDelete === 'undefined') {
-          console.warn('Invalid validation response, proceeding with simple confirmation:', validation);
+          
           // Continue with simple confirmation if validation fails
         } else {
           // Check if deletion is blocked by validation
           if (!validation.canDelete) {
             const blockersMessage = (validation.blockers || []).join(', ');
             toast.error('Cannot delete evaluation group: ' + blockersMessage);
-            console.log('Deletion blocked by validation:', validation.blockers);
+            
             setDeletingGroup(false);
             return;
           }
@@ -236,7 +235,7 @@ function EvaluationCard({ group, onClick, onEdit }: EvaluationCardProps) {
           }
         }
       } catch (validationError) {
-        console.warn('Validation failed, proceeding with simple confirmation:', validationError);
+        
         // Continue with basic deletion if validation endpoint fails
       }
 

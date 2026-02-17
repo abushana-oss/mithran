@@ -258,8 +258,7 @@ export function DetailedEvaluationView({
           });
         }
 
-
-      } catch (error) {
+} catch (error) {
         console.error('Failed to load capability scores:', error);
         // Fallback to empty state if API fails
         setCapabilityScores({
@@ -446,9 +445,7 @@ export function DetailedEvaluationView({
     setIsEditingCapability(false);
   };
 
-
-
-  // Get current score (edited or original) for the current vendor
+// Get current score (edited or original) for the current vendor
   const getCurrentCapabilityScore = (criteriaIndex: number): number => {
     if (!fullNomination?.vendorEvaluations || !capabilityData[criteriaIndex]) {
       return 0;
@@ -469,9 +466,7 @@ export function DetailedEvaluationView({
 
   // Approval workflow functions removed
 
-
-
-  // renderApprovalTab function removed
+// renderApprovalTab function removed
 
   const renderCapabilityTab = () => {
     // Show loading state
@@ -660,8 +655,7 @@ export function DetailedEvaluationView({
     );
   };
 
-
-  // renderTechnicalTab function removed
+// renderTechnicalTab function removed
 
   return (
     <div className="min-h-screen bg-gray-900 p-6">

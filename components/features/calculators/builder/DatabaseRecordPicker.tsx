@@ -152,7 +152,7 @@ export function DatabaseRecordPicker({
         }
 
         if (!data || data.length === 0) {
-          console.warn(`[DatabaseRecordPicker] No ${dataSource} records found in response`);
+          
           setError(`No ${dataSource.replace('_', ' ')} records found in database`);
           setRecords([]);
         } else {

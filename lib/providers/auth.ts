@@ -1,7 +1,7 @@
 /**
  * Auth Module
  *
- * Re-exports the backend auth hooks for convenience
+ * Re-exports the Supabase auth hooks for convenience
  */
 
-export { useAuth, useAuthReady } from './backend-auth-provider';
+export { useAuth, useAuthReady } from './supabase-auth-provider';

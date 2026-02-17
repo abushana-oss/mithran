@@ -54,7 +54,6 @@ export const responseLoggerInterceptor = (response: any): any => {
   return response;
 };
 
-
 /**
  * Add correlation ID and distributed tracing headers
  */

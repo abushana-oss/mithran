@@ -7,7 +7,7 @@
  * - Clean separation of concerns
  */
 
-import { useAuth } from '@/lib/providers/backend-auth-provider';
+import { useAuth } from '@/lib/providers/auth';
 import { appReadiness } from '@/lib/core/app-readiness';
 import { useState, useEffect } from 'react';
 
@@ -22,7 +22,7 @@ interface UseAuthEnabledOptions {
  * @returns boolean indicating if queries should be enabled
  */
 export function useAuthEnabled(options?: UseAuthEnabledOptions): boolean {
-  const { authStatus } = useAuth();
+  const { user, loading } = useAuth();
   const [isAppReady, setIsAppReady] = useState(appReadiness.isReady());
   
   // Listen to app readiness changes
@@ -33,7 +33,7 @@ export function useAuthEnabled(options?: UseAuthEnabledOptions): boolean {
     return unsubscribe;
   }, []);
   
-  const isAuthReady = authStatus === 'authenticated';
+  const isAuthReady = !!user && !loading;
   const isExplicitlyEnabled = options?.enabled !== false;
   
   // Only enable queries when app is fully ready (auth + backend + environment)

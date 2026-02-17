@@ -145,72 +145,72 @@ export const productionPlanningApi = {
   // Production Lots
   getProductionLots: (filters?: { status?: string; bomId?: string; priority?: string }) =>
     apiClient.get('/production-planning/lots', { params: filters }),
-  
+
   getProductionLotById: (id: string) =>
     apiClient.get(`/production-planning/lots/${id}`),
-  
+
   createProductionLot: (data: any) =>
     apiClient.post('/production-planning/lots', data),
-  
+
   updateProductionLot: (id: string, data: any) =>
     apiClient.put(`/production-planning/lots/${id}`, data),
-  
+
   deleteProductionLot: (id: string) =>
     apiClient.delete(`/production-planning/lots/${id}`),
 
   // Vendor Assignments
   getVendorAssignments: (lotId: string) =>
     apiClient.get(`/production-planning/lots/${lotId}/vendor-assignments`),
-  
+
   createVendorAssignment: (lotId: string, data: any) =>
     apiClient.post(`/production-planning/lots/${lotId}/vendor-assignments`, data),
-  
+
   bulkCreateVendorAssignments: (lotId: string, data: any) =>
     apiClient.post(`/production-planning/lots/${lotId}/vendor-assignments/bulk`, data),
-  
+
   updateVendorAssignment: (id: string, data: any) =>
     apiClient.put(`/production-planning/vendor-assignments/${id}`, data),
-  
+
   deleteVendorAssignment: (id: string) =>
     apiClient.delete(`/production-planning/vendor-assignments/${id}`),
 
   // Production Processes
   getProductionProcesses: (lotId: string, filters?: { status?: string }) =>
     apiClient.get(`/production-planning/lots/${lotId}/processes`, { params: filters }),
-  
+
   createProductionProcess: (lotId: string, data: any) =>
     apiClient.post(`/production-planning/lots/${lotId}/processes`, data),
-  
+
   updateProductionProcess: (id: string, data: any) =>
     apiClient.put(`/production-planning/processes/${id}`, data),
 
   // Process Subtasks
   getProcessSubtasks: (processId: string) =>
     apiClient.get(`/production-planning/processes/${processId}/subtasks`),
-  
+
   createProcessSubtask: (processId: string, data: any) =>
     apiClient.post(`/production-planning/processes/${processId}/subtasks`, data),
-  
+
   updateProcessSubtask: (id: string, data: any) =>
     apiClient.put(`/production-planning/subtasks/${id}`, data),
 
   // Daily Production Entries
   getDailyProductionEntries: (lotId: string, filters?: { startDate?: string; endDate?: string; entryType?: string }) =>
     apiClient.get(`/production-planning/lots/${lotId}/production-entries`, { params: filters }),
-  
+
   createDailyProductionEntry: (lotId: string, data: any) =>
     apiClient.post(`/production-planning/lots/${lotId}/production-entries`, data),
-  
+
   updateDailyProductionEntry: (id: string, data: any) =>
     apiClient.put(`/production-planning/production-entries/${id}`, data),
 
   // Dashboard & Reporting
   getProductionSummary: (lotId: string) =>
     apiClient.get(`/production-planning/lots/${lotId}/summary`),
-  
+
   getDashboardData: (filters?: { startDate?: string; endDate?: string }) =>
     apiClient.get('/production-planning/dashboard', { params: filters }),
-  
+
   getGanttData: (lotId: string) =>
     apiClient.get(`/production-planning/lots/${lotId}/gantt`),
 };
@@ -235,12 +235,11 @@ export function useProductionLots(filters?: { status?: string; bomId?: string; p
     queryKey: [...PRODUCTION_PLANNING_QUERY_KEYS.lots(), filters],
     queryFn: () => productionPlanningApi.getProductionLots(filters),
     select: (data) => {
-      console.log('🔍 Raw Response:', JSON.stringify(data, null, 2));
-      console.log('🔍 data.data:', data.data);
-      
+
+
       // Backend response structure: { data: ProductionLot[], timestamp: string, correlationId?: string }
       const result = data.data || [];
-      console.log('🔍 Final Result:', result);
+
       return result;
     },
   });
@@ -257,19 +256,19 @@ export function useProductionLot(id?: string) {
 
 export function useCreateProductionLot() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: productionPlanningApi.createProductionLot,
     onSuccess: () => {
       // Invalidate all production lots queries (with any filters)
-      queryClient.invalidateQueries({ 
+      queryClient.invalidateQueries({
         queryKey: PRODUCTION_PLANNING_QUERY_KEYS.lots(),
-        exact: false 
+        exact: false
       });
       // Also invalidate dashboard data
-      queryClient.invalidateQueries({ 
+      queryClient.invalidateQueries({
         queryKey: PRODUCTION_PLANNING_QUERY_KEYS.dashboard(),
-        exact: false 
+        exact: false
       });
     },
   });
@@ -277,7 +276,7 @@ export function useCreateProductionLot() {
 
 export function useUpdateProductionLot() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) =>
       productionPlanningApi.updateProductionLot(id, data),
@@ -290,7 +289,7 @@ export function useUpdateProductionLot() {
 
 export function useDeleteProductionLot() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: productionPlanningApi.deleteProductionLot,
     onSuccess: () => {
@@ -310,13 +309,13 @@ export function useVendorAssignments(lotId?: string) {
 
 export function useCreateVendorAssignment() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: ({ lotId, data }: { lotId: string; data: any }) =>
       productionPlanningApi.createVendorAssignment(lotId, data),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ 
-        queryKey: PRODUCTION_PLANNING_QUERY_KEYS.lotVendorAssignments(variables.lotId) 
+      queryClient.invalidateQueries({
+        queryKey: PRODUCTION_PLANNING_QUERY_KEYS.lotVendorAssignments(variables.lotId)
       });
     },
   });
@@ -333,13 +332,13 @@ export function useProductionProcesses(lotId?: string, filters?: { status?: stri
 
 export function useCreateProductionProcess() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: ({ lotId, data }: { lotId: string; data: any }) =>
       productionPlanningApi.createProductionProcess(lotId, data),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ 
-        queryKey: PRODUCTION_PLANNING_QUERY_KEYS.lotProcesses(variables.lotId) 
+      queryClient.invalidateQueries({
+        queryKey: PRODUCTION_PLANNING_QUERY_KEYS.lotProcesses(variables.lotId)
       });
     },
   });
@@ -356,20 +355,20 @@ export function useProcessSubtasks(processId?: string) {
 
 export function useCreateProcessSubtask() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: ({ processId, data }: { processId: string; data: any }) =>
       productionPlanningApi.createProcessSubtask(processId, data),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ 
-        queryKey: PRODUCTION_PLANNING_QUERY_KEYS.processSubtasks(variables.processId) 
+      queryClient.invalidateQueries({
+        queryKey: PRODUCTION_PLANNING_QUERY_KEYS.processSubtasks(variables.processId)
       });
     },
   });
 }
 
 export function useDailyProductionEntries(
-  lotId?: string, 
+  lotId?: string,
   filters?: { startDate?: string; endDate?: string; entryType?: string }
 ) {
   return useQuery({
@@ -382,13 +381,13 @@ export function useDailyProductionEntries(
 
 export function useCreateDailyProductionEntry() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: ({ lotId, data }: { lotId: string; data: any }) =>
       productionPlanningApi.createDailyProductionEntry(lotId, data),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ 
-        queryKey: PRODUCTION_PLANNING_QUERY_KEYS.lotProductionEntries(variables.lotId) 
+      queryClient.invalidateQueries({
+        queryKey: PRODUCTION_PLANNING_QUERY_KEYS.lotProductionEntries(variables.lotId)
       });
     },
   });

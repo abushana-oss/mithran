@@ -224,7 +224,7 @@ export function useUploadRawMaterialsExcel() {
       formData.append('file', file);
 
       if (process.env.NODE_ENV === 'development') {
-        console.log('[Excel Upload] Starting...');
+        
       }
 
       const response = await apiClient.uploadFiles<{
@@ -237,7 +237,7 @@ export function useUploadRawMaterialsExcel() {
       });
 
       if (process.env.NODE_ENV === 'development') {
-        console.log('[Excel Upload] Completed:', response);
+        
       }
       return response;
     },

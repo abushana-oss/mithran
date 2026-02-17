@@ -22,7 +22,6 @@ const isValidUUID = (uuid: string): boolean => {
     return uuidRegex.test(uuid);
 };
 
-
 export interface CreateSubtaskData {
     productionProcessId: string;
     taskName: string;
@@ -59,8 +58,7 @@ export const useProductionProcesses = () => {
 
     // ==================== Production Processes ====================
 
-
-    const getProcessesByLot = useCallback(async (lotId: string, silent: boolean = false) => {
+const getProcessesByLot = useCallback(async (lotId: string, silent: boolean = false) => {
         // Validate UUID before making API call
         if (!isValidUUID(lotId)) {
             const errorMessage = 'Invalid lot ID format. Must be a valid UUID.';
@@ -104,8 +102,7 @@ export const useProductionProcesses = () => {
         }
     }, []);
 
-
-    const deleteProcess = useCallback(async (processId: string) => {
+const deleteProcess = useCallback(async (processId: string) => {
         setLoading(true);
         setError(null);
         try {

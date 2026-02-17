@@ -45,7 +45,7 @@ export function useCorrelationContext(userId?: string) {
         }));
       } catch (error) {
         // Ignore storage errors
-        console.warn('Failed to persist correlation context:', error);
+        
       }
     }
   }, [userId]);

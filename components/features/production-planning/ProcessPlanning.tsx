@@ -279,10 +279,6 @@ const withPerformanceTracking = <T extends unknown[], R>(
   };
 };
 
-
-
-
-
 // Error boundary component for robust error handling
 const ProcessPlanningErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
@@ -397,13 +393,10 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
         setProcessDataLoading(true);
         setProcessDataError(null);
 
-        console.log('Loading processes for lot:', lotId);
         const processData = await getProcessesByLot(lotId);
-        console.log('Process data received:', processData);
 
         // Update sections with process data
         const dataArray = processData?.data || processData || [];
-        console.log('Processing array:', dataArray);
 
         if (Array.isArray(dataArray) && dataArray.length > 0) {
           // Transform and assign processes to sections
@@ -432,24 +425,21 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
               plannedStartDate: subtask.planned_start_date,
               plannedEndDate: subtask.planned_end_date,
               status: subtask.status || 'PLANNED',
-              intendedSection: subtask.intended_section || subtask.intendedSection, // Preserve intended section
+              intendedSection: subtask.intended_section || subtask.intendedSection,
             })),
           }));
 
           // Assign processes to sections
           const assignedProcessIds = new Set<string>();
-          console.log('Assigning processes to sections. Available processes:', transformedProcesses.map(p => ({ name: p.name, id: p.id })));
 
           const updatedSections = DEFAULT_SECTIONS.map((section) => {
-            console.log(`Processing section: ${section.name} (${section.id})`);
-
             const sectionProcesses = transformedProcesses.filter((process) => {
               if (assignedProcessIds.has(process.id)) return false;
 
               const processName = process.name.toLowerCase();
               const sectionId = section.id.toLowerCase();
-
               let matches = false;
+
               if (sectionId.includes('raw-material')) {
                 matches = processName.includes('raw') || processName.includes('material');
               } else if (sectionId.includes('process')) {
@@ -463,8 +453,6 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
                   processName.includes('delivery') || processName.includes('ship');
               }
 
-              console.log(`  Process "${process.name}" matches section "${section.name}": ${matches}`);
-
               if (matches) {
                 assignedProcessIds.add(process.id);
                 return true;
@@ -472,36 +460,20 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
               return false;
             });
 
-            console.log(`  Section "${section.name}" assigned ${sectionProcesses.length} processes:`, sectionProcesses.map(p => p.name));
-
             return {
               ...section,
               subProcesses: sectionProcesses,
             };
           });
 
-          // Handle any unassigned processes by putting them in matching sections
+          // Handle unassigned
           const unassignedProcesses = transformedProcesses.filter(p => !assignedProcessIds.has(p.id));
           if (unassignedProcesses.length > 0) {
-            console.log('Unassigned processes:', unassignedProcesses.map(p => p.name));
-
-            // Try to assign unassigned processes based on their names
             updatedSections.forEach(section => {
               unassignedProcesses.forEach(process => {
                 if (assignedProcessIds.has(process.id)) return;
-
-                const processName = process.name.toLowerCase();
-                const sectionName = section.name.toLowerCase();
-
-                // More flexible matching
-                if ((sectionName.includes('raw') && processName.includes('raw')) ||
-                  (sectionName.includes('material') && processName.includes('material')) ||
-                  (sectionName.includes('inspection') && processName.includes('inspection')) ||
-                  (sectionName.includes('process') && processName.includes('process')) ||
-                  (sectionName.includes('packing') && processName.includes('pack'))) {
-
-                  console.log(`Assigning unmatched process "${process.name}" to section "${section.name}"`);
-                  section.subProcesses.push(process);
+                if (section.id === 'default-process') {
+                  (section.subProcesses as ProcessStep[]).push(process);
                   assignedProcessIds.add(process.id);
                 }
               });
@@ -510,7 +482,6 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
 
           setMainSections(updatedSections);
         } else {
-          // No processes found, use default sections
           setMainSections(DEFAULT_SECTIONS as any);
         }
       } catch (error) {
@@ -530,22 +501,9 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
     }
   }, [lotId, getProcessesByLot]);
 
-  // processDataRefresh will be defined after refreshProcessData
-
-  // Use mainSections directly instead of optimistic updates for now
-  const mainSectionsState = {
-    data: mainSections,
-    setData: setMainSections,
-    optimisticUpdate: (updater: any) => setMainSections(updater),
-    rollbackOptimisticUpdate: () => { }
-  };
-
-
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const { debouncedValue: debouncedSearchTerm } = useDebounce(searchTerm, VALIDATION_RULES.DEBOUNCE_DELAY);
-
-
 
   // Dialog state
   const [showNewSubTask, setShowNewSubTask] = useState<string | null>(null);
@@ -559,10 +517,6 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
   const [subTaskEndDate, setSubTaskEndDate] = useState<Date | undefined>(undefined);
   const [editSubTaskName, setEditSubTaskName] = useState('');
   const [editSubTaskOperator, setEditSubTaskOperator] = useState('');
-
-  // Enhanced form validation state
-  const [_formTouched] = useState<Record<string, boolean>>({});
-  const [_isSubmitting] = useState(false);
 
   // BOM state
   const [selectedBOMParts, setSelectedBOMParts] = useState<BOMSelection>({});
@@ -578,39 +532,77 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
 
     setBomLoading(true);
     try {
-      const dashboardResponse = await apiClient.get(
-        `/production-planning/lots/${lotId}/integrated-dashboard`
+      // Fetch the production lot details to get selected BOM items
+      const lotResponse = await apiClient.get(
+        `/production-planning/lots/${lotId}`
       ) as any;
-      const bomItems = dashboardResponse.data?.data?.materials || [];
+      
+      // Get selected BOM items from the lot details
+      const selectedBomItems = lotResponse.data?.selectedBomItems || [];
+      
+      // If no selected BOM items, fallback to all BOM items from the lot's BOM
+      if (selectedBomItems.length === 0) {
+        const bomResponse = await apiClient.get(
+          `/production-planning/lots/${lotId}/bom-items`
+        ) as any;
+        const allBomItems = bomResponse.data || [];
+        
+        // Use all BOM items as fallback
+        const transformedBomItems: BOMPartRequirement[] = allBomItems.map((bomItem: any) => {
+          return {
+            id: bomItem.id,
+            bomId: bomItem.bom_id,
+            materialId: bomItem.id,
+            partNumber: bomItem.part_number || 'N/A',
+            description: bomItem.description || bomItem.name || 'No description',
+            quantity: bomItem.quantity || 1,
+            unitOfMeasure: bomItem.unit || '',
+            referenceDesignator: bomItem.referenceDesignator,
+            notes: bomItem.notes,
+            level: bomItem.level_in_bom || 0,
+            position: bomItem.sort_order || 0,
+            unitCost: bomItem.unit_cost_inr || bomItem.unit_cost || 0,
+            extendedCost: bomItem.total_cost_inr || bomItem.total_cost,
+            consumedQuantity: 0,
+            availableQuantity: bomItem.quantity || 0,
+            status: 'AVAILABLE' as BOMStatus,
+            bom_item_id: bomItem.id,
+            required_quantity: bomItem.quantity || 1,
+          };
+        });
+        
+        setLotBomItems(transformedBomItems);
+        return transformedBomItems;
+      }
+      
+      // Use the selected BOM items from the lot
+      const bomItems = selectedBomItems;
 
       if (!bomItems || bomItems.length === 0) {
         setLotBomItems([]);
         return [];
       }
 
-      const transformedBomItems: BOMPartRequirement[] = bomItems.map((materialEntry: any) => {
-        const bomItem = materialEntry.bom_items || materialEntry.bomItems;
-
+      const transformedBomItems: BOMPartRequirement[] = bomItems.map((bomItem: any) => {
         return {
-          id: bomItem?.id || materialEntry.bom_item_id,
-          bomId: materialEntry.bom_id || bomItem?.bom_id,
-          materialId: bomItem?.id || materialEntry.bom_item_id,
-          partNumber: bomItem?.part_number || bomItem?.partNumber || 'N/A',
-          description: bomItem?.description || bomItem?.name || 'No description',
-          quantity: materialEntry.required_quantity || bomItem?.quantity || 1,
-          unitOfMeasure: bomItem?.unit || bomItem?.unitOfMeasure || '',
-          referenceDesignator: bomItem?.referenceDesignator,
-          notes: bomItem?.notes || materialEntry.specifications,
-          level: bomItem?.level || 0,
-          position: bomItem?.position || 0,
-          unitCost: bomItem?.unit_cost || bomItem?.unitCost || 0,
-          extendedCost: bomItem?.extendedCost,
-          consumedQuantity: materialEntry.consumed_quantity || 0,
-          availableQuantity:
-            materialEntry.received_quantity || materialEntry.approved_quantity || 0,
-          status: materialEntry.material_status === 'planning' ? 'AVAILABLE' : 'SHORTAGE',
-          bom_item_id: materialEntry.bom_item_id,
-          required_quantity: materialEntry.required_quantity || bomItem?.quantity || 1,
+          id: bomItem.id,
+          bomId: bomItem.bomId,
+          materialId: bomItem.id,
+          partNumber: bomItem.partNumber || 'N/A',
+          description: bomItem.description || 'No description',
+          quantity: bomItem.quantity || 1,
+          unitOfMeasure: bomItem.unit || '',
+          referenceDesignator: bomItem.referenceDesignator,
+          notes: bomItem.notes,
+          level: bomItem.level || 0,
+          position: bomItem.position || 0,
+          unitCost: bomItem.unitCost || 0,
+          extendedCost: bomItem.extendedCost,
+          consumedQuantity: 0,
+          availableQuantity: bomItem.quantity || 0,
+          status: 'AVAILABLE' as BOMStatus,
+          bom_item_id: bomItem.id,
+          required_quantity: bomItem.quantity || 1,
         };
       });
 
@@ -639,7 +631,7 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
 
   const refreshProcessData = useCallback(async () => {
     try {
-      console.log('Refreshing process data for lot:', lotId);
+
       const processData = await getProcessesByLot(lotId);
       const dataArray = processData?.data || processData || [];
 
@@ -720,8 +712,9 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
     }
   }, [lotId, getProcessesByLot]);
 
-  // Assign processDataRefresh after refreshProcessData is defined
-  const processDataRefresh = refreshProcessData;
+  const processDataRefresh = useCallback(async () => {
+    await refreshProcessData();
+  }, [refreshProcessData]);
 
   /* --------------------------------------------------------------------------
    * EVENT HANDLERS
@@ -773,13 +766,13 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
       // Try to find a process in this section first
       if (currentSection.subProcesses.length > 0) {
         targetProcess = currentSection.subProcesses[0];
-        console.log(`Found process in current section: ${targetProcess!.name}`);
+
       } else {
         // If no process in current section, find any process in any section
         const allProcesses = mainSections.flatMap(section => section.subProcesses);
         if (allProcesses.length > 0) {
           targetProcess = allProcesses[0];
-          console.log(`No process in ${currentSection.name} section, using process from another section: ${targetProcess!.name}`);
+
         } else {
           toast.error(`No processes available in any section. Please create a process first.`);
           return;
@@ -819,17 +812,16 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
         bomParts: selectedBomParts,
       };
 
-      console.log(`🎯 Creating subtask with intendedSection: "${currentSection.name}" (attached to process: ${targetProcess.name})`);
+      console.log('📤 Creating subtask with data:', {
+        ...subtaskData,
+        targetProcessId: targetProcess.id,
+        sectionName: currentSection.name
+      });
 
-      console.log('Creating subtask with data:', subtaskData);
-      console.log('API endpoint:', `/production-planning/processes/${targetProcess.id}/subtasks`);
-
-      const response = await apiClient.post(
+      await apiClient.post(
         `/production-planning/processes/${targetProcess.id}/subtasks`,
         subtaskData
       );
-
-      console.log('Subtask creation response:', response);
 
       toast.success(`Sub-task "${subtaskData.taskName}" created successfully!`);
 
@@ -840,7 +832,6 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
       setSubTaskEndDate(undefined);
       setSelectedBOMParts({});
       setShowNewSubTask(null);
-
       // Refresh data
       await refreshProcessData();
 
@@ -968,18 +959,14 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
     [refreshProcessData]
   );
 
-
-
-
-
   const handleToggleSection = withPerformanceTracking(useCallback(
     (sectionId: string) => {
-      const updatedSections = mainSectionsState.data.map((section) =>
+      const updatedSections = mainSections.map((section) =>
         section.id === sectionId ? { ...section, isExpanded: !section.isExpanded } : section
       );
-      mainSectionsState.setData(updatedSections);
+      setMainSections(updatedSections);
     },
-    [mainSectionsState]
+    [mainSections]
   ), 'handleToggleSection');
 
   /* --------------------------------------------------------------------------
@@ -1314,11 +1301,6 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
                       const belongsToThisSection = section.id === mainSection.id;
                       const intendedForThisSection = intendedSectionFromName === mainSection.name;
 
-                      // Debug logging
-                      if (intendedSectionFromName) {
-                        console.log(`🎯 Subtask "${taskName}" has intended section from name: ${intendedSectionFromName}, checking against: ${mainSection.name}`);
-                      }
-
                       return (belongsToThisSection && !intendedSectionFromName) || intendedForThisSection;
                     })
                     .map((subtask: SubTask) => {
@@ -1334,15 +1316,6 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
                     })
                 )
               );
-
-              // Debug: Show subtasks for this section
-              if (allSubtasks.length > 0) {
-                console.log(`📋 Section "${mainSection.name}" has ${allSubtasks.length} subtasks:`, allSubtasks.map(st => ({
-                  name: st.displayTaskName || st.taskName || st.task_name,
-                  originalName: st.taskName || st.task_name,
-                  processId: st.processId
-                })));
-              }
 
               return (
                 <Card key={mainSection.id} className="border-l-4 border-l-green-500">
@@ -1435,9 +1408,9 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
                                         </Badge>
                                         <h4
                                           className="font-medium text-sm truncate text-foreground"
-                                          title={subtask.displayTaskName || subtask.taskName}
+                                          title={(subtask as any).displayTaskName || subtask.taskName}
                                         >
-                                          {subtask.displayTaskName || subtask.taskName}
+                                          {(subtask as any).displayTaskName || subtask.taskName}
                                         </h4>
                                       </div>
                                       <div className="text-xs text-muted-foreground font-mono shrink-0">
@@ -1715,11 +1688,14 @@ const ProcessPlanningCore: React.FC<ProcessPlanningProps> = ({
                 setEditingSubtask(null);
                 setEditSubTaskName('');
                 setEditSubTaskOperator('');
-              }}>
+              }}
+            >
+              Cancel
             </Button>
             <Button
               onClick={handleUpdateSubtask}
-              disabled={processDataLoading || !editSubTaskName || !editSubTaskOperator}>
+              disabled={processDataLoading || !editSubTaskName || !editSubTaskOperator}
+            >
               {processDataLoading ? 'Updating...' : 'Update Sub-Task'}
             </Button>
           </DialogFooter>

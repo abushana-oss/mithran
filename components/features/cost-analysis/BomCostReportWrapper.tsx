@@ -39,7 +39,6 @@ export const BomCostReportWrapper: React.FC<BomCostReportWrapperProps> = ({
 
   const handleExportToDraft = async () => {
     if (!aggregated || !costData) {
-      alert('No cost data available to export');
       return;
     }
 
@@ -57,8 +56,7 @@ export const BomCostReportWrapper: React.FC<BomCostReportWrapperProps> = ({
       }
     } catch (error) {
       console.error('Export failed:', error);
-      alert('Export failed. Please try again.');
-    }
+      }
   };
 
   // Calculate costed vs total items

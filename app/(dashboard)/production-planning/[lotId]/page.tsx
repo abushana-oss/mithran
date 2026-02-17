@@ -68,9 +68,8 @@ const LotDetailPage = ({ params }: LotDetailPageProps) => {
     };
 
     // Log to console for now (replace with actual analytics service)
-    console.log('🎯 Tab Tracking:', trackingData);
 
-    // Store in localStorage for persistence
+// Store in localStorage for persistence
     if (typeof window !== 'undefined') {
       const existing = JSON.parse(localStorage.getItem('scheduleTrackingAnalytics') || '[]');
       existing.push(trackingData);
@@ -106,9 +105,7 @@ const LotDetailPage = ({ params }: LotDetailPageProps) => {
         sessionId
       };
 
-      console.log('📅 Schedule Name Tracking:', scheduleTrackingEvent);
-      
-      // Store schedule-specific tracking separately
+// Store schedule-specific tracking separately
       if (typeof window !== 'undefined') {
         const scheduleHistory = JSON.parse(localStorage.getItem('scheduleNameHistory') || '[]');
         scheduleHistory.push(scheduleTrackingEvent);
@@ -123,7 +120,7 @@ const LotDetailPage = ({ params }: LotDetailPageProps) => {
         if (!uniqueSchedules.includes(scheduleName)) {
           uniqueSchedules.push(scheduleName);
           localStorage.setItem('uniqueScheduleNames', JSON.stringify(uniqueSchedules));
-          console.log('🆕 New Schedule Name Tracked:', scheduleName);
+          
         }
       }
     }
@@ -146,14 +143,13 @@ const LotDetailPage = ({ params }: LotDetailPageProps) => {
         setLoading(true);
         
         // Fetch lot details
-        console.log('🔍 Fetching lot details for:', lotId);
-        const lotResponse = await productionPlanningApi.getProductionLotById(lotId);
-        console.log('📋 Lot response:', lotResponse);
         
-        // Fetch processes for this lot
-        console.log('🔄 Fetching processes for lot:', lotId);
+        const lotResponse = await productionPlanningApi.getProductionLotById(lotId);
+
+// Fetch processes for this lot
+        
         const processesResponse = await productionPlanningApi.getProcessesByLot(lotId);
-        console.log('📊 Processes response:', processesResponse);
+        
         setProcesses(processesResponse || []);
         
         // Calculate real statistics from processes and subtasks

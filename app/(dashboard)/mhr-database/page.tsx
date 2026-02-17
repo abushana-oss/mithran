@@ -49,7 +49,6 @@ export default function MHRDatabasePage() {
 
   const handleExport = () => {
     if (!data?.records || data.records.length === 0) {
-      alert('No data to export');
       return;
     }
 
@@ -95,7 +94,6 @@ export default function MHRDatabasePage() {
 
   const handleExportPDF = () => {
     if (!data?.records || data.records.length === 0) {
-      alert('No data to export');
       return;
     }
 

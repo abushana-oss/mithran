@@ -88,7 +88,7 @@ export function useEvaluationData(evaluationId: string | undefined, section: str
     retry: (failureCount, error) => {
       // Don't retry on circuit breaker errors
       if (error?.message?.includes('Circuit breaker is OPEN')) {
-        console.warn('Circuit breaker is open, not retrying');
+        
         return false;
       }
       // Retry up to 2 times for other errors
@@ -100,7 +100,7 @@ export function useEvaluationData(evaluationId: string | undefined, section: str
     meta: {
       errorHandler: (error: any) => {
         if (error?.message?.includes('Circuit breaker is OPEN')) {
-          console.warn('Circuit breaker is open for evaluation data');
+          
           return null; // Return null instead of throwing
         }
         throw error;
