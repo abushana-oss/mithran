@@ -19,8 +19,11 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api', {
     exclude: [
-      { path: '/', method: RequestMethod.GET },
-      { path: '/ping', method: RequestMethod.GET }
+      { path: '/', method: RequestMethod.ALL },
+      { path: '/ping', method: RequestMethod.ALL },
+      { path: '/favicon.ico', method: RequestMethod.GET },
+      { path: '/health', method: RequestMethod.ALL },
+      { path: '/health/(.*)', method: RequestMethod.ALL }
     ]
   });
 
@@ -62,6 +65,7 @@ async function bootstrap() {
         configService.get('CORS_ORIGIN', 'http://localhost:3000'),
         'http://localhost:3000',
         'http://127.0.0.1:3000',
+        'https://mithran-six.vercel.app',
       ];
       if (!requestOrigin || allowedOrigins.includes(requestOrigin) || allowedOrigins.some(o => requestOrigin.startsWith(o))) {
         callback(null, true);

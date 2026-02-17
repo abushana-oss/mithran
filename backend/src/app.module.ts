@@ -28,8 +28,6 @@ import { LoggerModule } from './common/logger/logger.module';
 import { SupabaseService } from './common/supabase/supabase.service';
 import { SupabaseAuthGuard } from './common/guards/supabase-auth.guard';
 import { validate } from './config/env.validation';
-import { RootController } from './root.controller';
-
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -78,7 +76,7 @@ import { RootController } from './root.controller';
     VendorQuotesModule,
     ProductionPlanningModule,
   ],
-  controllers: [RootController],
+  controllers: [],
   providers: [
     SupabaseService,
     // {
